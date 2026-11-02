@@ -84,6 +84,18 @@ body:not(.has-playground) .chat { height: calc(100vh - 120px); }
 .msg-act.liked { color: var(--like); }
 .chat-composer, .chat-login { border-top: 1px solid var(--border); padding: 10px 12px; margin: 0; }
 .chat-composer .row { margin-top: 0; }
+.precheck { margin-bottom: 10px; padding: 12px 14px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--border); }
+.precheck[data-level="block"] { border: 2px solid var(--danger); background: color-mix(in srgb, var(--danger) 8%, var(--surface)); }
+.precheck-title { margin: 0 0 8px; font-weight: 800; font-size: .92rem; }
+.precheck-lines { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.precheck-line { display: flex; gap: 8px; align-items: flex-start; }
+.precheck-line img { flex: none; border-radius: 50%; background: var(--surface); }
+.precheck-line p { margin: 2px 0 0; font-size: .92rem; }
+.precheck-who { font-size: .78rem; font-weight: 700; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+.precheck-kind { font-size: .7rem; font-weight: 700; padding: 0 7px; border-radius: 999px; background: var(--surface); border: 1px solid var(--border); }
+.precheck-line[data-kind="warning"] .precheck-kind { color: #9a3412; border-color: #f0b58a; }
+.precheck-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+.precheck-actions .btn { min-height: 40px; }
 .chat-composer textarea { resize: none; min-height: 44px; border-radius: 22px; padding: 10px 16px; }
 .send-btn { min-height: 44px; flex: none; }
 .reply-target { display: flex; justify-content: space-between; gap: 8px; font-size: .85rem; color: var(--muted); margin-bottom: 6px; }

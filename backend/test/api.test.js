@@ -9,6 +9,7 @@ import { createStore } from '../store.js';
 import { createSimulation } from '../simulation.js';
 import { MEETING_SCRIPT } from '../agents.js';
 import { qrMatrix } from '../../shared/qrcode.js';
+import { precheck, isHarsh } from '../../shared/precheck.js';
 
 let server;
 let base;
@@ -413,4 +414,40 @@ test('字体：手紙に選んだ字体が受け取りページに伝わり、�
   const css = await (await fetch(`${base}/shared/fonts.css`)).text();
   assert.match(css, /Klee One/);
   assert.equal((await fetch(`${base}/shared/fonts/OFL-KleeOne.txt`)).status, 200, 'ライセンス文も一緒に置く');
+});
+
+test('送る前のチェック：キャラが警告・質問・意見・寄り添いを言う（2人まで）', () => {
+  const who = (text) => precheck(text).lines.map((l) => `${l.agentId}:${l.kind}`);
+  assert.deepEqual(who('あいつほんとうざい'), ['agent-fukurou:warning', 'agent-usagi:opinion']);
+  assert.deepEqual(who('090-1234-5678 に電話して'), ['agent-fukurou:warning']);
+  assert.deepEqual(who('新曲が出るらしいよ、拡散希望'), ['agent-yamaneko:question']);
+  assert.deepEqual(who('今日のライブ最悪だった'), ['agent-usagi:opinion']);
+  assert.deepEqual(who('ほんとムカつく'), ['agent-shiba:comfort']);
+  assert.ok(precheck('最悪、ほんとムカつく、どうせみんな嫌い、拡散して').lines.length <= 2, 'うるさくしない');
+  assert.equal(precheck('今日も推しがかわいい！').level, 'ok', '何もなければ何も言わない');
+});
+
+test('送る前のチェック：推し活の言い方はトゲあつかいしない', () => {
+  for (const text of ['推しね、今日もかわいい', '推しのことばかり考えてる', '尊くて死ねる', 'かわいすぎて殺す気か', 'うちわをカスタムした', '闇バイトに気をつけてね']) {
+    assert.equal(precheck(text).level, 'ok', text);
+  }
+  assert.ok(isHarsh('しね') && isHarsh('バカじゃないの'));
+});
+
+test('送る前のチェック：はっきりした犯罪は、画面を通さなくてもサーバーが止める', async () => {
+  for (const [text, reason] of [
+    ['闇バイト募集してます、DMください', '闇バイトの募集'],
+    ['あいつ殺してやる', '人をおびやかす言葉'],
+    ['チケット定価以上で譲ります', 'チケットの不正転売'],
+    ['必ず儲かる投資、教えます', '詐欺のおそれ'],
+  ]) {
+    assert.equal(precheck(text).level, 'block', text);
+    assert.equal(precheck(text).reason, reason);
+  }
+  const { data: me } = await call('/api/users', { method: 'POST', body: { name: 'チェックの人' } });
+  const res = await call('/api/posts', { method: 'POST', body: { authorId: me.id, text: '闇バイト募集してます、DMください' } });
+  assert.equal(res.status, 422);
+  assert.match(res.data.error, /闇バイト/);
+  const ok = await call('/api/posts', { method: 'POST', body: { authorId: me.id, text: 'あいつほんとうざい' } });
+  assert.equal(ok.status, 201, '声をかけるだけのものは、本人が選べば送れる');
 });

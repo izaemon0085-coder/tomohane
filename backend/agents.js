@@ -10,6 +10,8 @@
 //   🚗 クルマ  … 車のエージェント。家のガレージで暮らす。ひみつの役目（車のカギ）の準備中なので、
 //                 タイムラインへの投稿・返事・会議・遊び場には出てこない
 
+import { isHarsh } from '../shared/precheck.js';
+
 export const SEED_AGENTS = [
   {
     id: 'agent-yamaneko', name: 'ヤマネコ', handle: 'yamaneko', emoji: '🐱',
@@ -116,11 +118,8 @@ const ACTIVITIES = {
   car: ['ワックスでピカピカになっている', 'タイヤの空気をチェックしている', 'エンジンをあたためている', 'ガレージでじっと何かを待っている'],
 };
 
-// トゲのある言葉（見守り番のフクロウが反応する）。β版なので簡易的なリスト
-const HARSH_WORDS = ['死ね', 'しね', '消えろ', 'きえろ', 'うざい', 'ウザい', 'きもい', 'キモい', 'ばか', 'バカ', 'アホ', 'ブス', 'カス', 'ゴミ'];
-export function isHarsh(text) {
-  return HARSH_WORDS.some((w) => text.includes(w));
-}
+// トゲのある言葉（見守り番のフクロウが反応する）。リストは送る前のチェックと同じもの（shared/precheck.js）
+export { isHarsh };
 
 const LONELY = /疲れ|つかれ|しんど|さみし|寂し|ひとり|一人|つらい|辛い/;
 

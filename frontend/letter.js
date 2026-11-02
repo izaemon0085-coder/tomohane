@@ -5,6 +5,7 @@ import { api, getMe, login, escapeHtml, timeAgo, headerHtml, toast, onServerEven
 import { qrMatrix, qrSvg, drawQr } from '/shared/qrcode.js';
 import { TYPEFACES, DEFAULT_TYPEFACE, fontStack, loadTypeface } from '/shared/typefaces.js';
 import { getDesign } from '/shared/customize.js';
+import { PERSONAL_INFO_PATTERNS } from '/shared/precheck.js';
 
 const $ = (sel) => document.querySelector(sel);
 const form = $('#letter-form');
@@ -89,17 +90,11 @@ form.addEventListener('change', (e) => {
 });
 
 // ---- 1. 宛名など：電話番号や住所らしきものがあればフクロウが注意する ----
-const PRIVATE_PATTERNS = [
-  /0\d{1,4}[-ー－−\s]?\d{1,4}[-ー－−\s]?\d{3,4}/, // 電話番号
-  /〒|\d{3}[-ー－−]\d{4}/, // 郵便番号
-  /(都|道|府|県).{0,8}(市|区|町|村)/, // 住所
-  /\S+@\S+\.\S+/, // メールアドレス
-];
 let warnedPrivacy = false;
 form.addEventListener('input', (e) => {
   if (!['to', 'from', 'note'].includes(e.target.name)) return;
   const text = ['to', 'from', 'note'].map((k) => form.elements[k].value).join(' ');
-  const risky = PRIVATE_PATTERNS.some((re) => re.test(text));
+  const risky = PERSONAL_INFO_PATTERNS.some((re) => re.test(text));
   const warn = $('#privacy-warn');
   warn.hidden = !risky;
   if (risky) {

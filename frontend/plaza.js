@@ -4,6 +4,7 @@ import {
 } from '/shared/api.js';
 import { speak } from '/shared/speech.js';
 import { sendPost, getOutbox, flushOutbox } from '/shared/outbox.js';
+import { precheck } from '/shared/precheck.js';
 
 const $ = (sel) => document.querySelector(sel);
 const header = $('#header');
@@ -16,6 +17,8 @@ const replyTarget = $('#reply-target');
 let me = getMe();
 let replyTo = null;
 let posts = [];
+let agentsById = {};
+let checkedText = null; // キャラたちが声をかけたあと「このまま送る」を選んだ文面
 
 function renderAuth() {
   header.innerHTML = headerHtml('plaza');
@@ -88,7 +91,9 @@ async function loadPosts() {
 
 async function loadMembers() {
   try {
-    const agents = (await api('/agents')).filter((a) => (a.place ?? 'house') === 'house');
+    const all = await api('/agents');
+    agentsById = Object.fromEntries(all.map((a) => [a.id, a]));
+    const agents = all.filter((a) => (a.place ?? 'house') === 'house');
     const here = agents.filter((a) => a.status === 'home').map((a) => a.name);
     $('#chat-members').textContent = here.length ? `${here.join('・')} がいます` : 'キャラたちはお出かけ中です';
   } catch { /* noop */ }
@@ -124,11 +129,64 @@ textarea.addEventListener('keydown', (e) => {
   }
 });
 
+// ---- 送る前のチェック ----
+const precheckBox = $('#precheck');
+const KIND_LABEL = { warning: '注意', question: '質問', opinion: '意見', comfort: 'よりそい' };
+
+function showPrecheck(result) {
+  $('#precheck-lines').innerHTML = result.lines.map((l) => {
+    const a = agentsById[l.agentId];
+    const face = a?.avatar ? `<img src="${a.avatar}" alt="" width="32" height="32">` : '';
+    return `<li class="precheck-line" data-kind="${l.kind}">${face}
+      <div><span class="precheck-who">${escapeHtml(a?.name ?? '')}<span class="precheck-kind">${KIND_LABEL[l.kind]}</span></span>
+      <p>${escapeHtml(l.text)}</p></div></li>`;
+  }).join('');
+  precheckBox.dataset.level = result.level;
+  $('#precheck-send').hidden = result.level === 'block'; // 犯罪につながるものは送れない
+  $('#precheck-title').textContent = result.level === 'block' ? 'この内容は送れません' : '送る前に、みんなから';
+  precheckBox.hidden = false;
+  (result.level === 'block' ? precheckBox.querySelector('[data-precheck="edit"]') : $('#precheck-send')).focus();
+  // 遊び場のキャラも、同じことを吹き出しで言う
+  const [first] = result.lines;
+  if (first) window.dispatchEvent(new CustomEvent('agent-say', { detail: { agentId: first.agentId, text: first.text } }));
+}
+function hidePrecheck() {
+  precheckBox.hidden = true;
+}
+
+precheckBox.addEventListener('click', (e) => {
+  const action = e.target.closest('[data-precheck]')?.dataset.precheck;
+  if (!action) return;
+  hidePrecheck();
+  if (action === 'send') {
+    checkedText = textarea.value.trim();
+    composer.requestSubmit();
+  } else if (action === 'edit') {
+    textarea.focus();
+  } else {
+    textarea.value = '';
+    setReply(null);
+    textarea.focus();
+  }
+});
+// 書き直したら、もう一度チェックする
+textarea.addEventListener('input', () => {
+  checkedText = null;
+  if (!precheckBox.hidden) hidePrecheck();
+});
+
 composer.addEventListener('submit', async (e) => {
   e.preventDefault();
   const btn = $('#post-btn');
   $('#post-error').textContent = '';
-  if (!textarea.value.trim()) return;
+  const text = textarea.value.trim();
+  if (!text) return;
+  const check = precheck(text);
+  if (check.level === 'block' || (check.level === 'notice' && checkedText !== text)) {
+    showPrecheck(check);
+    return;
+  }
+  checkedText = null;
   btn.disabled = true;
   try {
     const result = await sendPost({ authorId: me.id, text: textarea.value.trim(), replyTo });

@@ -4,6 +4,7 @@ import { dirname } from 'node:path';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { SEED_AGENTS, MOODS } from './agents.js';
 import { DEFAULT_TYPEFACE, TYPEFACE_KEYS } from '../shared/typefaces.js';
+import { precheck } from '../shared/precheck.js';
 
 export const MAX_POST_LENGTH = 280;
 export const MAX_NAME_LENGTH = 20;
@@ -55,6 +56,13 @@ function syncSeedAgents(state, now) {
       });
     }
   }
+}
+
+// 人間の文面に、はっきりした犯罪（闇バイトの募集・殺害予告・チケットの不正転売・詐欺）がないか
+function rejectBlocked(user, text) {
+  if (user.kind !== 'human') return;
+  const check = precheck(text);
+  if (check.level === 'block') throw new HttpError(422, `この内容は送れません（${check.reason}）`);
 }
 
 function cleanText(value, max, label) {
@@ -232,8 +240,9 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
     listPosts: () => [...state.posts].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     getPost: requirePost,
     createPost({ authorId, text, replyTo = null }) {
-      requireUser(authorId);
+      const author = requireUser(authorId);
       const clean = cleanText(text, MAX_POST_LENGTH, '投稿');
+      rejectBlocked(author, clean);
       if (replyTo) requirePost(replyTo);
       const post = { id: newId('p'), authorId, text: clean, replyTo: replyTo || null, likes: [], createdAt: now() };
       state.posts.push(post);
@@ -272,6 +281,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       if (meeting.status !== 'open') throw new HttpError(409, 'この会議はすでに終了しています');
       const author = requireUser(authorId);
       const msg = { id: newId('mm'), authorId, text: cleanText(text, MAX_POST_LENGTH, '発言'), createdAt: now() };
+      rejectBlocked(author, msg.text);
       meeting.messages.push(msg);
       meeting.speakerId = authorId;
       if (author.kind === 'human') meeting.pendingHumanId = msg.id;

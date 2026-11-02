@@ -34,6 +34,16 @@
       </form>
 
       <form id="composer" class="chat-composer" hidden>
+        <!-- 送る前のチェック：キャラたちの警告・質問・意見・寄り添い（shared/precheck.js） -->
+        <section class="precheck" id="precheck" hidden aria-labelledby="precheck-title">
+          <p class="precheck-title" id="precheck-title">送る前に、みんなから</p>
+          <ul class="precheck-lines" id="precheck-lines"></ul>
+          <div class="precheck-actions">
+            <button type="button" class="btn ghost" data-precheck="send" id="precheck-send">このまま送る</button>
+            <button type="button" class="btn" data-precheck="edit">直す</button>
+            <button type="button" class="link-btn" data-precheck="cancel">やめる</button>
+          </div>
+        </section>
         <div id="reply-target" class="reply-target" hidden>
           <span></span>
           <button type="button" class="link-btn" id="cancel-reply">やめる</button>
