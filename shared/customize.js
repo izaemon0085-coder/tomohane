@@ -1,5 +1,8 @@
 // きせかえ：推しカラー・背景のもよう・飾り・レイアウトを自分の好きに変えられる。
 // 設定はこのブラウザに保存する（β版。あとでアカウントに保存して、どの端末でも同じにできる）。
+import { api } from '/shared/api.js';
+import { opinionsFor, closingLines } from '/shared/kisekae-opinions.js';
+
 const KEY = 'agent-sns:design';
 
 export const OSHI_COLORS = [
@@ -126,6 +129,60 @@ function update(patch) {
   save(design);
   applyDesign();
   syncPanel();
+  const [change, value] = Object.entries(patch)[0];
+  changedThisTime = true;
+  if (change === 'oshiName') {
+    clearTimeout(nameTimer); // 入力し終わってから意見する
+    nameTimer = setTimeout(() => showOpinion(change, value), 700);
+  } else {
+    showOpinion(change, value);
+  }
+}
+
+// ---- キャラたちの意見 ----
+let agentsById = {};
+let changedThisTime = false;
+let nameTimer = null;
+
+async function loadAgents() {
+  try {
+    const agents = await api('/agents');
+    agentsById = Object.fromEntries(agents.map((a) => [a.id, a]));
+  } catch { /* 取れなければ意見はお休み */ }
+}
+
+// 会議中（秘密基地にいる）や寝ているキャラは意見できないので、次の候補に回す
+function firstAvailable(candidates) {
+  return candidates.find((c) => agentsById[c.agentId]?.status === 'home') || null;
+}
+
+function showOpinion(change, value) {
+  const colorName = OSHI_COLORS.find((c) => c.hex === value)?.name;
+  showOpinionLine(firstAvailable(opinionsFor(change, value, { colorName })));
+}
+
+// 吹き出しを表示する。opinion が null なら「みんな留守」
+function showOpinionLine(opinion) {
+  const box = dialog.querySelector('.kk-opinion');
+  if (!box) return;
+  const agent = opinion && agentsById[opinion.agentId];
+  if (!agent) {
+    box.textContent = '（みんな出かけているみたい…）';
+    return;
+  }
+  const img = document.createElement('img');
+  img.src = agent.avatar;
+  img.alt = '';
+  const body = document.createElement('div');
+  const who = document.createElement('strong');
+  who.textContent = agent.name;
+  const text = document.createElement('p');
+  text.textContent = opinion.text; // 推しの名前など、ユーザーの入力が入るので textContent で表示
+  body.append(who, text);
+  box.replaceChildren(img, body);
+  box.classList.remove('kk-pop');
+  void box.offsetWidth; // アニメーションをやり直す
+  box.classList.add('kk-pop');
 }
 
 // ---- きせかえパネル ----
@@ -148,6 +205,7 @@ function renderPanel() {
         <button class="btn ghost" value="close" aria-label="閉じる">✕</button>
       </div>
       <p class="muted kk-note">推しの色や飾りで、画面を自分好みにできます。設定はこのブラウザに保存されます。</p>
+      <div class="kk-opinion" aria-live="polite"></div>
 
       <fieldset class="kk-group"><legend>推しカラー</legend>
         <div class="kk-swatches">
@@ -210,13 +268,35 @@ dialog.addEventListener('click', (e) => {
     save(design);
     applyDesign();
     renderPanel();
+    changedThisTime = true;
+    showOpinion('reset');
   }
 });
 
-export function openCustomize() {
+// 閉じたら、遊び場のキャラがまとめのひとこと（playground.js が 'agent-say' を受け取って吹き出しを出す）
+dialog.addEventListener('close', () => {
+  clearTimeout(nameTimer);
+  if (!changedThisTime) return;
+  const lines = closingLines(design).filter((l) => agentsById[l.agentId]?.status === 'home').slice(0, 2);
+  lines.forEach((l, i) => setTimeout(() => {
+    window.dispatchEvent(new CustomEvent('agent-say', { detail: l }));
+  }, 400 + i * 1200));
+});
+
+export async function openCustomize() {
   renderPanel();
   if (!dialog.isConnected) document.body.append(dialog);
   dialog.showModal();
+  changedThisTime = false;
+  await loadAgents();
+  const hello = firstAvailable([
+    { agentId: 'agent-shiba', text: 'きせかえっすか！ わくわくするっす！ どれにするっすか？' },
+    { agentId: 'agent-usagi', text: 'きせかえ〜！ いっしょに選ぼう ♪' },
+    { agentId: 'agent-yamaneko', text: 'きせかえか。気になったところから変えてみるといい。' },
+    { agentId: 'agent-fukurou', text: 'ほう、きせかえですか。ゆっくり選びなされ。' },
+  ]);
+  // 読み込み中にもう何か変えていたら、そっちの意見を残す
+  if (!dialog.querySelector('.kk-opinion')?.childElementCount) showOpinionLine(hello);
 }
 
 // ヘッダーの「きせかえ」ボタン（各画面がヘッダーを描き直しても動くように、document で受ける）

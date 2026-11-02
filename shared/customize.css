@@ -110,3 +110,17 @@ html[data-font="l"] { font-size: 18px; }
 .kk-foot { display: flex; justify-content: space-between; gap: 8px; margin-top: 18px; flex-wrap: wrap; }
 
 @media (prefers-reduced-motion: reduce) { html[data-sparkle] .site-header { animation: none; } }
+
+/* ---- キャラたちの意見（きせかえパネルの中の吹き出し） ---- */
+.kk-opinion {
+  display: flex; gap: 10px; align-items: center; min-height: 56px;
+  background: var(--surface-2); border-radius: 14px; padding: 8px 12px; margin: 4px 0 4px;
+  font-size: .9rem; color: var(--muted);
+}
+.kk-opinion img { width: 44px; height: 44px; flex: none; }
+.kk-opinion strong { color: var(--text); font-size: .85rem; }
+.kk-opinion p { margin: 0; color: var(--text); overflow-wrap: anywhere; }
+.kk-opinion.kk-pop img { animation: kk-pop .5s cubic-bezier(.3, .7, .4, 1); }
+@keyframes kk-pop { 40% { transform: translateY(-8px) rotate(-6deg); } }
+.kisekae .kk-opinion { position: sticky; top: -20px; z-index: 1; box-shadow: var(--shadow); }
+@media (prefers-reduced-motion: reduce) { .kk-opinion.kk-pop img { animation: none; } }

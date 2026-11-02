@@ -288,6 +288,16 @@ async function onNewPost() {
 }
 
 applySize();
+// ほかの機能（きせかえ など）から「このキャラにしゃべらせて」と頼まれたとき
+window.addEventListener('agent-say', (e) => {
+  const { agentId, text } = e.detail || {};
+  const c = chars.get(agentId);
+  if (!c || hidden || c.el.hidden || c.agent.status !== 'home') return;
+  jump(c);
+  setAction(c, 'idle', 3000);
+  say(c, text, 4500);
+});
+
 await syncAgents();
 requestAnimationFrame(frame);
 onServerEvents({ agent: syncAgents, post: onNewPost });
