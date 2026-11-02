@@ -118,3 +118,64 @@ html[data-oshi-color] .oshi-hero { color: var(--accent-text); }
 .oshi-dialog::backdrop { background: rgb(0 0 0 / 40%); }
 .oshi-dialog h2 { margin: 0 0 8px; font-size: 1.15rem; }
 .field { display: grid; gap: 4px; font-size: .9rem; margin: 10px 0; }
+
+/* ===== 町の地図：📮 ポスト（手紙キットの入り口） ===== */
+.post-spot {
+  position: absolute; left: 2%; top: 37%; width: 12%; display: flex; flex-direction: column; align-items: center; gap: 2px;
+  text-decoration: none; color: #2b2420;
+}
+.post-spot:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.post-box {
+  position: relative; width: 46%; aspect-ratio: 3 / 5; background: #d2423c; border-radius: 40% 40% 6px 6px;
+  box-shadow: inset -4px 0 0 rgb(0 0 0 / 14%), 0 2px 4px rgb(40 60 20 / 25%); transition: transform .15s;
+}
+.post-box::before { content: ""; position: absolute; left: 18%; right: 18%; top: 30%; height: 7%; background: #5a1f1c; border-radius: 3px; }
+.post-spot:hover .post-box { transform: translateY(-2px); }
+
+/* ===== 手紙キット ===== */
+.letter-page [hidden] { display: none !important; }
+.letter-page { max-width: 860px; }
+.letter-hero h1 { margin: 0 0 4px; font-size: 1.6rem; }
+.letter-hero > p { margin: 0 0 12px; }
+.guide { display: flex; gap: 10px; align-items: flex-start; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 16px; }
+.guide p { margin: 0; }
+.guide img { flex: none; }
+.letter-form { display: grid; gap: 14px; }
+.step { border: 1px solid var(--border); padding: 16px 18px; margin: 0; min-width: 0; }
+.step legend { font-weight: 800; font-size: 1.05rem; padding: 0 6px; display: flex; align-items: center; gap: 8px; }
+.step-no { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: var(--accent-text); font-size: .9rem; }
+.step p { margin: 6px 0 0; }
+.warn { background: color-mix(in srgb, #f59e0b 16%, var(--surface)); border-radius: 10px; padding: 8px 12px; font-size: .9rem; }
+.paper-pick { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.paper-pick p { margin: 0 0 4px; }
+.paper-pick > div:last-child { flex: 1 1 240px; }
+.paper-sample {
+  flex: none; position: relative; width: 84px; aspect-ratio: 1 / 1.414; background: #fffaf3; border: 3px solid var(--accent);
+  border-radius: 6px; padding: 14px 8px; display: flex; flex-direction: column; gap: 9px; box-shadow: var(--shadow);
+}
+.paper-sample span { height: 2px; background: #e6d3bd; }
+.paper-sample .qr-spot { position: absolute; right: 7px; bottom: 7px; width: 20px; height: 20px; background: repeating-conic-gradient(#3d2e22 0 25%, #fff 0 50%) 0 0 / 6px 6px; border: 1px dashed var(--accent); }
+.video-pick { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; cursor: pointer; }
+.video-pick:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.video-preview { display: block; width: 100%; max-height: 360px; margin-top: 10px; border-radius: 12px; background: #000; }
+.make-btn { min-height: 48px; padding: 10px 24px; font-size: 1.05rem; }
+.step progress { display: block; width: 100%; margin-top: 10px; accent-color: var(--accent); }
+.result { padding: 18px 20px; margin-top: 16px; }
+.result:focus { outline: none; }
+.result h2 { margin: 0 0 12px; }
+.result-body { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
+.qr-box { flex: none; width: 200px; background: #fff; border-radius: 10px; padding: 4px; border: 1px solid var(--border); }
+.qr-box svg { display: block; width: 100%; height: auto; }
+.result-side { flex: 1 1 260px; min-width: 0; }
+.result-side p { margin: 0 0 8px; }
+.row.wrap { flex-wrap: wrap; margin: 0 0 10px; }
+.row.wrap .btn { min-height: 44px; display: inline-flex; align-items: center; text-decoration: none; }
+.note-line { font-size: .88rem; background: var(--surface-2); border-radius: 10px; padding: 8px 12px; }
+.my-letters { padding: 18px 20px; margin-top: 16px; }
+.my-letters h2 { margin: 0 0 4px; font-size: 1.1rem; }
+.letter-list { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
+.letter-item { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; background: var(--surface-2); border-radius: 12px; padding: 10px 12px; }
+.letter-item .row { margin: 0; }
+.letter-info { min-width: 0; overflow-wrap: anywhere; }
+.letter-status { font-size: .88rem; }
+.letter-status.opened { color: var(--like); font-weight: 700; }

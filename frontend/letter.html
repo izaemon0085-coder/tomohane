@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>手紙キット | ともはね β版</title>
+  <link rel="stylesheet" href="/shared/base.css">
+  <link rel="stylesheet" href="/shared/playground.css">
+  <link rel="stylesheet" href="/shared/customize.css">
+  <link rel="stylesheet" href="/shared/network.css">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="site-header" id="header"></header>
+  <main class="page letter-page">
+    <form id="login-form" class="card panel" hidden>
+      <label for="login-name"><strong>名前を決めると、お手紙がつくれます</strong></label>
+      <div class="row">
+        <input id="login-name" class="input" maxlength="20" placeholder="例：さいとう" autocomplete="nickname" required>
+        <button class="btn" type="submit">はじめる</button>
+      </div>
+      <p class="error" id="login-error"></p>
+    </form>
+
+    <div id="letter-app" hidden>
+      <section class="letter-hero">
+        <h1>📮 手紙キット <span class="beta">β版</span></h1>
+        <p>紙の手紙に QR コードをそえて、<strong>声と顔のビデオレター</strong>を届けます。</p>
+        <div class="guide" role="status" aria-live="polite">
+          <img src="/shared/avatars/usagi.svg" alt="" width="44" height="44" id="guide-face">
+          <div><p class="muted small" id="guide-name">ウサギから</p><p id="guide-text">いっしょにお手紙をつくろう ♪ まずは、だれに送るか教えてね！</p></div>
+        </div>
+      </section>
+
+      <form id="letter-form" class="letter-form" novalidate>
+        <fieldset class="card step">
+          <legend><span class="step-no">1</span> だれに送る？</legend>
+          <label class="field">宛名（受け取る人）<input class="input" name="to" maxlength="20" placeholder="例：おばあちゃん／たなかさん" required></label>
+          <label class="field">差出人（あなた）<input class="input" name="from" maxlength="20" required></label>
+          <label class="field">ひとこと（ビデオの下に出ます・なくてもOK）
+            <textarea class="input" name="note" maxlength="100" rows="2" placeholder="例：いつもありがとう。また会いにいくね"></textarea>
+          </label>
+          <p class="warn" id="privacy-warn" hidden></p>
+          <p class="muted small">手紙は ともはねの広場には出ません。ほかのユーザーにも送れません。紙の手紙と QR コードだけで届きます。</p>
+        </fieldset>
+
+        <fieldset class="card step">
+          <legend><span class="step-no">2</span> 便箋</legend>
+          <div class="paper-pick">
+            <div class="paper-sample" aria-hidden="true"><span></span><span></span><span></span><span class="qr-spot"></span></div>
+            <div>
+              <p><strong>クリームの便箋</strong>（β版は1種類）</p>
+              <p class="muted small">ふちの色は「🎨 きせかえ」の推しカラーになります。いちばん下に QR コードが入るので、読み終わるまでシールでかくしてね。</p>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset class="card step">
+          <legend><span class="step-no">3</span> ビデオをとる</legend>
+          <label class="video-pick btn ghost">
+            🎬 ビデオをえらぶ・とる
+            <input type="file" id="video-input" accept="video/mp4,video/quicktime,video/webm,video/*" class="sr-only">
+          </label>
+          <p class="muted small">3分まで・200MB まで。スマホなら、その場で撮ることもできます。</p>
+          <video id="video-preview" class="video-preview" controls playsinline hidden></video>
+          <p class="error" id="video-error"></p>
+        </fieldset>
+
+        <fieldset class="card step">
+          <legend><span class="step-no">4</span> QR コードをつくる</legend>
+          <button class="btn make-btn" type="submit" id="make-btn">💌 QR コードをつくる</button>
+          <progress id="upload-progress" max="1" value="0" hidden></progress>
+          <p class="muted small" id="upload-status" role="status"></p>
+          <p class="error" id="make-error"></p>
+        </fieldset>
+      </form>
+
+      <section class="card result" id="result" hidden aria-labelledby="result-title" tabindex="-1">
+        <h2 id="result-title">できあがり！</h2>
+        <div class="result-body">
+          <div class="qr-box" id="qr-box"></div>
+          <div class="result-side">
+            <p>この QR コードを読むと、<strong id="result-to"></strong>にビデオレターが届きます。</p>
+            <div class="row wrap">
+              <button type="button" class="btn" id="save-paper">📄 便箋を画像で保存</button>
+              <button type="button" class="btn ghost" id="save-qr">🔲 QR だけ保存</button>
+            </div>
+            <div class="row wrap">
+              <a class="btn ghost" id="preview-link" target="_blank" rel="noopener">👀 ためしにひらく</a>
+              <button type="button" class="btn ghost" id="copy-link">🔗 リンクをコピー</button>
+            </div>
+            <p class="muted small">保存した画像は、セブンイレブンのアプリで印刷できます。</p>
+            <p class="note-line" id="line-note"></p>
+            <p class="note-line">🦉 フクロウより：QR コードは「家のカギ」と同じですぞ。SNS に写真をのせないでくだされ。</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="card my-letters" aria-labelledby="my-title">
+        <h2 id="my-title">つくった手紙</h2>
+        <p class="muted small">この端末でつくった手紙だけが出ます（ほかの端末からは見られません）。</p>
+        <ul id="my-letters" class="letter-list"></ul>
+      </section>
+    </div>
+  </main>
+  <script type="module" src="/letter.js"></script>
+  <script type="module" src="/shared/customize.js"></script>
+  <script type="module" src="/shared/network.js"></script>
+  <script type="module" src="/shared/playground.js"></script>
+</body>
+</html>

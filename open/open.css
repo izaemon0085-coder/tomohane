@@ -1,0 +1,96 @@
+/* 手紙の受け取りページ。ともはねに登録していない人（祖父母・子ども）も見るので、大きな文字・少ない操作にする */
+:root {
+  --bg: #fbf3e8;
+  --text: #3d2e22;
+  --muted: #6f5e50;
+  --paper: #fffaf3;
+  --env: #f3dcc4;
+  --env-dark: #e6c3a1;
+  --flap: #eccdae;
+  --seal: #c9566a;
+  --accent: #b8562a;
+  font-family: "Hiragino Maru Gothic ProN", "Hiragino Sans", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1f1813;
+    --text: #f4ebe3;
+    --muted: #c4b3a5;
+    --paper: #2a211b;
+    --env: #6b5442;
+    --env-dark: #57432f;
+    --flap: #7a6150;
+    --seal: #e08597;
+    --accent: #f0a26d;
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  margin: 0; min-height: 100vh; display: flex; flex-direction: column;
+  background: var(--bg); color: var(--text); line-height: 1.7; font-size: 18px;
+}
+.open-page { flex: 1; width: 100%; max-width: 640px; margin: 0 auto; padding: 32px 16px; display: flex; flex-direction: column; justify-content: center; }
+.loading { text-align: center; color: var(--muted); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+/* ---- 封筒 ---- */
+.envelope-view { display: flex; flex-direction: column; align-items: center; gap: 20px; text-align: center; }
+.to-line { margin: 0; font-size: clamp(1.5rem, 6vw, 2rem); }
+.envelope {
+  position: relative; width: min(84vw, 380px); aspect-ratio: 3 / 2; border: 0; padding: 0; cursor: pointer;
+  background: none; perspective: 900px; border-radius: 10px;
+  transition: transform .2s;
+}
+.envelope:hover { transform: translateY(-3px); }
+.envelope:focus-visible { outline: 3px solid var(--accent); outline-offset: 6px; }
+.env-back, .env-front, .env-flap { position: absolute; inset: 0; border-radius: 10px; }
+.env-back { background: var(--env-dark); box-shadow: 0 10px 24px rgb(61 46 34 / 22%); }
+.env-front {
+  background: var(--env);
+  clip-path: polygon(0 0, 50% 58%, 100% 0, 100% 100%, 0 100%);
+}
+.env-flap {
+  background: var(--flap); z-index: 2; transform-origin: top center;
+  clip-path: polygon(0 0, 100% 0, 50% 60%);
+  transition: transform .7s ease;
+}
+.env-seal { position: absolute; z-index: 3; left: 50%; top: 58%; width: 18%; translate: -50% -50%; transition: opacity .3s; }
+.env-seal circle { fill: var(--seal); }
+.env-seal path { fill: #fff; opacity: .9; }
+.hint { margin: 0; color: var(--muted); }
+
+/* ひらくときの動き：ふたが開いて、封筒が下へ消える */
+.envelope.opening .env-flap { transform: rotateX(180deg); z-index: 0; }
+.envelope.opening .env-seal { opacity: 0; }
+.envelope.opening { animation: env-away .6s ease .6s forwards; }
+@keyframes env-away { to { transform: translateY(40px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .env-flap, .env-seal, .envelope { transition: none; }
+  .envelope.opening { animation: none; opacity: 0; }
+}
+
+/* ---- ビデオレター ---- */
+.letter-view { display: flex; flex-direction: column; gap: 14px; animation: rise .6s ease; }
+@keyframes rise { from { opacity: 0; transform: translateY(16px); } }
+@media (prefers-reduced-motion: reduce) { .letter-view { animation: none; } }
+.to-small { margin: 0; font-weight: 700; font-size: 1.2rem; }
+.video-frame {
+  background: var(--paper); border-radius: 16px; padding: 10px;
+  box-shadow: 0 8px 24px rgb(61 46 34 / 16%);
+}
+.video-frame video { display: block; width: 100%; max-height: 70vh; border-radius: 10px; background: #000; }
+.no-video { margin: 0; padding: 40px 12px; text-align: center; color: var(--muted); }
+.note {
+  margin: 0; padding: 14px 18px; background: var(--paper); border-radius: 14px;
+  white-space: pre-wrap; overflow-wrap: anywhere; font-size: 1.1rem;
+}
+.from-line { margin: 0; text-align: right; font-weight: 700; font-size: 1.15rem; }
+.again { margin: 8px 0 0; color: var(--muted); font-size: .9rem; text-align: center; }
+
+.error-view { text-align: center; }
+.error-view h1 { font-size: 1.4rem; }
+.open-footer { text-align: center; color: var(--muted); font-size: .8rem; padding: 16px; }

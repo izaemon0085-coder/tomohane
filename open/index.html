@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <title>お手紙のビデオレター</title>
+  <link rel="stylesheet" href="/open/open.css">
+</head>
+<body>
+  <main class="open-page">
+    <p class="loading" id="loading" role="status">お手紙を読みこんでいます…</p>
+
+    <!-- 封筒：タップするとひらいて、ビデオレターが流れる -->
+    <section class="envelope-view" id="envelope-view" hidden aria-labelledby="to-line">
+      <h1 class="to-line" id="to-line"></h1>
+      <button type="button" class="envelope" id="open-btn">
+        <span class="sr-only">お手紙をひらく</span>
+        <span class="env-back" aria-hidden="true"></span>
+        <span class="env-flap" aria-hidden="true"></span>
+        <span class="env-front" aria-hidden="true"></span>
+        <svg class="env-seal" viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="22"/><path d="M24 35 C 15 29, 11 24, 11 19 C 11 15, 14 12, 18 12 C 20.5 12, 22.6 13.6, 24 15.8 C 25.4 13.6, 27.5 12, 30 12 C 34 12, 37 15, 37 19 C 37 24, 33 29, 24 35 Z"/></svg>
+      </button>
+      <p class="hint">ふうとうをタップして、ひらいてね</p>
+    </section>
+
+    <!-- ビデオレター -->
+    <section class="letter-view" id="letter-view" hidden aria-label="ビデオレター">
+      <p class="to-small" id="to-small"></p>
+      <div class="video-frame">
+        <video id="video" controls playsinline preload="metadata"></video>
+        <p class="no-video" id="no-video" hidden>ビデオはまだ準備中です。<br>少したってから、もう一度ひらいてね。</p>
+      </div>
+      <p class="note" id="note" hidden></p>
+      <p class="from-line" id="from-line"></p>
+      <p class="again">何度でも見られます。さみしくなったら、またこの QR をかざしてね。</p>
+    </section>
+
+    <section class="error-view" id="error-view" hidden>
+      <h1>お手紙が見つかりません</h1>
+      <p id="error-text">QR コードを、もう一度読み取ってみてください。</p>
+    </section>
+  </main>
+  <footer class="open-footer">ともはね 手紙キット（β版）</footer>
+  <script type="module" src="/open/open.js"></script>
+</body>
+</html>

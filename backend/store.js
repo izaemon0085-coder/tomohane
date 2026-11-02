@@ -1,14 +1,20 @@
-// データストア：ユーザー・エージェント・投稿・会議をメモリで保持し、任意で JSON ファイルに保存する。
+// データストア：ユーザー・エージェント・投稿・会議・手紙をメモリで保持し、任意で JSON ファイルに保存する。
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { SEED_AGENTS, MOODS } from './agents.js';
 
 export const MAX_POST_LENGTH = 280;
 export const MAX_NAME_LENGTH = 20;
 export const MAX_TOPIC_LENGTH = 60;
 export const MAX_GOODS = 100;
+export const MAX_NOTE_LENGTH = 100;
+export const MAX_LETTERS_PER_USER = 50;
 const MAX_DIARY = 20;
+
+// 手紙の合言葉。サーバーには「ハッシュ」だけを残し、合言葉そのものは作った人のブラウザだけが持つ
+const randomToken = () => randomBytes(18).toString('base64url');
+const hashKey = (key) => createHash('sha256').update(String(key)).digest();
 
 export class HttpError extends Error {
   constructor(status, message) {
@@ -62,6 +68,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
   const state = file && existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : seedState(now);
   syncSeedAgents(state, now);
   state.meta ??= {};
+  state.letters ??= [];
   const listeners = new Set();
   let saveTimer = null;
 
@@ -99,6 +106,11 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
     const meeting = state.meetings.find((m) => m.id === id);
     if (!meeting) throw new HttpError(404, '会議が見つかりません');
     return meeting;
+  };
+  const requireLetter = (id) => {
+    const letter = state.letters.find((l) => l.id === id);
+    if (!letter) throw new HttpError(404, '手紙が見つかりません');
+    return letter;
   };
 
   return {
@@ -270,6 +282,68 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       Object.assign(meeting, patch);
       emit('meeting', meeting);
       return meeting;
+    },
+
+    // ---- 手紙キット ----
+    // ともはねのほかのユーザーには送らない。届け方は「紙の手紙＋QR」だけで、
+    // QR の中の token を知っている人だけが受け取りページを開ける。
+    // 一覧・ビデオの入れ替え・削除は、作ったときに一度だけ返す合言葉（key）がないとできない
+    createLetter({ authorId, to, from, note = '' }) {
+      const author = requireUser(authorId);
+      if (author.kind !== 'human') throw new HttpError(400, '手紙を書けるのは人間のユーザーだけです');
+      if (state.letters.filter((l) => l.authorId === authorId).length >= MAX_LETTERS_PER_USER) {
+        throw new HttpError(400, `手紙は${MAX_LETTERS_PER_USER}通までです。古い手紙を消してからつくってください`);
+      }
+      const key = randomToken();
+      const letter = {
+        id: newId('l'),
+        authorId,
+        token: randomToken(),
+        keyHash: hashKey(key).toString('hex'),
+        to: cleanText(to, MAX_NAME_LENGTH, '宛名'),
+        from: cleanText(from, MAX_NAME_LENGTH, '差出人の名前'),
+        note: note === '' || note == null ? '' : cleanText(note, MAX_NOTE_LENGTH, 'ひとこと'),
+        paper: 'cream', // β版の便箋は1種類
+        video: null,
+        createdAt: now(),
+        openedAt: null,
+      };
+      state.letters.push(letter);
+      emit('letter', letter);
+      return { letter, key };
+    },
+    getLetterWithKey(id, key) {
+      const letter = requireLetter(id);
+      const ok = typeof key === 'string' && key.length > 0
+        && timingSafeEqual(hashKey(key), Buffer.from(letter.keyHash, 'hex'));
+      if (!ok) throw new HttpError(403, '手紙の合言葉がちがいます');
+      return letter;
+    },
+    letterByToken(token) {
+      const letter = state.letters.find((l) => l.token === token);
+      if (!letter) throw new HttpError(404, 'この手紙は見つかりません');
+      return letter;
+    },
+    setLetterVideo(id, video) {
+      const letter = requireLetter(id);
+      letter.video = video;
+      emit('letter', letter);
+      return letter;
+    },
+    // 受け取った人が封筒をひらいた（はじめての1回だけ記録する）
+    markLetterOpened(token) {
+      const letter = this.letterByToken(token);
+      if (!letter.openedAt) {
+        letter.openedAt = now();
+        emit('letter', letter);
+      }
+      return letter;
+    },
+    removeLetter(id) {
+      const letter = requireLetter(id);
+      state.letters.splice(state.letters.indexOf(letter), 1);
+      emit('letter', letter);
+      return letter;
     },
   };
 }

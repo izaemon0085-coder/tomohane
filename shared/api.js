@@ -1,18 +1,20 @@
 // 3つのフロント共通：API 呼び出し、リアルタイム更新、ログインユーザー、表示ヘルパー
 // サーバーにつながらないときのエラーには err.offline = true が付く（ローカル回線の送信待ちで使う）
-export async function api(path, { method = 'GET', body } = {}) {
+export async function api(path, { method = 'GET', body, headers = {} } = {}) {
   let res;
   try {
     res = await fetch(`/api${path}`, {
       method,
-      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+      headers: body ? { 'Content-Type': 'application/json', ...headers } : headers,
       body: body ? JSON.stringify(body) : undefined,
     });
   } catch {
     throw Object.assign(new Error('つながっていません（オフライン）'), { offline: true });
   }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw Object.assign(new Error(data.error || `エラー (${res.status})`), { offline: Boolean(data.offline) });
+  if (!res.ok) {
+    throw Object.assign(new Error(data.error || `エラー (${res.status})`), { offline: Boolean(data.offline), status: res.status });
+  }
   return data;
 }
 
@@ -93,6 +95,7 @@ export function headerHtml(current) {
       ${link('/', '🗺️ 町', 'map')}
       ${link('/plaza.html', '💬 広場', 'plaza')}
       ${link('/oshi.html', '💖 わたしの推し', 'oshi')}
+      ${link('/letter.html', '✉️ 手紙', 'letter')}
       ${link('/side/', '🏡 家', 'side')}
       ${link('/sub/', '🗣️ 会議室', 'sub')}
     </nav>

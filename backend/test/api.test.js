@@ -1,26 +1,36 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createApp } from '../server.js';
 import { createStore } from '../store.js';
 import { createSimulation } from '../simulation.js';
 import { MEETING_SCRIPT } from '../agents.js';
+import { qrMatrix } from '../../shared/qrcode.js';
 
 let server;
 let base;
 let store;
 let sim;
+let videoDir;
+const MAX_TEST_VIDEO = 1024;
 
 before(async () => {
   store = createStore();
   sim = createSimulation(store, {
     random: () => 0, replyDelayMs: null, checkInternet: async () => true, lanAddresses: () => ['192.168.0.10'],
   });
-  server = http.createServer(createApp({ store, sim }));
+  videoDir = mkdtempSync(join(tmpdir(), 'letters-'));
+  server = http.createServer(createApp({ store, sim, videoDir, maxVideoBytes: MAX_TEST_VIDEO }));
   await new Promise((r) => server.listen(0, r));
   base = `http://localhost:${server.address().port}`;
 });
-after(() => server.close());
+after(() => {
+  server.close();
+  rmSync(videoDir, { recursive: true, force: true });
+});
 
 async function call(path, { method = 'GET', body } = {}) {
   const res = await fetch(base + path, {
@@ -272,4 +282,117 @@ test('やりくり献立：料理がいくつも並ぶときは、主な料理�
   const { mainDish } = await import('../kondate.js');
   assert.equal(mainDish('鶏むね肉の照り焼きとキャベツの千切り、玉ねぎと卵のスープ、ご飯（鶏むね肉・キャベツ）'), '鶏むね肉の照り焼きとキャベツの千切り など');
   assert.equal(mainDish('カレー（豚こま）'), 'カレー');
+});
+
+// ---- 手紙キット ----
+async function makeLetter(name = '手紙の人', extra = {}) {
+  const { data: me } = await call('/api/users', { method: 'POST', body: { name } });
+  const res = await call('/api/letters', { method: 'POST', body: { authorId: me.id, to: 'おばあちゃん', from: 'ゆうた', note: '元気？', ...extra } });
+  return { me, ...res };
+}
+const putVideo = (letter, bytes, { key = letter.key, type = 'video/mp4' } = {}) => fetch(`${base}/api/letters/${letter.id}/video`, {
+  method: 'PUT', headers: { 'Content-Type': type, 'X-Letter-Key': key }, body: bytes,
+});
+
+test('手紙キット：つくる → 合言葉がないと見られない → 受け取りページには必要なことだけ出る', async () => {
+  const { status, data: letter } = await makeLetter();
+  assert.equal(status, 201);
+  assert.ok(letter.key && letter.token, '合言葉と受け取り用の token が返る');
+  assert.equal(letter.hasVideo, false);
+  assert.equal(letter.keyHash, undefined, '合言葉のハッシュは返さない');
+
+  const owner = await fetch(`${base}/api/letters/${letter.id}`, { headers: { 'X-Letter-Key': letter.key } });
+  assert.equal(owner.status, 200);
+  assert.equal((await fetch(`${base}/api/letters/${letter.id}`)).status, 403, '合言葉なし');
+  assert.equal((await fetch(`${base}/api/letters/${letter.id}`, { headers: { 'X-Letter-Key': 'wrong-key' } })).status, 403);
+
+  const { status: s2, data: view } = await call(`/api/open/${letter.token}`);
+  assert.equal(s2, 200);
+  assert.deepEqual(Object.keys(view).sort(), ['createdAt', 'from', 'hasVideo', 'note', 'paper', 'to']);
+  assert.equal(view.to, 'おばあちゃん');
+  assert.equal((await call('/api/open/nonexistent-token-123456')).status, 404);
+
+  const page = await fetch(`${base}/open/`);
+  assert.equal(page.status, 200);
+  assert.match(await page.text(), /ビデオレター/);
+  assert.equal((await fetch(`${base}/letter.html`)).status, 200);
+});
+
+test('手紙キット：入力チェック', async () => {
+  assert.equal((await makeLetter('チェック2', { to: '  ' })).status, 400);
+  assert.equal((await makeLetter('チェック2', { note: 'あ'.repeat(101) })).status, 400);
+  assert.equal((await call('/api/letters', { method: 'POST', body: { authorId: 'agent-usagi', to: 'a', from: 'b' } })).status, 400, 'キャラは手紙を書かない');
+});
+
+test('手紙キット：ビデオを入れる → 少しずつ取り出せる（Range）→ 入れ替えると古いファイルは消える', async () => {
+  const { data: letter } = await makeLetter('ビデオの人');
+  const bytes = new Uint8Array(500).map((_, i) => i % 256);
+
+  assert.equal((await putVideo(letter, bytes, { key: 'wrong-key' })).status, 403);
+  assert.equal((await putVideo(letter, bytes, { type: 'text/html' })).status, 415, '動画以外は受け取らない');
+  const tooBig = await putVideo(letter, new Uint8Array(MAX_TEST_VIDEO + 1));
+  assert.equal(tooBig.status, 413);
+  assert.equal(readdirSync(videoDir).filter((f) => f.startsWith(letter.id)).length, 0, '大きすぎた動画は残らない');
+
+  const up = await putVideo(letter, bytes);
+  assert.equal(up.status, 200);
+  assert.equal((await up.json()).hasVideo, true);
+
+  const full = await fetch(`${base}/api/open/${letter.token}/video`);
+  assert.equal(full.status, 200);
+  assert.equal(full.headers.get('content-type'), 'video/mp4');
+  assert.deepEqual(new Uint8Array(await full.arrayBuffer()), bytes);
+
+  const part = await fetch(`${base}/api/open/${letter.token}/video`, { headers: { Range: 'bytes=10-19' } });
+  assert.equal(part.status, 206);
+  assert.equal(part.headers.get('content-range'), 'bytes 10-19/500');
+  assert.deepEqual([...new Uint8Array(await part.arrayBuffer())], [10, 11, 12, 13, 14, 15, 16, 17, 18, 19]);
+  const tail = await fetch(`${base}/api/open/${letter.token}/video`, { headers: { Range: 'bytes=-5' } });
+  assert.equal(tail.headers.get('content-range'), 'bytes 495-499/500');
+  await tail.arrayBuffer();
+  const bad = await fetch(`${base}/api/open/${letter.token}/video`, { headers: { Range: 'bytes=900-' } });
+  assert.equal(bad.status, 416);
+  await bad.arrayBuffer();
+
+  await (await putVideo(letter, new Uint8Array(50), { type: 'video/webm' })).arrayBuffer();
+  const files = readdirSync(videoDir).filter((f) => f.startsWith(letter.id));
+  assert.equal(files.length, 1, '入れ替えたら古い動画は消える');
+  assert.match(files[0], /\.webm$/);
+});
+
+test('手紙キット：ひらいたら1回だけ記録 → 消すと動画も受け取りページも消える', async () => {
+  const { data: letter } = await makeLetter('ひらく人');
+  assert.equal((await call(`/api/open/${letter.token}/video`)).status, 404, 'ビデオがまだない');
+  await (await putVideo(letter, new Uint8Array(20))).arrayBuffer();
+
+  const events = [];
+  const unsubscribe = store.subscribe((e) => events.push(e.type));
+  await call(`/api/open/${letter.token}/opened`, { method: 'POST' });
+  const first = store.getLetterWithKey(letter.id, letter.key).openedAt;
+  assert.ok(first);
+  await call(`/api/open/${letter.token}/opened`, { method: 'POST' });
+  assert.equal(store.getLetterWithKey(letter.id, letter.key).openedAt, first, '2回目以降は変わらない');
+  assert.deepEqual(events, ['letter'], '作った人の画面へのお知らせは1回');
+  unsubscribe();
+
+  assert.equal((await call(`/api/letters/${letter.id}`, { method: 'DELETE' })).status, 403, '合言葉なしでは消せない');
+  const del = await fetch(`${base}/api/letters/${letter.id}`, { method: 'DELETE', headers: { 'X-Letter-Key': letter.key } });
+  assert.equal(del.status, 200);
+  assert.equal((await call(`/api/open/${letter.token}`)).status, 404);
+  assert.equal(readdirSync(videoDir).filter((f) => f.startsWith(letter.id)).length, 0);
+});
+
+test('手紙キット：手紙はタイムラインに出ない', async () => {
+  const before = store.listPosts().length;
+  await makeLetter('ひみつの人');
+  assert.equal(store.listPosts().length, before);
+});
+
+test('QR コード：URL の長さに合わせて大きさが決まり、3つの角に目印がある', () => {
+  const short = qrMatrix('http://192.168.0.10:3000/open/#abcdefghijklmnopqrstuvwx');
+  assert.equal(short.length, 33, '型番4（33マス）に収まる');
+  const finder = (m, r0, c0) => [0, 6].every((d) => m[r0 + d].slice(c0, c0 + 7).every(Boolean));
+  assert.ok(finder(short, 0, 0) && finder(short, 0, short.length - 7) && finder(short, short.length - 7, 0));
+  assert.equal(qrMatrix('a'.repeat(200)).length, 57, '型番10');
+  assert.throws(() => qrMatrix('a'.repeat(300)), /長すぎ/);
 });

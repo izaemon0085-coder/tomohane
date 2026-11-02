@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { createStore, HttpError } from './store.js';
 import { createSimulation } from './simulation.js';
 import { lanAddresses } from './net.js';
+import { MAX_VIDEO_BYTES, removeVideo, saveVideo, serveVideo } from './letters.js';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 
@@ -14,6 +15,7 @@ const STATIC_MOUNTS = [
   ['/side/', 'sidefront'],   // エージェントたちの家
   ['/sub/', 'subfront'],     // エージェントたちの会議室
   ['/shared/', 'shared'],    // 共通 CSS / JS
+  ['/open/', 'open'],        // 手紙の受け取りページ（QR から開く。登録なしで見られる）
   ['/', 'frontend'],         // SNS 本体
 ];
 
@@ -51,6 +53,19 @@ function meetingView(meeting, usersById) {
   };
 }
 
+// 作った人が見る手紙（合言葉のハッシュと、だれが作ったかは返さない）
+function letterOwnerView(l) {
+  return {
+    id: l.id, token: l.token, to: l.to, from: l.from, note: l.note, paper: l.paper,
+    hasVideo: Boolean(l.video), videoSize: l.video?.size ?? null, createdAt: l.createdAt, openedAt: l.openedAt,
+  };
+}
+
+// 受け取った人が見る手紙（QR から開く。id や作った人のユーザー情報は出さない）
+function letterOpenView(l) {
+  return { to: l.to, from: l.from, note: l.note, paper: l.paper, hasVideo: Boolean(l.video), createdAt: l.createdAt };
+}
+
 async function readJson(req) {
   let size = 0;
   const chunks = [];
@@ -69,7 +84,10 @@ async function readJson(req) {
   }
 }
 
-export function createApp({ store, sim, port = Number(process.env.PORT) || 3000 }) {
+export function createApp({
+  store, sim, port = Number(process.env.PORT) || 3000,
+  videoDir = join(ROOT, 'data', 'letters', 'videos'), maxVideoBytes = MAX_VIDEO_BYTES,
+}) {
   const routes = [
     // line：回線番のモグが選んだ回線（wifi / local / offline）
     ['GET', /^\/api\/health$/, () => ({ ok: true, line: sim.lineStatus()?.active ?? null })],
@@ -140,7 +158,52 @@ export function createApp({ store, sim, port = Number(process.env.PORT) || 3000 
     }],
     ['POST', /^\/api\/meetings\/([\w-]+)\/step$/, ({ params }) =>
       meetingView(sim.stepMeeting(params[0]), store.usersById())],
+
+    // ---- 手紙キット（作る人）：合言葉はヘッダー X-Letter-Key で送る ----
+    ['POST', /^\/api\/letters$/, ({ body }) => {
+      const { letter, key } = store.createLetter(body);
+      return [201, { ...letterOwnerView(letter), key }];
+    }],
+    ['GET', /^\/api\/letters\/([\w-]+)$/, ({ params, headers }) =>
+      letterOwnerView(store.getLetterWithKey(params[0], headers['x-letter-key']))],
+    ['DELETE', /^\/api\/letters\/([\w-]+)$/, async ({ params, headers }) => {
+      const letter = store.getLetterWithKey(params[0], headers['x-letter-key']);
+      store.removeLetter(letter.id);
+      await removeVideo(videoDir, letter.video);
+      return { ok: true };
+    }],
+
+    // ---- 手紙キット（受け取る人）：QR の中の token だけで開ける ----
+    ['GET', /^\/api\/open\/([\w-]+)$/, ({ params }) => letterOpenView(store.letterByToken(params[0]))],
+    ['POST', /^\/api\/open\/([\w-]+)\/opened$/, ({ params }) => letterOpenView(store.markLetterOpened(params[0]))],
   ];
+
+  // 動画は JSON ではなく、ファイルそのものをやりとりする
+  async function handleVideo(req, res, pathname) {
+    const up = pathname.match(/^\/api\/letters\/([\w-]+)\/video$/);
+    if (up && req.method === 'PUT') {
+      const letter = store.getLetterWithKey(up[1], req.headers['x-letter-key']);
+      const video = await saveVideo(req, { dir: videoDir, letterId: letter.id, maxBytes: maxVideoBytes });
+      const old = letter.video;
+      try {
+        store.setLetterVideo(letter.id, video); // 受け取っている間に手紙が消されていたら、ここで 404
+      } catch (err) {
+        await removeVideo(videoDir, video);
+        throw err;
+      }
+      await removeVideo(videoDir, old);
+      sendJson(res, 200, letterOwnerView(letter));
+      return true;
+    }
+    const down = pathname.match(/^\/api\/open\/([\w-]+)\/video$/);
+    if (down && req.method === 'GET') {
+      const letter = store.letterByToken(down[1]);
+      if (!letter.video) throw new HttpError(404, 'ビデオはまだ準備中です');
+      await serveVideo(req, res, { dir: videoDir, video: letter.video });
+      return true;
+    }
+    return false;
+  }
 
   function sendJson(res, status, data) {
     res.writeHead(status, { 'Content-Type': MIME['.json'], 'Cache-Control': 'no-store' });
@@ -191,17 +254,18 @@ export function createApp({ store, sim, port = Number(process.env.PORT) || 3000 
     try {
       if (pathname === '/api/events' && req.method === 'GET') return handleEvents(req, res);
       if (pathname.startsWith('/api/')) {
+        if (await handleVideo(req, res, pathname)) return;
         for (const [method, pattern, fn] of routes) {
           const m = pathname.match(pattern);
           if (!m || method !== req.method) continue;
           const body = method === 'POST' || method === 'PUT' ? await readJson(req) : {};
-          const result = await fn({ params: m.slice(1), body, query: url.searchParams });
+          const result = await fn({ params: m.slice(1), body, query: url.searchParams, headers: req.headers });
           const [status, data] = Array.isArray(result) && typeof result[0] === 'number' ? result : [200, result];
           return sendJson(res, status, data);
         }
         throw new HttpError(404, 'API が見つかりません');
       }
-      if (pathname === '/side' || pathname === '/sub') {
+      if (pathname === '/side' || pathname === '/sub' || pathname === '/open') {
         res.writeHead(301, { Location: `${pathname}/` });
         return res.end();
       }
@@ -210,6 +274,9 @@ export function createApp({ store, sim, port = Number(process.env.PORT) || 3000 
     } catch (err) {
       const status = err instanceof HttpError ? err.status : 500;
       if (status === 500) console.error(err);
+      if (res.headersSent) return res.destroy(); // 動画を送っている途中のエラー
+      // 動画を受け取りきる前に断ったときは、そのあとの残りを読まずに接続を閉じる
+      if (!req.complete) res.setHeader('Connection', 'close');
       return sendJson(res, status, { error: status === 500 ? 'サーバーエラーが発生しました' : err.message });
     }
   };
@@ -227,6 +294,7 @@ if (isMain) {
     console.log(`  フロントエンド（SNS）     http://localhost:${port}/`);
     console.log(`  サイドフロント（家）       http://localhost:${port}/side/`);
     console.log(`  サブフロント（会議室）     http://localhost:${port}/sub/`);
+    console.log(`  手紙キット                 http://localhost:${port}/letter.html`);
     const lan = lanAddresses();
     if (lan.length) {
       console.log('ローカル回線（同じ Wi-Fi の端末から、インターネットなしで入れます）');
