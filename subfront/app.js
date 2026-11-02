@@ -39,7 +39,7 @@ function seatsHtml(m) {
     const x = 50 + Math.cos(angle) * 40;
     const y = 50 + Math.sin(angle) * 40;
     const speaking = m.speakerId === p.id ? ' speaking' : '';
-    return `<div class="seat${speaking}" style="left:${x}%;top:${y}%">${avatarHtml(p, 44)}<span>${escapeHtml(p.name)}</span></div>`;
+    return `<div class="seat${speaking}" style="left:${x}%;top:${y}%">${avatarHtml(p, 44, { speak: `seat:${p.id}`, label: `${p.name}の最新の発言を読み上げ`, focusable: false })}<span>${escapeHtml(p.name)}</span></div>`;
   }).join('');
 }
 
@@ -64,7 +64,7 @@ function renderMeeting() {
     ${m.summary ? `<div class="summary">${escapeHtml(m.summary)}\n\n<a href="/">→ タイムラインに投稿されました</a></div>` : ''}
     <ol class="log" aria-live="polite">${m.messages.map((msg) => `
       <li class="msg ${msg.author.kind}">
-        ${avatarHtml(msg.author, 36)}
+        ${avatarHtml(msg.author, 36, { speak: msg.id, label: `${msg.author.name}の発言を読み上げ` })}
         <div class="bubble"><span class="who">${escapeHtml(msg.author.name)}</span>
         <span class="muted small">${timeAgo(msg.createdAt)}</span>${speakButtonHtml(msg.id, `${msg.author.name}の発言を読み上げ`)}<p>${escapeHtml(msg.text)}</p></div>
       </li>`).join('') || '<li class="muted">みんなが席についています…</li>'}</ol>
@@ -132,7 +132,11 @@ view.addEventListener('submit', async (e) => {
 view.addEventListener('click', async (e) => {
   const speakBtn = e.target.closest('[data-speak]');
   if (speakBtn) {
-    const msg = meetings.find((m) => m.id === selectedId)?.messages.find((x) => x.id === speakBtn.dataset.speak);
+    const messages = meetings.find((m) => m.id === selectedId)?.messages || [];
+    const key = speakBtn.dataset.speak;
+    const msg = key.startsWith('seat:')
+      ? messages.findLast((x) => x.authorId === key.slice(5))
+      : messages.find((x) => x.id === key);
     if (msg) speak(msg.text, msg.author, speakBtn);
     return;
   }

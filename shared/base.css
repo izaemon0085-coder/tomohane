@@ -101,4 +101,10 @@ button, input, textarea { font: inherit; color: inherit; }
 }
 .speak-btn:hover { background: var(--surface-2); }
 .speak-btn.speaking { color: var(--accent); background: var(--surface-2); }
+.avatar-btn { border: none; padding: 0; cursor: pointer; transition: transform .15s; }
+.avatar-btn:hover { transform: scale(1.08); }
+.avatar-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.avatar-btn.speaking { box-shadow: 0 0 0 3px var(--accent); animation: speaking-pulse 1s ease-in-out infinite; }
+@keyframes speaking-pulse { 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 35%, transparent); } }
+@media (prefers-reduced-motion: reduce) { .avatar-btn.speaking { animation: none; } }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }

@@ -59,12 +59,18 @@ export function timeAgo(iso) {
   return new Date(iso).toLocaleDateString('ja-JP');
 }
 
-export function avatarHtml(user, size = 42) {
+// アイコンの HTML。speak を渡すと「クリックで読み上げ」できるボタンになる（【仮】読み上げ機能）
+//   avatarHtml(user, 42, { speak: post.id, label: '投稿を読み上げ' })
+export function avatarHtml(user, size = 42, { speak, label, focusable = true } = {}) {
   const style = `width:${size}px;height:${size}px;font-size:${size * 0.55}px;${user.color ? `background:${user.color}22;` : ''}`;
-  if (user.avatar) {
-    return `<span class="avatar" style="${style}" aria-hidden="true"><img src="${user.avatar}" alt=""></span>`;
+  const face = user.avatar
+    ? `<img src="${user.avatar}" alt="">`
+    : user.emoji || escapeHtml([...user.name][0] || '?');
+  if (speak && 'speechSynthesis' in window) {
+    const aria = escapeHtml(label || `${user.name}の声を聞く`);
+    return `<button type="button" class="avatar avatar-btn" style="${style}" data-speak="${escapeHtml(speak)}"
+      aria-pressed="false" aria-label="${aria}" title="${aria}"${focusable ? '' : ' tabindex="-1"'}>${face}</button>`;
   }
-  const face = user.emoji || escapeHtml([...user.name][0] || '?');
   return `<span class="avatar" style="${style}" aria-hidden="true">${face}</span>`;
 }
 

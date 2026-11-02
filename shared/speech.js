@@ -31,7 +31,8 @@ function setPlaying(button, playing) {
   if (!button) return;
   button.classList.toggle('speaking', playing);
   button.setAttribute('aria-pressed', String(playing));
-  button.textContent = playing ? '⏹' : '🔊';
+  // 🔊 ボタンは記号を切り替える。アイコン（画像）のボタンは見た目のクラスだけ切り替える
+  if (button.classList.contains('speak-btn')) button.textContent = playing ? '⏹' : '🔊';
 }
 
 export function stopSpeaking() {

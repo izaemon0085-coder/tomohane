@@ -35,7 +35,7 @@ async function renderDialog() {
   const a = await api(`/agents/${openAgentId}`);
   dialogBody.innerHTML = `
     <div class="dlg-head">
-      ${avatarHtml(a, 56)}
+      ${avatarHtml(a, 56, { speak: 'intro', label: `${a.name}の自己紹介を聞く` })}
       <div>
         <h2 id="dlg-name">${escapeHtml(a.name)} <span class="muted">@${escapeHtml(a.handle)}</span></h2>
         <div class="muted">${escapeHtml(a.roleLabel)}・${escapeHtml(a.house)}</div>
@@ -43,7 +43,7 @@ async function renderDialog() {
     </div>
     <p>${escapeHtml(a.bio)}</p>
     <p><strong>${STATUS_LABEL[a.status]}</strong>：${escapeHtml(a.activity)}（気分：${escapeHtml(a.mood)}）</p>
-    ${lastSpeech ? `<p class="speech">${avatarHtml(a, 28)} 「${escapeHtml(lastSpeech)}」${speakButtonHtml('knock', `${a.name}のセリフを読み上げ`)}</p>` : ''}
+    ${lastSpeech ? `<p class="speech">${avatarHtml(a, 28, { speak: 'knock', label: `${a.name}のセリフを読み上げ` })} 「${escapeHtml(lastSpeech)}」${speakButtonHtml('knock', `${a.name}のセリフを読み上げ`)}</p>` : ''}
     <div class="dlg-actions">
       <button class="btn" data-knock="${a.id}">✊ ノックする</button>
       ${a.status === 'meeting' ? '<a class="btn ghost" href="/sub/">🗣️ 会議室へ様子を見に行く</a>' : ''}
@@ -76,7 +76,7 @@ dialog.addEventListener('click', async (e) => {
   const speakBtn = e.target.closest('[data-speak]');
   if (speakBtn && openAgentId) {
     const a = await api(`/agents/${openAgentId}`);
-    speak(lastSpeech, a, speakBtn);
+    speak(speakBtn.dataset.speak === 'intro' ? a.bio : lastSpeech, a, speakBtn);
     return;
   }
   const knock = e.target.closest('[data-knock]');
@@ -85,7 +85,7 @@ dialog.addEventListener('click', async (e) => {
       const res = await api(`/agents/${knock.dataset.knock}/knock`, { method: 'POST' });
       lastSpeech = res.message;
       await renderDialog();
-      speak(lastSpeech, res.agent, dialog.querySelector('[data-speak]')); // 【仮】ノックの返事を声で聞かせる
+      speak(lastSpeech, res.agent, dialog.querySelector('[data-speak="knock"].speak-btn')); // 【仮】ノックの返事を声で聞かせる
     } catch (err) {
       toast(err.message);
     }

@@ -32,7 +32,7 @@ function postHtml(post, replies = []) {
     : `<span class="name">${escapeHtml(a.name)}</span>`;
   return `<li>
     <article class="post${replies ? ' card' : ''}">
-      ${avatarHtml(a)}
+      ${avatarHtml(a, 42, { speak: post.id, label: `${a.name}さんの投稿を読み上げ` })}
       <div class="post-body">
         <div class="post-head">
           ${nameHtml}<span class="handle">@${escapeHtml(a.handle)}</span>${badge}
@@ -67,14 +67,21 @@ async function loadPosts() {
   renderTimeline();
 }
 
+let agents = [];
 async function loadAgents() {
-  const agents = await api('/agents');
+  agents = await api('/agents');
   $('#agent-list').innerHTML = agents.map((a) => `<li>
-    ${avatarHtml(a, 36)}
+    ${avatarHtml(a, 36, { speak: a.id, label: `${a.name}の自己紹介を聞く` })}
     <div><a href="/side/#${a.id}">${escapeHtml(a.name)}</a> <span class="badge">${escapeHtml(a.roleLabel)}</span>
     <div class="status muted">${STATUS_LABEL[a.status]}・${escapeHtml(a.activity)}</div></div>
   </li>`).join('');
 }
+
+$('#agent-list').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-speak]');
+  const agent = btn && agents.find((a) => a.id === btn.dataset.speak);
+  if (agent) speak(`${agent.bio}`, agent, btn);
+});
 
 function setReply(postId) {
   replyTo = postId;
