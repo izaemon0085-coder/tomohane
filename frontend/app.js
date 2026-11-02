@@ -1,8 +1,9 @@
 // フロントエンド：人間とエージェントが交流する SNS のタイムライン
 import {
-  api, onServerEvents, getMe, login, escapeHtml, timeAgo, avatarHtml, headerHtml, STATUS_LABEL,
+  api, onServerEvents, getMe, login, escapeHtml, timeAgo, avatarHtml, headerHtml, STATUS_LABEL, toast,
 } from '/shared/api.js';
 import { speak, speakButtonHtml } from '/shared/speech.js';
+import { sendPost, getOutbox, flushOutbox } from '/shared/outbox.js';
 
 const $ = (sel) => document.querySelector(sel);
 const header = $('#header');
@@ -51,26 +52,47 @@ function postHtml(post, replies = []) {
   </li>`;
 }
 
+// ローカル回線：オフラインでためた「送信待ち」の自分の投稿
+function pendingHtml() {
+  if (!me) return '';
+  return getOutbox().filter((x) => x.authorId === me.id).map((x) => `<li>
+    <article class="post card pending">
+      ${avatarHtml(me)}
+      <div class="post-body">
+        <div class="post-head">
+          <span class="name">${escapeHtml(me.name)}</span>
+          <span class="pending-badge">📮 送信待ち（つながったら自動で送ります）</span>
+        </div>
+        <p class="post-text">${escapeHtml(x.text)}</p>
+      </div>
+    </article>
+  </li>`).join('');
+}
+
 function renderTimeline() {
   const repliesByParent = {};
   for (const p of posts) {
     if (p.replyTo) (repliesByParent[p.replyTo] ||= []).unshift(p);
   }
   const roots = posts.filter((p) => !p.replyTo);
-  timeline.innerHTML = roots.length
+  timeline.innerHTML = pendingHtml() + (roots.length
     ? roots.map((p) => postHtml(p, repliesByParent[p.id] || [])).join('')
-    : '<li class="empty">まだ投稿がありません</li>';
+    : '<li class="empty">まだ投稿がありません</li>');
 }
 
 async function loadPosts() {
-  posts = await api('/posts');
+  try {
+    posts = await api('/posts'); // オフラインなら、この端末に保存しておいた投稿が返る
+  } catch (err) {
+    if (!err.offline) throw err; // オフラインで保存もないときは、今の表示のまま
+  }
   renderTimeline();
 }
 
 let agents = [];
 async function loadAgents() {
   agents = await api('/agents');
-  $('#agent-list').innerHTML = agents.filter((a) => a.role !== 'car').map((a) => `<li>
+  $('#agent-list').innerHTML = agents.filter((a) => (a.place ?? 'house') === 'house').map((a) => `<li>
     ${avatarHtml(a, 36, { speak: a.id, label: `${a.name}の自己紹介を聞く` })}
     <div><a href="/side/#${a.id}">${escapeHtml(a.name)}</a> <span class="badge">${escapeHtml(a.roleLabel)}</span>
     <div class="status muted">${STATUS_LABEL[a.status]}・${escapeHtml(a.activity)}</div></div>
@@ -115,11 +137,16 @@ composer.addEventListener('submit', async (e) => {
   $('#post-error').textContent = '';
   btn.disabled = true;
   try {
-    await api('/posts', { method: 'POST', body: { authorId: me.id, text: textarea.value, replyTo } });
+    const result = await sendPost({ authorId: me.id, text: textarea.value.trim(), replyTo });
     textarea.value = '';
     counter.textContent = '0 / 280';
     setReply(null);
-    await loadPosts();
+    if (result.queued) {
+      toast('📮 オフラインなので送信待ちにためました。つながったら自動で送ります');
+      renderTimeline();
+    } else {
+      await loadPosts();
+    }
   } catch (err) {
     $('#post-error').textContent = err.message;
   } finally {
@@ -144,8 +171,12 @@ timeline.addEventListener('click', async (e) => {
   }
   if (likeBtn) {
     if (!me) return $('#login-name').focus();
-    await api(`/posts/${likeBtn.dataset.like}/like`, { method: 'POST', body: { userId: me.id } });
-    await loadPosts();
+    try {
+      await api(`/posts/${likeBtn.dataset.like}/like`, { method: 'POST', body: { userId: me.id } });
+      await loadPosts();
+    } catch (err) {
+      toast(err.offline ? '📴 オフラインなので、いいねはつながってからにしてね' : err.message);
+    }
   }
 });
 
@@ -153,4 +184,7 @@ renderAuth();
 loadPosts();
 loadAgents();
 onServerEvents({ post: loadPosts, like: loadPosts, agent: loadAgents });
+window.addEventListener('outbox-change', renderTimeline);
+window.addEventListener('outbox-sent', loadPosts);
+flushOutbox();
 setInterval(renderTimeline, 60000); // 「◯分前」表示を更新

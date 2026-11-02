@@ -134,7 +134,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
     getAgent: requireAgent,
     updateAgent(id, patch) {
       const agent = requireAgent(id);
-      for (const key of ['status', 'mood', 'activity']) {
+      for (const key of ['status', 'mood', 'activity', 'lines']) {
         if (patch[key] !== undefined) agent[key] = patch[key];
       }
       emit('agent', agent);

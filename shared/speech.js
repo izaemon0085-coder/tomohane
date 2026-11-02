@@ -11,6 +11,7 @@ const VOICE_STYLE = {
   'agent-fukurou': { pitch: 0.55, rate: 0.85 },  // 低く、ゆっくり・おだやか
   'agent-shiba': { pitch: 1.25, rate: 1.2 },     // 元気で早口
   'agent-kuruma': { pitch: 0.9, rate: 1.0 },     // 落ち着いた、機械っぽい声
+  'agent-mogu': { pitch: 1.1, rate: 0.9 },       // ちょっと高めで、ゆっくりまじめ
 };
 const DEFAULT_STYLE = { pitch: 1, rate: 1 };
 

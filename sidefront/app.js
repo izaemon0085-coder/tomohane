@@ -47,8 +47,8 @@ function garageHtml(a) {
 
 async function loadTown() {
   const agents = await api('/agents');
-  town.innerHTML = agents.filter((a) => a.role !== 'car').map(houseHtml).join('');
-  document.querySelector('#garage').innerHTML = agents.filter((a) => a.role === 'car').map(garageHtml).join('');
+  town.innerHTML = agents.filter((a) => (a.place ?? 'house') === 'house').map(houseHtml).join('');
+  document.querySelector('#garage').innerHTML = agents.filter((a) => a.place === 'garage').map(garageHtml).join('');
 }
 
 async function renderDialog() {

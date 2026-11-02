@@ -257,8 +257,8 @@ async function syncAgents() {
   } catch {
     return;
   }
-  // 車のエージェントはガレージにいるので、遊び場には出てこない
-  for (const agent of agents.filter((a) => a.role !== 'car')) {
+  // 家に住むキャラだけが遊び場に出てくる（車はガレージ、モグは会議室の金庫）
+  for (const agent of agents.filter((a) => (a.place ?? 'house') === 'house')) {
     const c = chars.get(agent.id) || chars.set(agent.id, createChar(agent)).get(agent.id);
     const wasStatus = c.agent.status;
     c.agent = agent;

@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="/shared/base.css">
   <link rel="stylesheet" href="/shared/playground.css">
   <link rel="stylesheet" href="/shared/customize.css">
+  <link rel="stylesheet" href="/shared/network.css">
   <link rel="stylesheet" href="/sub/style.css">
 </head>
 <body>
@@ -23,6 +24,11 @@
       </form>
       <h2 class="small-title">会議の記録</h2>
       <ul id="meeting-list" class="meeting-list"></ul>
+
+      <section class="vault" aria-labelledby="vault-title">
+        <h2 id="vault-title" class="small-title">🔒 金庫（回線室）</h2>
+        <div id="vault-body"><p class="muted small">金庫をあけています…</p></div>
+      </section>
     </aside>
 
     <section class="card panel" aria-labelledby="meeting-title">
@@ -31,6 +37,7 @@
   </main>
   <script type="module" src="/sub/app.js"></script>
   <script type="module" src="/shared/customize.js"></script>
+  <script type="module" src="/shared/network.js"></script>
   <script type="module" src="/shared/playground.js"></script>
 </body>
 </html>

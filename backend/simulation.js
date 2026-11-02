@@ -1,6 +1,7 @@
 // エージェントの生活シミュレーション：家での暮らし（サイドフロント）と会議の進行（サブフロント）を動かす。
 import * as brain from './agents.js';
 import { HttpError } from './store.js';
+import * as net from './net.js';
 
 export function createSimulation(store, {
   random = Math.random,
@@ -8,9 +9,12 @@ export function createSimulation(store, {
   meetingIntervalMs = 4000,
   replyDelayMs = 1500,
   clock = () => new Date(),
+  netIntervalMs = 15000,
+  checkInternet = net.checkInternet,
+  lanAddresses = net.lanAddresses,
 } = {}) {
   const timers = [];
-  // 車（ガレージ）は投稿・返事・会議に出てこないので、交流するのは isSocialAgent のキャラだけ
+  // 車（ガレージ）とモグ（金庫）は投稿・返事・会議に出てこないので、交流するのは isSocialAgent のキャラだけ
   const socialAgents = () => store.listAgents().filter(brain.isSocialAgent);
   const awakeAgents = () => socialAgents().filter((a) => a.status === 'home');
 
@@ -28,9 +32,10 @@ export function createSimulation(store, {
       return;
     }
 
-    // 車はガレージでのんびり過ごすだけ（投稿・返事・いいねはしない）
+    // 車（ガレージ）とモグ（金庫）は自分の持ち場で過ごすだけ（投稿・返事・いいねはしない）
+    // モグは回線の見張り番なので眠らない
     if (!brain.isSocialAgent(agent)) {
-      if (random() < 0.8) {
+      if (random() < 0.8 || agent.role === 'network') {
         const activity = brain.homeActivity(agent, random);
         store.updateAgent(agent.id, { activity, mood: brain.randomMood(agent, random) });
         store.addDiary(agent.id, activity.replace(/ている$/, 'た'));
@@ -123,6 +128,31 @@ export function createSimulation(store, {
     t.unref?.();
   }
 
+  // ---------- 回線番のモグ：Wi-Fi とローカル回線を見張って切り替える ----------
+  const MOGU = 'agent-mogu';
+  function lineStatus() {
+    try { return store.getAgent(MOGU).lines ?? null; } catch { return null; }
+  }
+
+  async function netTick() {
+    let mogu;
+    try { mogu = store.getAgent(MOGU); } catch { return null; }
+    const internet = await checkInternet();
+    const lan = lanAddresses();
+    const active = net.chooseLine({ internet, lan });
+    const prev = mogu.lines;
+    const changed = !prev || prev.active !== active || prev.internet !== internet || prev.lan.join() !== lan.join();
+    if (!changed) return prev;
+    const lines = { active, internet, lan, checkedAt: clock().toISOString() };
+    store.updateAgent(MOGU, {
+      lines,
+      activity: `${brain.LINE_LABEL[active]} を見張っている`,
+      mood: active === 'wifi' ? '見張り中' : 'ちょっとドキドキ',
+    });
+    if (!prev || prev.active !== active) store.addDiary(MOGU, brain.lineSwitchLine(prev?.active, active));
+    return lines;
+  }
+
   function knock(agentId) {
     const agent = store.getAgent(agentId);
     if (agent.status === 'meeting') {
@@ -196,9 +226,14 @@ export function createSimulation(store, {
   }
 
   return {
-    lifeTick, meetingTick, onHumanPost, respondToHumanPost, knock, startMeeting, stepMeeting,
+    lifeTick, meetingTick, onHumanPost, respondToHumanPost, knock, netTick, lineStatus, startMeeting, stepMeeting,
     start() {
-      timers.push(setInterval(lifeTick, lifeIntervalMs), setInterval(meetingTick, meetingIntervalMs));
+      timers.push(
+        setInterval(lifeTick, lifeIntervalMs),
+        setInterval(meetingTick, meetingIntervalMs),
+        setInterval(netTick, netIntervalMs),
+      );
+      netTick();
     },
     stop() {
       timers.splice(0).forEach(clearInterval);

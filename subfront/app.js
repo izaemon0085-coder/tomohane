@@ -149,5 +149,54 @@ view.addEventListener('click', async (e) => {
   }
 });
 
+// ---- 金庫：回線番のモグが Wi-Fi とローカル回線を見張っている ----
+const vault = $('#vault-body');
+const LINE = {
+  wifi: { label: '📶 Wi-Fi（インターネット）', note: 'インターネットにつながっています' },
+  local: { label: '🏠 ローカル回線', note: 'インターネットは切れていますが、同じ Wi-Fi の中ならつながります' },
+  offline: { label: '🔌 この端末だけ', note: 'Wi-Fi もローカル回線も見つかりません' },
+};
+let mogu = null;
+
+async function loadVault() {
+  try {
+    mogu = await api('/agents/agent-mogu');
+  } catch {
+    vault.innerHTML = '<p class="muted small">金庫があきませんでした</p>';
+    return;
+  }
+  const l = mogu.lines;
+  const active = l ? LINE[l.active] : null;
+  vault.innerHTML = `
+    <div class="vault-door">
+      ${avatarHtml(mogu, 52, { speak: 'mogu', label: 'モグの声を聞く' })}
+      <div>
+        <strong>${escapeHtml(mogu.name)}</strong> <span class="badge">${escapeHtml(mogu.roleLabel)}</span>
+        <div class="muted small">${escapeHtml(mogu.activity)}</div>
+      </div>
+    </div>
+    ${l ? `
+      <div class="switchboard" data-active="${l.active}">
+        <div class="sw-line${l.active === 'wifi' ? ' on' : ''}">
+          <span>📶 Wi-Fi（インターネット）</span><span class="lamp ${l.internet ? 'ok' : 'ng'}">${l.internet ? 'OK' : 'NG'}</span>
+        </div>
+        <div class="sw-line${l.active === 'local' ? ' on' : ''}">
+          <span>🏠 ローカル回線（LAN）</span><span class="lamp ${l.lan.length ? 'ok' : 'ng'}">${l.lan.length ? 'OK' : 'NG'}</span>
+        </div>
+        <p class="sw-active">いま使っている回線：<strong>${active.label}</strong><br><span class="muted small">${active.note}</span></p>
+      </div>` : '<p class="muted small">モグが回線を調べています…</p>'}
+    <h3 class="small-title">切り替えの記録</h3>
+    <ul class="vault-log">${mogu.diary.slice(0, 5).map((d) => `<li><span class="muted">${timeAgo(d.at)}</span> ${escapeHtml(d.text)}</li>`).join('')}</ul>`;
+}
+
+vault.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-speak]');
+  if (!btn || !mogu) return;
+  const l = mogu.lines;
+  const text = l ? `いまは${{ wifi: 'Wi-Fi', local: 'ローカル回線', offline: 'この端末だけ' }[l.active]}を使っているモグ。${mogu.diary[0]?.text ?? ''}` : mogu.bio;
+  speak(text, mogu, btn);
+});
+
 load();
-onServerEvents({ meeting: load });
+loadVault();
+onServerEvents({ meeting: load, agent: loadVault });

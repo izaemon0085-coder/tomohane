@@ -5,6 +5,8 @@
 //   🐰 ウサギ  … 歌・ムードメーカー。明るく楽しく（ファン目線・応援役）     ※AIキャラ_図.png より
 //   🦉 フクロウ … 見守り番。夜も起きている。トゲのある言葉にやさしく注意する（守る網）
 //   🐕 シバ    … 寄り添い役。はじめての人に一番に挨拶し、さみしい人に駆けつける（一人にしない）
+//   🐾 モグ    … 回線番のモグラ。会議室（秘密基地）の金庫に住み、Wi-Fi とローカル回線を見張って切り替える。
+//                 タイムライン・家の町・遊び場には出てこない（会議室の金庫でだけ会える）
 //   🚗 クルマ  … 車のエージェント。家のガレージで暮らす。ひみつの役目（車のカギ）の準備中なので、
 //                 タイムラインへの投稿・返事・会議・遊び場には出てこない
 
@@ -12,37 +14,58 @@ export const SEED_AGENTS = [
   {
     id: 'agent-yamaneko', name: 'ヤマネコ', handle: 'yamaneko', emoji: '🐱',
     avatar: '/shared/avatars/yamaneko.svg', color: '#e3915c',
-    role: 'explainer', roleLabel: '解説担当', house: '山の上のサーバー小屋',
+    role: 'explainer', roleLabel: '解説担当', house: '山の上のサーバー小屋', place: 'house',
     bio: 'インフラとプログラミングをクールに解説するネコ。推し活の「困った」を仕組みで解決するのが好き。',
   },
   {
     id: 'agent-usagi', name: 'ウサギ', handle: 'usagi', emoji: '🐰',
     avatar: '/shared/avatars/usagi.svg', color: '#e8739a',
-    role: 'moodmaker', roleLabel: 'ムードメーカー', house: '花畑のちいさなステージ',
+    role: 'moodmaker', roleLabel: 'ムードメーカー', house: '花畑のちいさなステージ', place: 'house',
     bio: '歌が大好きなムードメーカー。みんなの推し語りを聞くのがいちばんの楽しみ ♪',
   },
   {
     id: 'agent-fukurou', name: 'フクロウ', handle: 'fukurou', emoji: '🦉',
     avatar: '/shared/avatars/fukurou.svg', color: '#6b5b95',
-    role: 'guardian', roleLabel: '見守り番', house: '森の見張り台',
+    role: 'guardian', roleLabel: '見守り番', house: '森の見張り台', place: 'house',
     bio: '夜もねむらない見守り番。みんなが安心して「好き」を語れるよう、そっと見張っています。ほう。',
   },
   {
     id: 'agent-shiba', name: 'シバ', handle: 'shiba', emoji: '🐕',
     avatar: '/shared/avatars/shiba.svg', color: '#3a9d8f',
-    role: 'companion', roleLabel: '寄り添い役', house: '広場のとなりの赤い屋根の家',
+    role: 'companion', roleLabel: '寄り添い役', house: '広場のとなりの赤い屋根の家', place: 'house',
     bio: '人なつっこい柴犬。はじめての人には一番に「ようこそ」を言いに行くっす。だれも一人にしないっす！',
   },
   {
     id: 'agent-kuruma', name: 'クルマ', handle: 'kuruma', emoji: '🚗',
     avatar: '/shared/avatars/kuruma.svg', color: '#4a7fc1',
-    role: 'car', roleLabel: '車のエージェント', house: '家のガレージ',
+    role: 'car', roleLabel: '車のエージェント', house: '家のガレージ', place: 'garage',
     bio: 'ガレージで暮らす車のエージェント。ひみつの役目の準備中です。……ブルン。',
+  },
+  {
+    id: 'agent-mogu', name: 'モグ', handle: 'mogu', emoji: '⛏️',
+    avatar: '/shared/avatars/mogu.svg', color: '#7a5c3e',
+    role: 'network', roleLabel: '回線番', house: '会議室の金庫', place: 'vault',
+    bio: '会議室の金庫の中で、Wi-Fi とローカル回線を見張っているモグラ。回線が切れたら、すぐに切り替えるモグ。',
   },
 ];
 
-// SNS で交流する（投稿・返事・会議・遊び場に出る）エージェントか。車はガレージにいるだけ
-export const isSocialAgent = (agent) => agent.role !== 'car';
+// SNS で交流する（投稿・返事・会議・遊び場に出る）エージェントか。
+// 家（house）に住むキャラだけ。ガレージの車、金庫のモグは自分の持ち場にいる
+export const isSocialAgent = (agent) => (agent.place ?? 'house') === 'house';
+
+// 回線の名前
+export const LINE_LABEL = { wifi: '📶 Wi-Fi', local: '🏠 ローカル回線', offline: '🔌 この端末だけ' };
+
+// モグが回線を切り替えたときのひとこと
+export function lineSwitchLine(from, to) {
+  if (!from) return `回線の見張りを始めたモグ。いまは ${LINE_LABEL[to]} を使っているモグ。`;
+  const lines = {
+    wifi: 'インターネットが戻ったモグ！ Wi-Fi に切り替えたモグ。',
+    local: 'インターネットが切れたモグ…！ ローカル回線に切り替えたモグ。同じ Wi-Fi の中なら、みんなつながるモグ。',
+    offline: 'Wi-Fi もローカル回線も見つからないモグ…。この端末の中にためておくモグ。',
+  };
+  return lines[to];
+}
 
 export const MOODS = {
   explainer: ['クール', '集中モード', 'のんびり', 'ちょっと眠い'],
@@ -50,6 +73,7 @@ export const MOODS = {
   guardian: ['おだやか', '見張り中', 'しずか', 'ひるね明け'],
   companion: ['元気いっぱい', 'しっぽふりふり', 'わくわく', 'ちょっとさみしい'],
   car: ['アイドリング中', 'ピカピカ', 'エンジンひえひえ', 'ごきげん'],
+  network: ['見張り中', 'まじめ', 'ほこほこ', 'ちょっとドキドキ'],
 };
 
 const POSTS = {
@@ -88,6 +112,7 @@ const ACTIVITIES = {
   moodmaker: ['新しい歌を練習している', '花に水をあげている', '推しのうちわを作っている', 'ステージで振り付けを考えている'],
   guardian: ['見張り台から町を眺めている', '古い本を読んでいる', 'ランタンの灯りを整えている', 'みんなの家の戸じまりを確かめている'],
   companion: ['広場をパトロールしている', 'ボールを追いかけている', '新しく来た人のために看板を磨いている', 'しっぽを追いかけてぐるぐる回っている'],
+  network: ['回線のランプを数えている', 'ケーブルをきれいにまとめている', '金庫の中でトンネルを掘っている', '切り替えスイッチをみがいている'],
   car: ['ワックスでピカピカになっている', 'タイヤの空気をチェックしている', 'エンジンをあたためている', 'ガレージでじっと何かを待っている'],
 };
 
@@ -284,6 +309,10 @@ const KNOCK = {
   guardian: {
     sleeping: 'ほう…昼の見張りは交代中でしてな。…いや、起きました。ご用件は？',
     awake: ['ほう、お客人とは珍しい。{house}へようこそ。', '見張り台からは町がよく見えますぞ。ゆっくりしていきなされ。'],
+  },
+  network: {
+    sleeping: 'ん…モグ？ 回線はちゃんと見てるモグ。',
+    awake: ['金庫の合言葉は…ひみつモグ。', 'いま回線のランプを数えてるモグ。じゃましないでほしいモグ。'],
   },
   car: {
     sleeping: 'ブ…ブルルン……（エンジンがかかった）',

@@ -13,7 +13,9 @@ let sim;
 
 before(async () => {
   store = createStore();
-  sim = createSimulation(store, { random: () => 0, replyDelayMs: null });
+  sim = createSimulation(store, {
+    random: () => 0, replyDelayMs: null, checkInternet: async () => true, lanAddresses: () => ['192.168.0.10'],
+  });
   server = http.createServer(createApp({ store, sim }));
   await new Promise((r) => server.listen(0, r));
   base = `http://localhost:${server.address().port}`;
@@ -76,8 +78,8 @@ test('入力チェック', async () => {
 
 test('サイドフロント：エージェントの家とノック', async () => {
   const { data: agents } = await call('/api/agents');
-  assert.equal(agents.length, 5);
-  assert.deepEqual(agents.map((a) => a.name), ['ヤマネコ', 'ウサギ', 'フクロウ', 'シバ', 'クルマ']);
+  assert.equal(agents.length, 6);
+  assert.deepEqual(agents.map((a) => a.name), ['ヤマネコ', 'ウサギ', 'フクロウ', 'シバ', 'クルマ', 'モグ']);
   const id = agents[0].id;
   store.updateAgent(id, { status: 'sleeping' });
   const { data } = await call(`/api/agents/${id}/knock`, { method: 'POST' });
@@ -95,7 +97,8 @@ test('サブフロント：会議の招集→人間の発言→結論がタイ�
   assert.equal((await call('/api/meetings', { method: 'POST', body: { topic: '別の議題' } })).status, 409, '同時に1つまで');
 
   const { data: agents } = await call('/api/agents');
-  assert.ok(agents.filter((a) => a.role !== 'car').every((a) => a.status === 'meeting'), '全員が会議室へ移動');
+  assert.ok(agents.filter((a) => a.place === 'house').every((a) => a.status === 'meeting'), '家のキャラ全員が会議室へ移動');
+  assert.ok(!meeting.participantIds.includes('agent-mogu'), 'モグは金庫で回線の見張りを続ける');
   assert.notEqual(agents.find((a) => a.role === 'car').status, 'meeting', '車はガレージで留守番');
   assert.ok(!meeting.participantIds.includes('agent-kuruma'));
 
@@ -153,7 +156,7 @@ test('保存データに新しいキャラが自動で引っ越してくる', as
   const state = { users: old.listAgents().slice(0, 2), posts: [], meetings: [] };
   writeFileSync(file, JSON.stringify(state));
   const loaded = createStore({ file });
-  assert.equal(loaded.listAgents().length, 5);
+  assert.equal(loaded.listAgents().length, 6);
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -163,4 +166,42 @@ test('車のエージェントはガレージで暮らすだけで、投稿・�
   for (let i = 0; i < 20; i++) s.lifeTick(); // random≈1 → 最後のキャラ（車）が選ばれる
   assert.equal(store.listPosts().filter((p) => p.authorId === 'agent-kuruma').length, before);
   assert.equal(store.getAgent('agent-kuruma').house, '家のガレージ');
+});
+
+test('ローカル回線：同じ Wi-Fi から入るアドレスと、オフライン用のファイル', async () => {
+  const { data } = await call('/api/network');
+  assert.equal(typeof data.port, 'number');
+  assert.ok(Array.isArray(data.lanUrls));
+  for (const u of data.lanUrls) assert.match(u, /^http:\/\/\d+\.\d+\.\d+\.\d+:\d+\/$/);
+
+  const sw = await fetch(`${base}/sw.js`);
+  assert.equal(sw.status, 200);
+  assert.match(sw.headers.get('content-type'), /javascript/);
+  for (const path of ['/shared/outbox.js', '/shared/network.js', '/shared/network.css']) {
+    assert.equal((await fetch(base + path)).status, 200, path);
+  }
+});
+
+test('回線番のモグが Wi-Fi とローカル回線を切り替える', async () => {
+  let internet = true;
+  let lan = ['192.168.0.10'];
+  const s = createSimulation(store, { replyDelayMs: null, checkInternet: async () => internet, lanAddresses: () => lan });
+
+  assert.equal((await s.netTick()).active, 'wifi');
+  assert.equal((await call('/api/health')).data.line ?? 'wifi', 'wifi');
+
+  internet = false; // インターネットが切れた → 同じ Wi-Fi の中のローカル回線へ
+  assert.equal((await s.netTick()).active, 'local');
+  assert.match(store.getAgent('agent-mogu').diary[0].text, /ローカル回線に切り替えた/);
+
+  lan = []; // Wi-Fi もない → この端末だけ
+  assert.equal((await s.netTick()).active, 'offline');
+
+  internet = true; lan = ['192.168.0.10'];
+  assert.equal((await s.netTick()).active, 'wifi');
+  assert.match(store.getAgent('agent-mogu').diary[0].text, /Wi-Fi に切り替えた/);
+
+  const { data } = await call('/api/network');
+  assert.equal(data.active, 'wifi');
+  assert.equal(store.getAgent('agent-mogu').place, 'vault');
 });

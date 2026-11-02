@@ -1,12 +1,18 @@
 // 3つのフロント共通：API 呼び出し、リアルタイム更新、ログインユーザー、表示ヘルパー
+// サーバーにつながらないときのエラーには err.offline = true が付く（ローカル回線の送信待ちで使う）
 export async function api(path, { method = 'GET', body } = {}) {
-  const res = await fetch(`/api${path}`, {
-    method,
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  let res;
+  try {
+    res = await fetch(`/api${path}`, {
+      method,
+      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    throw Object.assign(new Error('つながっていません（オフライン）'), { offline: true });
+  }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `エラー (${res.status})`);
+  if (!res.ok) throw Object.assign(new Error(data.error || `エラー (${res.status})`), { offline: Boolean(data.offline) });
   return data;
 }
 
@@ -88,6 +94,7 @@ export function headerHtml(current) {
       ${link('/side/', '🏡 エージェントの家', 'side')}
       ${link('/sub/', '🗣️ 会議室', 'sub')}
     </nav>
+    <button type="button" class="net-chip" data-open-network data-net-chip title="ローカル回線のようす">📶</button>
     <button type="button" class="kisekae-btn" data-open-customize title="推しカラーや飾りで画面をきせかえ">🎨 きせかえ</button>
     <span class="me">${me ? `${escapeHtml(me.name)} さん` : '未ログイン'}</span>
   </div>`;

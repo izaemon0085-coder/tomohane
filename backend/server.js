@@ -5,6 +5,7 @@ import { extname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createStore, HttpError } from './store.js';
 import { createSimulation } from './simulation.js';
+import { lanAddresses } from './net.js';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 
@@ -24,6 +25,7 @@ const MIME = {
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.ico': 'image/x-icon',
+  '.webmanifest': 'application/manifest+json',
   '.webp': 'image/webp',
 };
 
@@ -67,9 +69,15 @@ async function readJson(req) {
   }
 }
 
-export function createApp({ store, sim }) {
+export function createApp({ store, sim, port = Number(process.env.PORT) || 3000 }) {
   const routes = [
-    ['GET', /^\/api\/health$/, () => ({ ok: true })],
+    // line：回線番のモグが選んだ回線（wifi / local / offline）
+    ['GET', /^\/api\/health$/, () => ({ ok: true, line: sim.lineStatus()?.active ?? null })],
+    ['GET', /^\/api\/network$/, () => ({
+      port,
+      lanUrls: lanAddresses().map((ip) => `http://${ip}:${port}/`),
+      ...sim.lineStatus(),
+    })],
 
     // ---- users ----
     ['GET', /^\/api\/users$/, () => store.listUsers().map(publicUser)],
@@ -200,12 +208,17 @@ if (isMain) {
   const store = createStore({ file: join(ROOT, 'data', 'db.json') });
   const sim = createSimulation(store);
   sim.start();
-  const server = http.createServer(createApp({ store, sim }));
+  const server = http.createServer(createApp({ store, sim, port }));
   server.listen(port, () => {
     console.log(`SNS サーバー起動: http://localhost:${port}`);
     console.log(`  フロントエンド（SNS）     http://localhost:${port}/`);
     console.log(`  サイドフロント（家）       http://localhost:${port}/side/`);
     console.log(`  サブフロント（会議室）     http://localhost:${port}/sub/`);
+    const lan = lanAddresses();
+    if (lan.length) {
+      console.log('ローカル回線（同じ Wi-Fi の端末から、インターネットなしで入れます）');
+      for (const ip of lan) console.log(`  http://${ip}:${port}/`);
+    }
   });
   const shutdown = () => {
     sim.stop();
