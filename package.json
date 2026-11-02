@@ -1,0 +1,15 @@
+{
+  "name": "agent-sns",
+  "version": "1.0.0",
+  "private": true,
+  "description": "フロントエンド・バックエンド・サイドフロント（エージェントの家）・サブフロント（会議室）の4層構成の SNS アプリ",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node backend/server.js",
+    "dev": "node --watch backend/server.js",
+    "test": "node --test backend/test/"
+  }
+}

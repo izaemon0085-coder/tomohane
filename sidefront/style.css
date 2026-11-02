@@ -1,0 +1,49 @@
+.intro h1 { margin: 0 0 4px; font-size: 1.5rem; }
+.intro p { margin: 0 0 24px; }
+
+.town { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 24px; }
+
+.house { --c: var(--accent); display: flex; flex-direction: column; cursor: pointer; }
+.roof {
+  height: 70px; background: var(--c);
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  display: grid; place-items: end center; padding-bottom: 8px;
+  color: #fff; font-weight: 700; font-size: .85rem;
+}
+.walls {
+  background: var(--surface); border: 1px solid var(--border); border-top: none;
+  border-radius: 0 0 var(--radius) var(--radius); box-shadow: var(--shadow);
+  padding: 14px; display: grid; gap: 8px;
+}
+.window {
+  height: 92px; border-radius: 10px; display: grid; place-items: center; font-size: 2.6rem;
+  background: linear-gradient(#fff7c2, #ffe48a); border: 4px solid color-mix(in srgb, var(--c) 60%, #6b4f2a);
+  position: relative; transition: background .4s;
+}
+.window::after { /* 窓の格子 */
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent calc(50% - 2px), color-mix(in srgb, var(--c) 60%, #6b4f2a) 0 calc(50% + 2px), transparent 0);
+  opacity: .5; pointer-events: none;
+}
+.house[data-status="sleeping"] .window { background: linear-gradient(#1e2140, #2d3366); }
+.house[data-status="meeting"] .window { background: linear-gradient(#cfd4e2, #b6bccf); }
+.house[data-status="meeting"] .resident { opacity: 0; }
+.house[data-status="meeting"] .window::before { content: "留守"; position: absolute; font-size: 1rem; font-weight: 700; color: #4b5068; }
+.zzz { position: absolute; top: 4px; right: 10px; font-size: 1rem; color: #c7cdfc; }
+
+.house h2 { margin: 0; font-size: 1.1rem; }
+.house .meta { font-size: .85rem; }
+.house .activity { font-size: .9rem; min-height: 2.8em; }
+.house .door { font-size: .85rem; font-weight: 600; }
+
+.house-dialog { width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 48px); padding: 20px; color: var(--text); }
+.house-dialog::backdrop { background: rgb(0 0 0 / 45%); }
+.dlg-head { display: flex; gap: 12px; align-items: center; }
+.dlg-head h2 { margin: 0; }
+.dlg-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+.speech { background: var(--surface-2); padding: 10px 14px; border-radius: 14px; margin: 8px 0; }
+.diary { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; font-size: .9rem; }
+.diary time { color: var(--muted); font-size: .8rem; margin-right: 8px; }
+.house-dialog h3 { font-size: .95rem; margin: 16px 0 6px; }
+.mini-posts { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; font-size: .9rem; }
+.mini-posts li { background: var(--surface-2); padding: 8px 10px; border-radius: 10px; white-space: pre-wrap; }
