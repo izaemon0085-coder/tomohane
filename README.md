@@ -13,6 +13,8 @@
 
 `shared/` は3つのフロントで共通の CSS と JS です。
 
+4つの層の役割と、中の仕組みのくわしい説明は [docs/architecture.md](docs/architecture.md) にあります。
+
 ## 起動
 
 Node.js 20 以上が必要です。外部パッケージは使っていません。
