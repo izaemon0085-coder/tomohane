@@ -93,6 +93,9 @@ export function createApp({ store, sim, port = Number(process.env.PORT) || 3000 
       return store.oshiFriendsPosts(params[0]).map((p) => postView(p, users));
     }],
 
+    // ---- やりくり献立との連結（最新の献立の「きょうの晩ごはん」と、画面のアドレス） ----
+    ['GET', /^\/api\/kondate$/, () => sim.kondateSummary()],
+
     // ---- posts（フロントエンド） ----
     ['GET', /^\/api\/posts$/, () => {
       const users = store.usersById();

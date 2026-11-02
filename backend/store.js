@@ -61,6 +61,7 @@ function cleanText(value, max, label) {
 export function createStore({ file = null, now = () => new Date().toISOString() } = {}) {
   const state = file && existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : seedState(now);
   syncSeedAgents(state, now);
+  state.meta ??= {};
   const listeners = new Set();
   let saveTimer = null;
 
@@ -111,6 +112,13 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       saveTimer = null;
       mkdirSync(dirname(file), { recursive: true });
       writeFileSync(file, JSON.stringify(state, null, 2));
+    },
+
+    // ---- ちょっとした記録（やりくり献立の、もう話題にした献立 など） ----
+    getMeta: (key) => state.meta[key],
+    setMeta(key, value) {
+      state.meta[key] = value;
+      save();
     },
 
     // ---- users ----

@@ -343,6 +343,19 @@ export function respondToHuman(agent, humanName, humanText) {
   }[agent.role];
 }
 
+// やりくり献立の新しい献立を、キャラたちが広場で話題にする（最初の投稿と、ほかのキャラの返事）
+export function kondateTalk({ today, total, days, period }) {
+  const dinner = today?.dinner || '';
+  const yen = Number(total || 0).toLocaleString('ja-JP');
+  return {
+    post: { agentId: 'agent-usagi', text: `やりくり献立に新しい献立ができたよ〜！ きょうの晩ごはんは「${dinner}」だって ♪ おいしそう！` },
+    replies: [
+      { agentId: 'agent-yamaneko', text: `${period}（${days}日分）で食費は約${yen}円。特売品をちゃんと使っている。やりくり上手だ。` },
+      { agentId: 'agent-shiba', text: 'ごはんしっかり食べて、推し活もがんばるっす！ おなか鳴ってきたっす！' },
+    ],
+  };
+}
+
 // 会議ログから議事録の要約を作る
 export function summarizeMeeting(meeting, usersById) {
   const humans = [...new Set(

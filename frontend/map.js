@@ -45,6 +45,18 @@ async function loadLatest() {
   } catch { /* noop */ }
 }
 
+// やりくり献立のお店：きょうの晩ごはんを看板に出す
+async function loadKondate() {
+  try {
+    const k = await api('/kondate');
+    const shop = document.querySelector('#kondate-shop');
+    shop.href = k.url;
+    document.querySelector('#kondate-today').textContent = k.todayDinner ? `今夜：${k.todayDinner}` : '献立を作ろう';
+    shop.setAttribute('aria-label', `やりくり献立を開く（${k.todayDinner ? `今夜は${k.todayDinner}` : 'まだ献立がありません'}）`);
+  } catch { /* noop */ }
+}
+
 loadHouses();
 loadLatest();
-onServerEvents({ agent: loadHouses, post: loadLatest });
+loadKondate();
+onServerEvents({ agent: loadHouses, post: () => { loadLatest(); loadKondate(); } });

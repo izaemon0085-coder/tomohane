@@ -2,6 +2,7 @@
 import * as brain from './agents.js';
 import { HttpError } from './store.js';
 import * as net from './net.js';
+import * as kondate from './kondate.js';
 
 export function createSimulation(store, {
   random = Math.random,
@@ -12,6 +13,8 @@ export function createSimulation(store, {
   netIntervalMs = 15000,
   checkInternet = net.checkInternet,
   lanAddresses = net.lanAddresses,
+  readLatestMenu = kondate.readLatestMenu,
+  kondateIntervalMs = 20000,
 } = {}) {
   const timers = [];
   // 車（ガレージ）とモグ（金庫）は投稿・返事・会議に出てこないので、交流するのは isSocialAgent のキャラだけ
@@ -153,6 +156,41 @@ export function createSimulation(store, {
     return lines;
   }
 
+  // ---------- やりくり献立との連結：新しい献立ができたら、キャラが広場で話題にする ----------
+  let latestMenu = null;
+  async function kondateTick() {
+    const menu = await readLatestMenu();
+    if (!menu) return null;
+    latestMenu = menu;
+    if (store.getMeta('kondateSeenAt') === menu.createdAt) return null; // もう話題にした献立
+    store.setMeta('kondateSeenAt', menu.createdAt);
+    const today = kondate.todayMenu(menu, clock());
+    const total = menu.days.reduce((sum, d) => sum + (Number(d.cost) || 0), 0);
+    const talk = brain.kondateTalk({
+      today: today && { ...today, dinner: kondate.dishName(today.dinner) },
+      total, days: menu.days.length, period: menu.period || '献立',
+    });
+    const usable = (id) => { try { return store.getAgent(id).status !== 'meeting'; } catch { return false; } };
+    if (!usable(talk.post.agentId)) return null;
+    const post = store.createPost({ authorId: talk.post.agentId, text: talk.post.text });
+    store.addDiary(talk.post.agentId, 'やりくり献立の新しい献立を広場で紹介した');
+    for (const r of talk.replies) {
+      if (usable(r.agentId)) store.createPost({ authorId: r.agentId, text: r.text, replyTo: post.id });
+    }
+    return post;
+  }
+  function kondateSummary() {
+    if (!latestMenu) return { linked: false, url: kondate.YARIKURI_URL };
+    const today = kondate.todayMenu(latestMenu, clock());
+    return {
+      linked: true,
+      url: kondate.YARIKURI_URL,
+      createdAt: latestMenu.createdAt,
+      period: latestMenu.period,
+      todayDinner: today ? kondate.dishName(today.dinner) : null,
+    };
+  }
+
   function knock(agentId) {
     const agent = store.getAgent(agentId);
     if (agent.status === 'meeting') {
@@ -226,14 +264,16 @@ export function createSimulation(store, {
   }
 
   return {
-    lifeTick, meetingTick, onHumanPost, respondToHumanPost, knock, netTick, lineStatus, startMeeting, stepMeeting,
+    lifeTick, meetingTick, onHumanPost, respondToHumanPost, knock, netTick, lineStatus, kondateTick, kondateSummary, startMeeting, stepMeeting,
     start() {
       timers.push(
         setInterval(lifeTick, lifeIntervalMs),
         setInterval(meetingTick, meetingIntervalMs),
         setInterval(netTick, netIntervalMs),
+        setInterval(kondateTick, kondateIntervalMs),
       );
       netTick();
+      kondateTick();
     },
     stop() {
       timers.splice(0).forEach(clearInterval);

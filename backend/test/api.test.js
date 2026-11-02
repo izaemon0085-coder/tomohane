@@ -234,3 +234,36 @@ test('わたしの推しページ：推しの登録・グッズの記録・同�
 
   assert.equal((await call('/api/users/agent-usagi/oshi')).status, 400, 'キャラには推しページがない');
 });
+
+test('やりくり献立と連結：新しい献立ができたら、キャラが広場で話題にする（1回だけ）', async () => {
+  let menu = null;
+  const s = createSimulation(store, {
+    replyDelayMs: null,
+    readLatestMenu: async () => menu,
+    clock: () => new Date('2026-11-03T10:00:00'),
+  });
+  assert.equal(await s.kondateTick(), null, '献立がまだないときは何もしない');
+  assert.equal(s.kondateSummary().linked, false);
+
+  // 会議中のキャラがいると話せないので、全員を家に帰しておく
+  for (const a of store.listAgents()) store.updateAgent(a.id, { status: 'home' });
+
+  menu = {
+    createdAt: '2026-11-03T09:00:00', period: '1週間分',
+    days: [
+      { date: '2026-11-02', breakfast: 'パン', lunch: 'うどん', dinner: 'カレー（豚こま）', cost: 600 },
+      { date: '2026-11-03', breakfast: 'ごはん', lunch: 'そば', dinner: '肉じゃが（じゃがいも・豚こま）', cost: 700 },
+    ],
+  };
+  const post = await s.kondateTick();
+  assert.equal(post.authorId, 'agent-usagi');
+  assert.match(post.text, /肉じゃが/, 'きょうの晩ごはん（材料のかっこは取る）');
+  assert.doesNotMatch(post.text, /じゃがいも・豚こま/);
+  const replies = store.listPosts().filter((p) => p.replyTo === post.id);
+  assert.ok(replies.some((r) => r.authorId === 'agent-yamaneko' && /1,300円/.test(r.text)), 'ヤマネコが食費の合計を言う');
+
+  assert.equal(await s.kondateTick(), null, '同じ献立は2回話題にしない');
+  const summary = s.kondateSummary();
+  assert.equal(summary.linked, true);
+  assert.equal(summary.todayDinner, '肉じゃが');
+});
