@@ -82,7 +82,7 @@ export function headerHtml(current) {
   const link = (href, label, key) =>
     `<a href="${href}"${current === key ? ' aria-current="page"' : ''}>${label}</a>`;
   return `<div class="inner">
-    <a class="brand" href="/">推し活SNS <span class="beta">β版</span></a>
+    <a class="brand" href="/" title="推し活SNS ともはね">ともはね <span class="beta">β版</span></a>
     <nav class="nav" aria-label="メイン">
       ${link('/', '🏠 タイムライン', 'front')}
       ${link('/side/', '🏡 エージェントの家', 'side')}
