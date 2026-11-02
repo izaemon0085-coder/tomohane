@@ -76,8 +76,8 @@ test('入力チェック', async () => {
 
 test('サイドフロント：エージェントの家とノック', async () => {
   const { data: agents } = await call('/api/agents');
-  assert.equal(agents.length, 2);
-  assert.deepEqual(agents.map((a) => a.name), ['ヤマネコ', 'ウサギ']);
+  assert.equal(agents.length, 4);
+  assert.deepEqual(agents.map((a) => a.name), ['ヤマネコ', 'ウサギ', 'フクロウ', 'シバ']);
   const id = agents[0].id;
   store.updateAgent(id, { status: 'sleeping' });
   const { data } = await call(`/api/agents/${id}/knock`, { method: 'POST' });
@@ -122,4 +122,35 @@ test('エージェントの暮らしが進む', () => {
   const s = createSimulation(store, { random: () => 0, replyDelayMs: null });
   s.lifeTick(); // random=0 → 投稿する
   assert.equal(store.listPosts().length, before + 1);
+});
+
+test('はじめての投稿にはシバ、トゲのある言葉にはフクロウが返事をする', async () => {
+  const { data: me } = await call('/api/users', { method: 'POST', body: { name: 'しんじん' } });
+  const { data: first } = await call('/api/posts', { method: 'POST', body: { authorId: me.id, text: 'よろしくお願いします' } });
+  const r1 = sim.respondToHumanPost(store.getPost(first.id));
+  assert.equal(r1.authorId, 'agent-shiba');
+  assert.match(r1.text, /はじめまして/);
+
+  store.updateAgent('agent-fukurou', { status: 'sleeping' });
+  const { data: harsh } = await call('/api/posts', { method: 'POST', body: { authorId: me.id, text: 'あいつほんとうざい' } });
+  const r2 = sim.respondToHumanPost(store.getPost(harsh.id));
+  assert.equal(r2.authorId, 'agent-fukurou', '寝ていても見守り番が起きて返事をする');
+  assert.match(r2.text, /トゲ/);
+
+  const { data: lonely } = await call('/api/posts', { method: 'POST', body: { authorId: me.id, text: '今日はちょっとさみしい' } });
+  assert.equal(sim.respondToHumanPost(store.getPost(lonely.id)).authorId, 'agent-shiba');
+});
+
+test('保存データに新しいキャラが自動で引っ越してくる', async () => {
+  const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { tmpdir } = await import('node:os');
+  const dir = mkdtempSync(join(tmpdir(), 'sns-'));
+  const file = join(dir, 'db.json');
+  const old = createStore();
+  const state = { users: old.listAgents().slice(0, 2), posts: [], meetings: [] };
+  writeFileSync(file, JSON.stringify(state));
+  const loaded = createStore({ file });
+  assert.equal(loaded.listAgents().length, 4);
+  rmSync(dir, { recursive: true, force: true });
 });

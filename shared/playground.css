@@ -1,4 +1,4 @@
-/* キャラの遊び場：画面の下の帯をヤマネコとウサギが歩き回る */
+/* キャラの遊び場：画面の下の帯をキャラたちが歩き回る */
 body.has-playground { padding-bottom: var(--pg-height, 120px); }
 
 .playground {
@@ -34,10 +34,15 @@ body.has-playground { padding-bottom: var(--pg-height, 120px); }
 /* 歩く：ヤマネコはゆらゆら、ウサギはぴょんぴょん */
 .pg-char[data-action="walk"] .pg-body img { animation: pg-sway .6s ease-in-out infinite; }
 .pg-char[data-id="agent-usagi"][data-action="walk"] .pg-body img { animation: pg-hop .45s ease-in-out infinite; }
+/* フクロウはふわっと浮かぶ、シバはちょこちょこ小走り */
+.pg-char[data-id="agent-fukurou"][data-action="walk"] .pg-body img { animation: pg-hover 1.2s ease-in-out infinite; }
+.pg-char[data-id="agent-shiba"][data-action="walk"] .pg-body img { animation: pg-trot .25s ease-in-out infinite; }
 .pg-char[data-action="play"] .pg-body img { animation: pg-hop .35s ease-in-out infinite; }
 .pg-char.pg-jump .pg-body { animation: pg-jump .6s cubic-bezier(.3, .7, .4, 1); }
 .pg-char.speaking .pg-body img { filter: drop-shadow(0 0 6px var(--accent)); }
 
+@keyframes pg-hover { 50% { transform: translateY(calc(var(--size) * -0.12)) rotate(3deg); } }
+@keyframes pg-trot { 50% { transform: translateY(calc(var(--size) * -0.06)) rotate(4deg); } }
 @keyframes pg-sway { 50% { transform: rotate(-6deg) translateY(-2px); } }
 /* 跳ねる高さはキャラの大きさに比例させる */
 @keyframes pg-hop { 50% { transform: translateY(calc(var(--size) * -0.2)); } }
@@ -70,6 +75,8 @@ body.has-playground { padding-bottom: var(--pg-height, 120px); }
 .pg-char[data-edge="right"] .pg-bubble { left: auto; right: 0; translate: 0 0; }
 .pg-char[data-edge="right"] .pg-bubble::after { left: auto; right: calc(var(--size) / 2); translate: 50% 0; }
 .pg-char[data-id="agent-usagi"] .pg-bubble { border-color: color-mix(in srgb, var(--pink) 55%, var(--border)); }
+.pg-char[data-id="agent-fukurou"] .pg-bubble { border-color: color-mix(in srgb, #6b5b95 45%, var(--border)); }
+.pg-char[data-id="agent-shiba"] .pg-bubble { border-color: color-mix(in srgb, #3a9d8f 45%, var(--border)); }
 
 .playground-controls {
   position: fixed; right: 12px; bottom: calc(var(--pg-height, 120px) + 6px); z-index: 21;

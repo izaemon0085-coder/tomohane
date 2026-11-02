@@ -1,4 +1,4 @@
-// キャラの遊び場：ヤマネコとウサギが画面の下を歩き回って遊ぶ。
+// キャラの遊び場：ヤマネコ・ウサギ・フクロウ・シバが画面の下を歩き回って遊ぶ。
 // ・歩く／休む／ジャンプする／近くにいると一緒に遊ぶ
 // ・タイムラインに投稿すると、吹き出しでその内容をしゃべる
 // ・クリックすると反応して声を出す（【仮】読み上げ機能）
@@ -17,9 +17,32 @@ const LINES = {
     play: ['ヤマネコ〜 あそぼ！', 'つかまえた〜！', 'おにごっこしよ ♪'],
     click: ['えへへ、くすぐったい〜 ♪', 'わっ！ びっくりした〜', 'いっしょに歌う？ ラララ ♪'],
   },
+  'agent-fukurou': {
+    idle: ['ほう…', '今日も町は平和ですな', '首は270度まわりますぞ', '見張り、見張り…', 'ほう、良い風だ'],
+    play: ['ほう、若いのは元気ですな', 'では、少しだけ', 'わたしは見守り役ですぞ…ほう'],
+    click: ['ほう、何かご用かな？', 'わたしを見つけるとは、なかなかの目ですな', 'ほっほう。くすぐったいですぞ'],
+  },
+  'agent-shiba': {
+    idle: ['パトロール中っす！', 'わふっ！', 'しっぽが止まらないっす', 'だれか来ないかなーっす', 'ボールどこいったっす？'],
+    play: ['いっしょに走るっす！', 'まてまてーっす！', 'あそぶっす！ あそぶっす！'],
+    click: ['なでてくれるっすか！？ うれしいっす！', 'わんっ！ 呼んだっすか？', 'おやつっすか！？'],
+  },
+};
+// 寝ているときにクリックしたとき・会議（秘密基地）から帰ってきたときのセリフ
+const SLEEP_TALK = {
+  'agent-yamaneko': '……zzz（起きる気はなさそうだ）',
+  'agent-usagi': 'むにゃ… あと5分〜',
+  'agent-fukurou': 'ほう…zzz…（昼は寝る番のようだ）',
+  'agent-shiba': 'わふ…ボール…zzz',
+};
+const BACK_HOME = {
+  'agent-yamaneko': '……戻った',
+  'agent-usagi': 'ただいま〜 ♪',
+  'agent-fukurou': 'ほう、ただいま戻りました',
+  'agent-shiba': 'ただいまっす！',
 };
 
-const SPEED = { 'agent-yamaneko': 45, 'agent-usagi': 75 }; // px/秒
+const SPEED = { 'agent-yamaneko': 45, 'agent-usagi': 75, 'agent-fukurou': 30, 'agent-shiba': 95 }; // px/秒
 const HIDE_KEY = 'agent-sns:playground-hidden';
 const SIZE_KEY = 'agent-sns:playground-size';
 // キャラの大きさ（px）。スマホなど狭い画面では 0.75 倍にする
@@ -118,7 +141,7 @@ function createChar(agent) {
   const maxX = Math.max(0, document.documentElement.clientWidth - size());
   const c = {
     agent, el,
-    x: agent.id === 'agent-usagi' ? maxX * 0.7 : maxX * 0.25,
+    x: maxX * (0.1 + 0.8 * Math.random()), // ばらけて登場
     target: null, facing: 1, action: 'idle', until: now() + 1500 + Math.random() * 2000,
     bubbleTimer: null,
   };
@@ -149,7 +172,7 @@ function jump(c) {
 
 function onClick(c) {
   if (c.agent.status === 'sleeping') {
-    const line = c.agent.id === 'agent-usagi' ? 'むにゃ… あと5分〜' : '……zzz（起きる気はなさそうだ）';
+    const line = SLEEP_TALK[c.agent.id] || 'zzz…';
     say(c, line);
     speak(line, c.agent, c.el);
     return;
@@ -163,7 +186,10 @@ function onClick(c) {
 
 // 次に何をするか決める
 function think(c, others) {
-  const friend = others.find((o) => o !== c && o.agent.status === 'home');
+  // いちばん近くにいる、起きている仲間
+  const friend = others
+    .filter((o) => o !== c && o.agent.status === 'home' && !o.el.hidden)
+    .sort((a, b) => Math.abs(a.x - c.x) - Math.abs(b.x - c.x))[0];
   const maxX = Math.max(0, document.documentElement.clientWidth - size());
   const r = Math.random();
   if (friend && Math.abs(friend.x - c.x) < size() * 1.6 && r < 0.35) {
@@ -240,7 +266,7 @@ async function syncAgents() {
     c.el.hidden = agent.status === 'meeting';
     if (wasStatus === 'meeting' && agent.status === 'home') {
       jump(c);
-      say(c, agent.id === 'agent-usagi' ? 'ただいま〜 ♪' : '……戻った');
+      say(c, BACK_HOME[agent.id] || 'ただいま！');
     }
     if (agent.status !== 'home') setAction(c, agent.status, 1e9);
     else if (c.action === 'sleeping' || c.action === 'meeting') setAction(c, 'idle', 1000);

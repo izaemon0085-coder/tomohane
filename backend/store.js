@@ -34,6 +34,21 @@ function seedState(now) {
   return { users: agents, posts, meetings: [] };
 }
 
+// 保存データを読み込んだあと、キャラの設定（名前・役割・家など）を最新にし、新しく増えたキャラを引っ越しさせる
+function syncSeedAgents(state, now) {
+  for (const seed of SEED_AGENTS) {
+    const existing = state.users.find((u) => u.id === seed.id);
+    if (existing) {
+      Object.assign(existing, seed);
+    } else {
+      state.users.push({
+        ...seed, kind: 'agent', status: 'home', mood: MOODS[seed.role][0], activity: 'くつろいでいる',
+        diary: [{ at: now(), text: `${seed.house}に引っ越してきた` }],
+      });
+    }
+  }
+}
+
 function cleanText(value, max, label) {
   if (typeof value !== 'string') throw new HttpError(400, `${label}を入力してください`);
   const text = value.trim();
@@ -44,6 +59,7 @@ function cleanText(value, max, label) {
 
 export function createStore({ file = null, now = () => new Date().toISOString() } = {}) {
   const state = file && existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : seedState(now);
+  syncSeedAgents(state, now);
   const listeners = new Set();
   let saveTimer = null;
 

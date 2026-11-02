@@ -8,6 +8,8 @@ export const speechSupported = typeof window !== 'undefined' && 'speechSynthesis
 const VOICE_STYLE = {
   'agent-yamaneko': { pitch: 0.75, rate: 0.95 }, // 落ち着いた低め・クール
   'agent-usagi': { pitch: 1.6, rate: 1.1 },      // 明るい高め
+  'agent-fukurou': { pitch: 0.55, rate: 0.85 },  // 低く、ゆっくり・おだやか
+  'agent-shiba': { pitch: 1.25, rate: 1.2 },     // 元気で早口
 };
 const DEFAULT_STYLE = { pitch: 1, rate: 1 };
 

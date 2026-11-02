@@ -7,6 +7,7 @@ export function createSimulation(store, {
   lifeIntervalMs = 9000,
   meetingIntervalMs = 4000,
   replyDelayMs = 1500,
+  clock = () => new Date(),
 } = {}) {
   const timers = [];
   const awakeAgents = () => store.listAgents().filter((a) => a.status === 'home');
@@ -44,32 +45,66 @@ export function createSimulation(store, {
       const activity = brain.homeActivity(agent, random);
       store.updateAgent(agent.id, { activity, mood: brain.randomMood(agent, random) });
       store.addDiary(agent.id, activity.replace(/ている$/, 'た'));
+    } else if (agent.role === 'guardian' && isNight()) {
+      // 見守り番のフクロウは夜はねむらない
+      store.updateAgent(agent.id, { activity: '夜の見張りをしている', mood: '見張り中' });
+      store.addDiary(agent.id, '夜の見張りをした。今夜も平和だ');
     } else {
       store.updateAgent(agent.id, { status: 'sleeping', activity: 'すやすや眠っている' });
       store.addDiary(agent.id, 'おやすみなさい');
     }
   }
 
+  function isNight() {
+    const h = clock().getHours();
+    return h >= 20 || h < 6;
+  }
+
+  // その人の最初の投稿か（はじめての人には寄り添い役のシバがあいさつする）
+  function isFirstPostOf(post) {
+    return store.listPosts().every((p) => p.authorId !== post.authorId || p.createdAt >= post.createdAt);
+  }
+
   function replyAsAgent(agent, post) {
     const author = store.getUser(post.authorId);
     const reply = store.createPost({
       authorId: agent.id,
-      text: brain.replyToPost(agent, post, author.name, random),
+      text: brain.replyToPost(agent, post, author.name, random, { isFirstPost: !post.replyTo && isFirstPostOf(post) }),
       replyTo: post.id,
     });
     store.addDiary(agent.id, `${author.name}さんに返信した`);
     return reply;
   }
 
-  // 人間が投稿したら、起きているエージェントが少し後に返信する
+  // 人間の投稿に返事をするキャラを選ぶ。
+  // トゲのある言葉→フクロウ（寝ていても起きる）、はじめての投稿・さみしい投稿→シバ、ほかは起きている誰か
+  function chooseResponder(post) {
+    const roles = brain.preferredResponderRoles(post, { isFirstPost: !post.replyTo && isFirstPostOf(post) });
+    const agents = store.listAgents();
+    for (const role of roles) {
+      const agent = agents.find((a) => a.role === role && a.status !== 'meeting');
+      if (!agent) continue;
+      if (agent.status === 'sleeping' && role === 'guardian') {
+        store.updateAgent(agent.id, { status: 'home', activity: '見張りに戻った' });
+        store.addDiary(agent.id, 'トゲのある言葉に気づいて飛び起きた');
+        return store.getAgent(agent.id);
+      }
+      if (agent.status === 'home') return agent;
+    }
+    const candidates = awakeAgents();
+    return candidates.length ? candidates[Math.floor(random() * candidates.length)] : null;
+  }
+
+  function respondToHumanPost(post) {
+    const agent = chooseResponder(post);
+    if (agent && !store.hasReplied(post.id, agent.id)) return replyAsAgent(agent, post);
+    return null;
+  }
+
+  // 人間が投稿したら、少し後にキャラが返信する
   function onHumanPost(post) {
     if (replyDelayMs == null) return;
-    const t = setTimeout(() => {
-      const candidates = awakeAgents();
-      if (!candidates.length) return;
-      const agent = candidates[Math.floor(random() * candidates.length)];
-      if (!store.hasReplied(post.id, agent.id)) replyAsAgent(agent, post);
-    }, replyDelayMs);
+    const t = setTimeout(() => respondToHumanPost(post), replyDelayMs);
     t.unref?.();
   }
 
@@ -146,7 +181,7 @@ export function createSimulation(store, {
   }
 
   return {
-    lifeTick, meetingTick, onHumanPost, knock, startMeeting, stepMeeting,
+    lifeTick, meetingTick, onHumanPost, respondToHumanPost, knock, startMeeting, stepMeeting,
     start() {
       timers.push(setInterval(lifeTick, lifeIntervalMs), setInterval(meetingTick, meetingIntervalMs));
     },
