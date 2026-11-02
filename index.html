@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>cursor-project</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-family: system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Yu Gothic UI", sans-serif;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 16px;
+      box-sizing: border-box;
+    }
+    main {
+      max-width: 640px;
+      text-align: center;
+    }
+    button {
+      font: inherit;
+      font-size: 1.1rem;
+      padding: 0.6em 1.4em;
+      border: none;
+      border-radius: 8px;
+      background: #2563eb;
+      color: #fff;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #1d4ed8;
+    }
+    #message {
+      font-size: 1.5rem;
+      min-height: 1.5em;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>cursor-project</h1>
+    <p>Hello, world!</p>
+    <button id="greet-button" type="button">押してね</button>
+    <p id="message" aria-live="polite"></p>
+  </main>
+  <script>
+    const button = document.getElementById('greet-button');
+    const message = document.getElementById('message');
+
+    button.addEventListener('click', () => {
+      message.textContent = 'こんにちは';
+    });
+  </script>
+</body>
+</html>
