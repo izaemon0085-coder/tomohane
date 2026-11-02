@@ -31,11 +31,21 @@ const DEFAULTS = {
   side: 'auto', width: 'normal', card: 'round', font: 'm',
 };
 
+// ★β版は「推しカラー」だけ変えられる。もよう・飾り・レイアウトは作ってあるが、正式版まで隠しておく。
+//   正式版で全部使えるようにするときは false にする。
+export const BETA_COLOR_ONLY = true;
+
+function readStored() {
+  try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch { return {}; }
+}
 function load() {
-  try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) || '{}') }; } catch { return { ...DEFAULTS }; }
+  const stored = readStored();
+  // β版では、前に保存した色以外の設定は使わない（保存はそのまま残すので、正式版で復活する）
+  return BETA_COLOR_ONLY ? { ...DEFAULTS, color: stored.color || '' } : { ...DEFAULTS, ...stored };
 }
 function save(d) {
-  try { localStorage.setItem(KEY, JSON.stringify(d)); } catch { /* 保存できなくても見た目は変わる */ }
+  const data = BETA_COLOR_ONLY ? { ...readStored(), color: d.color } : d;
+  try { localStorage.setItem(KEY, JSON.stringify(data)); } catch { /* 保存できなくても見た目は変わる */ }
 }
 
 let design = load();
@@ -204,7 +214,9 @@ function renderPanel() {
         <h2 id="kisekae-title">🎨 きせかえ</h2>
         <button class="btn ghost" value="close" aria-label="閉じる">✕</button>
       </div>
-      <p class="muted kk-note">推しの色や飾りで、画面を自分好みにできます。設定はこのブラウザに保存されます。</p>
+      <p class="muted kk-note">${BETA_COLOR_ONLY
+        ? 'β版では「推しカラー」だけ変えられます。もようや飾り、レイアウトの変更は正式版でお楽しみに。設定はこのブラウザに保存されます。'
+        : '推しの色や飾りで、画面を自分好みにできます。設定はこのブラウザに保存されます。'}</p>
       <div class="kk-opinion" aria-live="polite"></div>
 
       <fieldset class="kk-group"><legend>推しカラー</legend>
@@ -216,7 +228,7 @@ function renderPanel() {
         </div>
       </fieldset>
 
-      ${radioGroup('pattern', '背景のもよう', PATTERNS, d.pattern)}
+      ${BETA_COLOR_ONLY ? '' : `${radioGroup('pattern', '背景のもよう', PATTERNS, d.pattern)}
 
       <fieldset class="kk-group"><legend>推しマーク</legend>
         <div class="kk-options">
@@ -235,14 +247,15 @@ function renderPanel() {
       ${radioGroup('side', 'サイドの欄の位置', [{ key: 'auto', label: 'おまかせ' }, { key: 'left', label: '左' }, { key: 'right', label: '右' }], d.side)}
       ${radioGroup('width', '画面の幅', [{ key: 'narrow', label: 'せまい' }, { key: 'normal', label: 'ふつう' }, { key: 'wide', label: 'ひろい' }], d.width)}
       ${radioGroup('card', 'カードの形', [{ key: 'round', label: 'まる' }, { key: 'soft', label: 'ふんわり' }, { key: 'square', label: 'しかく' }], d.card)}
-      ${radioGroup('font', '文字の大きさ', [{ key: 's', label: '小' }, { key: 'm', label: '中' }, { key: 'l', label: '大' }], d.font)}
+      ${radioGroup('font', '文字の大きさ', [{ key: 's', label: '小' }, { key: 'm', label: '中' }, { key: 'l', label: '大' }], d.font)}`}
 
       <div class="kk-foot">
-        <button type="button" class="btn ghost" data-reset>はじめの見た目に戻す</button>
+        <button type="button" class="btn ghost" data-reset>${BETA_COLOR_ONLY ? 'はじめの色に戻す' : 'はじめの見た目に戻す'}</button>
         <button class="btn" value="close">できた！</button>
       </div>
     </form>`;
-  dialog.querySelector('[name="oshiName"]').value = d.oshiName; // ユーザーの入力は value で入れる（HTML に埋め込まない）
+  const nameInput = dialog.querySelector('[name="oshiName"]');
+  if (nameInput) nameInput.value = d.oshiName; // ユーザーの入力は value で入れる（HTML に埋め込まない）
 }
 
 function syncPanel() {
