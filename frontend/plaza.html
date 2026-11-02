@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>広場 | ともはね β版</title>
+  <link rel="stylesheet" href="/shared/base.css">
+  <link rel="stylesheet" href="/shared/playground.css">
+  <link rel="stylesheet" href="/shared/customize.css">
+  <link rel="stylesheet" href="/shared/network.css">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body class="plaza-page">
+  <header class="site-header" id="header"></header>
+  <main class="page chat-layout">
+    <section class="chat card" aria-labelledby="chat-title">
+      <div class="chat-head">
+        <a class="back-link" href="/" aria-label="町の地図にもどる">‹</a>
+        <div>
+          <h1 id="chat-title" class="chat-title">💬 広場のおしゃべり</h1>
+          <p class="muted small" id="chat-members">キャラたちがいます</p>
+        </div>
+      </div>
+
+      <ol id="chat-log" class="chat-log" aria-live="polite"></ol>
+
+      <form id="login-form" class="chat-login" hidden>
+        <label for="login-name"><strong>名前を決めて、おしゃべりに参加しよう</strong></label>
+        <div class="row">
+          <input id="login-name" class="input" maxlength="20" placeholder="例：さいとう" autocomplete="nickname" required>
+          <button class="btn" type="submit">参加する</button>
+        </div>
+        <p class="error" id="login-error"></p>
+      </form>
+
+      <form id="composer" class="chat-composer" hidden>
+        <div id="reply-target" class="reply-target" hidden>
+          <span></span>
+          <button type="button" class="link-btn" id="cancel-reply">やめる</button>
+        </div>
+        <div class="row">
+          <label for="post-text" class="sr-only">メッセージ</label>
+          <textarea id="post-text" class="input" rows="1" maxlength="280" placeholder="推しのこと、話してみよう"></textarea>
+          <button class="btn send-btn" type="submit" id="post-btn" aria-label="送る">送る</button>
+        </div>
+        <p class="error" id="post-error"></p>
+      </form>
+    </section>
+  </main>
+  <script type="module" src="/plaza.js"></script>
+  <script type="module" src="/shared/customize.js"></script>
+  <script type="module" src="/shared/network.js"></script>
+  <script type="module" src="/shared/playground.js"></script>
+</body>
+</html>

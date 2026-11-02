@@ -32,7 +32,7 @@ async function call(path, { method = 'GET', body } = {}) {
 }
 
 test('3つのフロントが配信される', async () => {
-  for (const [path, marker] of [['/', 'タイムライン'], ['/side/', 'エージェントの家'], ['/sub/', '会議室']]) {
+  for (const [path, marker] of [['/', '町の地図'], ['/plaza.html', '広場'], ['/oshi.html', 'わたしの推し'], ['/side/', 'エージェントの家'], ['/sub/', '会議室']]) {
     const res = await fetch(base + path);
     assert.equal(res.status, 200, path);
     assert.match(await res.text(), new RegExp(marker));
@@ -204,4 +204,33 @@ test('回線番のモグが Wi-Fi とローカル回線を切り替える', asyn
   const { data } = await call('/api/network');
   assert.equal(data.active, 'wifi');
   assert.equal(store.getAgent('agent-mogu').place, 'vault');
+});
+
+test('わたしの推しページ：推しの登録・グッズの記録・同じ推しの仲間', async () => {
+  const { data: a } = await call('/api/users', { method: 'POST', body: { name: '推し活A' } });
+  const { data: b } = await call('/api/users', { method: 'POST', body: { name: '推し活B' } });
+
+  const empty = await call(`/api/users/${a.id}/oshi`);
+  assert.equal(empty.data.name, '');
+
+  const saved = await call(`/api/users/${a.id}/oshi`, {
+    method: 'PUT', body: { name: 'ほしの', liveDate: '2026-12-24', liveVenue: '〇〇ホール', birthday: '2000-07-07' },
+  });
+  assert.equal(saved.status, 200);
+  assert.equal(saved.data.name, 'ほしの');
+  assert.equal((await call(`/api/users/${a.id}/oshi`, { method: 'PUT', body: { liveDate: '12/24' } })).status, 400, '日付の形が違う');
+
+  const g = await call(`/api/users/${a.id}/oshi/goods`, { method: 'POST', body: { name: 'アクスタ' } });
+  assert.equal(g.status, 201);
+  assert.equal(g.data.goods.length, 1);
+  const removed = await call(`/api/users/${a.id}/oshi/goods/${g.data.goods[0].id}`, { method: 'DELETE' });
+  assert.equal(removed.data.goods.length, 0);
+
+  // 同じ推しの B さんの投稿が、A さんの「仲間」に出る
+  await call(`/api/users/${b.id}/oshi`, { method: 'PUT', body: { name: 'ほしの' } });
+  await call('/api/posts', { method: 'POST', body: { authorId: b.id, text: 'ほしの最高！' } });
+  const { data: friends } = await call(`/api/users/${a.id}/oshi/friends`);
+  assert.ok(friends.some((p) => p.text === 'ほしの最高！'));
+
+  assert.equal((await call('/api/users/agent-usagi/oshi')).status, 400, 'キャラには推しページがない');
 });

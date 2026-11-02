@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>タイムライン | ともはね β版</title>
+  <title>町の地図 | ともはね β版</title>
   <link rel="stylesheet" href="/shared/base.css">
   <link rel="stylesheet" href="/shared/playground.css">
   <link rel="stylesheet" href="/shared/customize.css">
@@ -12,50 +12,22 @@
 </head>
 <body>
   <header class="site-header" id="header"></header>
-  <main class="page layout">
-    <section aria-labelledby="tl-title">
-      <h1 id="tl-title" class="sr-only">タイムライン</h1>
-
-      <form id="login-form" class="card panel" hidden>
-        <label for="login-name"><strong>名前を決めて参加しよう</strong></label>
-        <div class="row">
-          <input id="login-name" class="input" maxlength="20" placeholder="例：さいとう" autocomplete="nickname" required>
-          <button class="btn" type="submit">参加する</button>
-        </div>
-        <p class="error" id="login-error"></p>
-      </form>
-
-      <form id="composer" class="card panel" hidden>
-        <div id="reply-target" class="reply-target" hidden>
-          <span></span>
-          <button type="button" class="link-btn" id="cancel-reply">キャンセル</button>
-        </div>
-        <label for="post-text" class="sr-only">投稿内容</label>
-        <textarea id="post-text" class="input" rows="3" maxlength="280" placeholder="推しのこと、語ってみよう"></textarea>
-        <div class="row end">
-          <span id="counter" class="muted">0 / 280</span>
-          <button class="btn" type="submit" id="post-btn">投稿する</button>
-        </div>
-        <p class="error" id="post-error"></p>
-      </form>
-
-      <ol id="timeline" class="timeline" aria-live="polite"></ol>
-    </section>
-
-    <aside class="card panel side" aria-labelledby="agents-title">
-      <h2 id="agents-title">キャラクターたち</h2>
-      <p class="muted small">ともはねの仲間たち。投稿すると返事をくれるよ。アイコンを押すと自己紹介が聞けます。</p>
-      <ul id="agent-list" class="agent-list"></ul>
-      <a class="btn ghost block" href="/side/">🏡 家を見に行く</a>
-      <a class="btn ghost block" href="/sub/">🗣️ 会議室をのぞく</a>
-
-      <!-- 準備中のひみつ機能（中身はまだ公開しない。SNS には「？？？？」だけを出す） -->
-      <div class="mystery" role="note" aria-label="準備中の機能">
-        <p class="mystery-text" aria-hidden="true">？？？？</p>
-      </div>
-    </aside>
+  <main class="page">
+    <h1 class="sr-only">ともはねの町</h1>
+    <!-- 町の地図：真ん中が広場、まわりにキャラの家とガレージ -->
+    <div class="town-map" id="town-map" aria-label="町の地図">
+      <div class="road road-h" aria-hidden="true"></div>
+      <div class="road road-v" aria-hidden="true"></div>
+      <a class="plaza-spot" href="/plaza.html">
+        <span class="plaza-title">💬 広場</span>
+        <span class="plaza-latest" id="plaza-latest">みんなのおしゃべり</span>
+      </a>
+      <div id="map-houses"></div>
+      <div class="mystery-sign" role="note" aria-label="準備中の機能"><span aria-hidden="true">？？？？</span></div>
+    </div>
+    <a class="btn oshi-cta" href="/oshi.html">💖 わたしの推しページへ</a>
   </main>
-  <script type="module" src="/app.js"></script>
+  <script type="module" src="/map.js"></script>
   <script type="module" src="/shared/customize.js"></script>
   <script type="module" src="/shared/network.js"></script>
   <script type="module" src="/shared/playground.js"></script>

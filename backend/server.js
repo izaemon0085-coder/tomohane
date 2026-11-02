@@ -83,6 +83,16 @@ export function createApp({ store, sim, port = Number(process.env.PORT) || 3000 
     ['GET', /^\/api\/users$/, () => store.listUsers().map(publicUser)],
     ['POST', /^\/api\/users$/, ({ body }) => [201, publicUser(store.findOrCreateHuman(body.name))]],
 
+    // ---- 推しの情報（わたしの推しページ） ----
+    ['GET', /^\/api\/users\/([\w-]+)\/oshi$/, ({ params }) => store.getOshi(params[0])],
+    ['PUT', /^\/api\/users\/([\w-]+)\/oshi$/, ({ params, body }) => store.updateOshi(params[0], body)],
+    ['POST', /^\/api\/users\/([\w-]+)\/oshi\/goods$/, ({ params, body }) => [201, store.addGoods(params[0], body.name)]],
+    ['DELETE', /^\/api\/users\/([\w-]+)\/oshi\/goods\/([\w-]+)$/, ({ params }) => store.removeGoods(params[0], params[1])],
+    ['GET', /^\/api\/users\/([\w-]+)\/oshi\/friends$/, ({ params }) => {
+      const users = store.usersById();
+      return store.oshiFriendsPosts(params[0]).map((p) => postView(p, users));
+    }],
+
     // ---- posts（フロントエンド） ----
     ['GET', /^\/api\/posts$/, () => {
       const users = store.usersById();
@@ -181,7 +191,7 @@ export function createApp({ store, sim, port = Number(process.env.PORT) || 3000 
         for (const [method, pattern, fn] of routes) {
           const m = pathname.match(pattern);
           if (!m || method !== req.method) continue;
-          const body = method === 'POST' ? await readJson(req) : {};
+          const body = method === 'POST' || method === 'PUT' ? await readJson(req) : {};
           const result = await fn({ params: m.slice(1), body, query: url.searchParams });
           const [status, data] = Array.isArray(result) && typeof result[0] === 'number' ? result : [200, result];
           return sendJson(res, status, data);

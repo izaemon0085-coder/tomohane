@@ -90,8 +90,10 @@ export function headerHtml(current) {
   return `<div class="inner">
     <a class="brand" href="/" title="推し活SNS ともはね">ともはね <span class="beta">β版</span></a>
     <nav class="nav" aria-label="メイン">
-      ${link('/', '🏠 タイムライン', 'front')}
-      ${link('/side/', '🏡 エージェントの家', 'side')}
+      ${link('/', '🗺️ 町', 'map')}
+      ${link('/plaza.html', '💬 広場', 'plaza')}
+      ${link('/oshi.html', '💖 わたしの推し', 'oshi')}
+      ${link('/side/', '🏡 家', 'side')}
       ${link('/sub/', '🗣️ 会議室', 'sub')}
     </nav>
     <button type="button" class="net-chip" data-open-network data-net-chip title="ローカル回線のようす">📶</button>

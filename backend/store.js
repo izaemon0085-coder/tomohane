@@ -7,6 +7,7 @@ import { SEED_AGENTS, MOODS } from './agents.js';
 export const MAX_POST_LENGTH = 280;
 export const MAX_NAME_LENGTH = 20;
 export const MAX_TOPIC_LENGTH = 60;
+export const MAX_GOODS = 100;
 const MAX_DIARY = 20;
 
 export class HttpError extends Error {
@@ -127,6 +128,64 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       state.users.push(user);
       emit('user', user);
       return user;
+    },
+
+    // ---- 推しの情報（わたしの推しページ） ----
+    getOshi(userId) {
+      const user = requireUser(userId);
+      if (user.kind !== 'human') throw new HttpError(400, '推しを登録できるのは人間のユーザーだけです');
+      return user.oshi ?? { name: '', liveDate: '', liveVenue: '', birthday: '', goods: [] };
+    },
+    updateOshi(userId, { name = '', liveDate = '', liveVenue = '', birthday = '' }) {
+      const user = requireUser(userId);
+      if (user.kind !== 'human') throw new HttpError(400, '推しを登録できるのは人間のユーザーだけです');
+      const optText = (v, max, label) => (v === '' || v == null ? '' : cleanText(v, max, label));
+      const optDate = (v, label) => {
+        if (v === '' || v == null) return '';
+        if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v) || Number.isNaN(Date.parse(v))) {
+          throw new HttpError(400, `${label}の日付が正しくありません`);
+        }
+        return v;
+      };
+      const prev = user.oshi ?? { goods: [] };
+      user.oshi = {
+        name: optText(name, MAX_NAME_LENGTH, '推しの名前'),
+        liveDate: optDate(liveDate, 'ライブ'),
+        liveVenue: optText(liveVenue, 30, '会場の名前'),
+        birthday: optDate(birthday, '誕生日'),
+        goods: prev.goods ?? [],
+      };
+      emit('user', user);
+      return user.oshi;
+    },
+    addGoods(userId, name) {
+      const oshi = this.getOshi(userId);
+      if (oshi.goods.length >= MAX_GOODS) throw new HttpError(400, `グッズは${MAX_GOODS}個まで記録できます`);
+      const item = { id: newId('g'), name: cleanText(name, 30, 'グッズの名前'), addedAt: now() };
+      const user = requireUser(userId);
+      user.oshi = { ...oshi, goods: [item, ...oshi.goods] };
+      emit('user', user);
+      return user.oshi;
+    },
+    removeGoods(userId, goodsId) {
+      const oshi = this.getOshi(userId);
+      if (!oshi.goods.some((g) => g.id === goodsId)) throw new HttpError(404, 'グッズが見つかりません');
+      const user = requireUser(userId);
+      user.oshi = { ...oshi, goods: oshi.goods.filter((g) => g.id !== goodsId) };
+      emit('user', user);
+      return user.oshi;
+    },
+    // 同じ推しの仲間（自分以外の人間）の最近の投稿
+    oshiFriendsPosts(userId, limit = 5) {
+      const name = this.getOshi(userId).name;
+      if (!name) return [];
+      const friends = new Set(state.users
+        .filter((u) => u.kind === 'human' && u.id !== userId && u.oshi?.name === name)
+        .map((u) => u.id));
+      return [...state.posts]
+        .filter((p) => friends.has(p.authorId))
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+        .slice(0, limit);
     },
 
     // ---- agents (サイドフロント：家) ----

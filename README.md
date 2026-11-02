@@ -6,7 +6,7 @@
 
 | 層 | ディレクトリ | URL | 役割 |
 | --- | --- | --- | --- |
-| フロントエンド | `frontend/` | `/` | SNS 本体。タイムライン・投稿・いいね・返信 |
+| フロントエンド | `frontend/` | `/` `/plaza.html` `/oshi.html` | SNS 本体。**町の地図**（トップ）→ **広場**（チャット風のタイムライン・いいね・返信）／**わたしの推し**（推しダッシュボード） |
 | バックエンド | `backend/` | `/api/*` | REST API、リアルタイム通知（SSE）、データ保存、エージェントのシミュレーション |
 | サイドフロント | `sidefront/` | `/side/` | **エージェントたちの家**。在宅／睡眠中／会議中の様子、日記、ノック |
 | サブフロント | `subfront/` | `/sub/` | **エージェントたちの会議室**。議題を出すと会議が始まり、結論をタイムラインに投稿 |
@@ -104,6 +104,9 @@ npm test         # API テスト
 | POST | `/api/posts` | 投稿 `{authorId, text, replyTo?}` |
 | POST | `/api/posts/:id/like` | いいねの切り替え `{userId}` |
 | POST | `/api/users` | 名前で参加（同じ名前なら同じユーザー） `{name}` |
+| GET / PUT | `/api/users/:id/oshi` | わたしの推し（推しの名前・ライブの日・会場・誕生日） |
+| POST / DELETE | `/api/users/:id/oshi/goods`（`/:goodsId`） | グッズの記録を足す／消す |
+| GET | `/api/users/:id/oshi/friends` | 同じ推しの仲間の最近の投稿 |
 | GET | `/api/agents` / `/api/agents/:id` | エージェントの家の情報 |
 | POST | `/api/agents/:id/knock` | 家をノックする |
 | GET / POST | `/api/meetings` | 会議一覧／招集 `{topic, createdBy?}` |

@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>わたしの推し | ともはね β版</title>
+  <link rel="stylesheet" href="/shared/base.css">
+  <link rel="stylesheet" href="/shared/playground.css">
+  <link rel="stylesheet" href="/shared/customize.css">
+  <link rel="stylesheet" href="/shared/network.css">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="site-header" id="header"></header>
+  <main class="page">
+    <form id="login-form" class="card panel" hidden>
+      <label for="login-name"><strong>名前を決めると、自分の推しページが作れます</strong></label>
+      <div class="row">
+        <input id="login-name" class="input" maxlength="20" placeholder="例：さいとう" autocomplete="nickname" required>
+        <button class="btn" type="submit">はじめる</button>
+      </div>
+      <p class="error" id="login-error"></p>
+    </form>
+
+    <div id="dash" hidden>
+      <!-- 推しカラーの帯（色は「きせかえ」の推しカラー） -->
+      <section class="oshi-hero" aria-labelledby="oshi-name">
+        <span class="oshi-photo" aria-hidden="true"></span>
+        <div>
+          <p class="oshi-label">わたしの推し</p>
+          <h1 id="oshi-name" class="oshi-name">まだ登録していません</h1>
+        </div>
+        <button type="button" class="btn ghost oshi-edit-btn" id="edit-btn">✏️ 推しを登録・へんしゅう</button>
+      </section>
+
+      <div class="oshi-grid">
+        <article class="card oshi-tile">
+          <h2>次のライブまで</h2>
+          <p class="oshi-big" id="live-days">－</p>
+          <p class="muted small" id="live-venue">ライブの日を登録すると、あと何日か出ます</p>
+        </article>
+        <article class="card oshi-tile">
+          <h2>推しの誕生日まで</h2>
+          <p class="oshi-big" id="bday-days">－</p>
+          <p class="muted small" id="bday-date">誕生日を登録すると、あと何日か出ます</p>
+        </article>
+        <article class="card oshi-tile oshi-goods">
+          <div class="tile-head"><h2>グッズの記録</h2><span class="muted small" id="goods-count">0個</span></div>
+          <form id="goods-form" class="row">
+            <label for="goods-name" class="sr-only">グッズの名前</label>
+            <input id="goods-name" class="input" maxlength="30" placeholder="例：アクスタ" required>
+            <button class="btn" type="submit">記録</button>
+          </form>
+          <ul id="goods-list" class="goods-list"></ul>
+        </article>
+        <article class="card oshi-tile oshi-friends">
+          <h2>同じ推しの仲間</h2>
+          <ul id="friends" class="friends-list"></ul>
+        </article>
+        <article class="card oshi-tile oshi-shiba">
+          <div class="shiba-line">
+            <img src="/shared/avatars/shiba.svg" alt="" width="44" height="44">
+            <div><p class="muted small">シバから</p><p id="shiba-says">推しのこと、教えてほしいっす！</p></div>
+          </div>
+          <a class="btn block" href="/plaza.html">💬 広場でおしゃべりする</a>
+        </article>
+      </div>
+    </div>
+
+    <dialog id="edit-dialog" class="card oshi-dialog" aria-labelledby="edit-title">
+      <form id="edit-form" method="dialog">
+        <h2 id="edit-title">推しを登録・へんしゅう</h2>
+        <label class="field">推しの名前<input class="input" name="name" maxlength="20" placeholder="例：推しの名前"></label>
+        <label class="field">次のライブの日<input class="input" type="date" name="liveDate"></label>
+        <label class="field">会場の名前<input class="input" name="liveVenue" maxlength="30" placeholder="例：〇〇ホール"></label>
+        <label class="field">推しの誕生日<input class="input" type="date" name="birthday"></label>
+        <p class="muted small">推しの名前は「同じ推しの仲間」を探すのに使います。自分の住所や電話番号は書かないでください。</p>
+        <p class="error" id="edit-error"></p>
+        <div class="row end">
+          <button type="button" class="btn ghost" data-close>やめる</button>
+          <button type="submit" class="btn" value="save">保存する</button>
+        </div>
+      </form>
+    </dialog>
+  </main>
+  <script type="module" src="/oshi.js"></script>
+  <script type="module" src="/shared/customize.js"></script>
+  <script type="module" src="/shared/network.js"></script>
+  <script type="module" src="/shared/playground.js"></script>
+</body>
+</html>
