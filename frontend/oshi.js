@@ -94,6 +94,64 @@ async function loadFriends() {
   }
 }
 
+// こことも のリンク：このパソコン（localhost）のアドレスのとき、スマホから開いても届くように、
+// いま ともはね を開いているアドレスに合わせる（同じパソコンで両方を動かしている前提）
+function reachableUrl(url) {
+  try {
+    const u = new URL(url);
+    if (['localhost', '127.0.0.1'].includes(u.hostname) && !['localhost', '127.0.0.1'].includes(location.hostname)) {
+      u.hostname = location.hostname;
+    }
+    return u.href;
+  } catch {
+    return null;
+  }
+}
+
+// 次のライブ会場のバリアフリーメモ（こことも から読むだけ。送るのは会場の名前だけ）
+async function loadAccess() {
+  const tile = $('#access-tile');
+  if (!oshi.liveVenue) {
+    tile.hidden = true;
+    return;
+  }
+  let memo;
+  try {
+    memo = await api(`/kokotomo/venue?name=${encodeURIComponent(oshi.liveVenue)}`);
+  } catch {
+    tile.hidden = true;
+    return;
+  }
+  tile.hidden = false;
+  const link = $('#access-link');
+  link.href = reachableUrl(memo.url) || '#';
+  const list = $('#access-list');
+  const say = $('#access-say');
+  say.hidden = true;
+  if (!memo.linked) {
+    $('#access-venue').textContent = `${oshi.liveVenue}：こことも につながっていません`;
+    list.innerHTML = '';
+    link.textContent = 'こことも で調べる';
+    return;
+  }
+  if (!memo.found) {
+    $('#access-venue').textContent = `${oshi.liveVenue}：まだメモがありません`;
+    list.innerHTML = '<li class="muted small">行ったら、エレベーターやトイレの場所を書き足してみよう。次に行く人の助けになるよ</li>';
+    link.textContent = 'こことも で書く';
+    return;
+  }
+  $('#access-venue').textContent = memo.venue.name;
+  list.innerHTML = memo.summary.map((s) => `<li><strong>${escapeHtml(s.label)}</strong>
+      <span>${escapeHtml(s.text)}</span>
+      <span class="muted small">${s.createdAt ? new Date(s.createdAt).toLocaleDateString('ja-JP') : ''}</span></li>`).join('');
+  link.textContent = 'こことも で見る・書き足す';
+  const first = memo.summary[0];
+  if (first) {
+    $('#access-say-text').textContent = `${first.label}は「${first.text}」だそうだ。行く前に、会場にも確かめておこう。`;
+    say.hidden = false;
+  }
+}
+
 async function load() {
   if (!me) return;
   try {
@@ -104,6 +162,7 @@ async function load() {
   }
   renderOshi();
   loadFriends();
+  loadAccess();
 }
 
 $('#login-form').addEventListener('submit', async (e) => {
@@ -135,6 +194,7 @@ form.addEventListener('submit', async (e) => {
     dialog.close();
     renderOshi();
     loadFriends();
+    loadAccess();
   } catch (err) {
     $('#edit-error').textContent = err.offline ? 'オフラインなので保存できません。つながってからもう一度どうぞ' : err.message;
   }

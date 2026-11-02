@@ -7,6 +7,7 @@ import { createStore, HttpError } from './store.js';
 import { createSimulation } from './simulation.js';
 import { lanAddresses } from './net.js';
 import { MAX_VIDEO_BYTES, removeVideo, saveVideo, serveVideo } from './letters.js';
+import { createKokotomoClient } from './kokotomo.js';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 
@@ -92,6 +93,7 @@ async function readJson(req) {
 export function createApp({
   store, sim, port = Number(process.env.PORT) || 3000,
   videoDir = join(ROOT, 'data', 'letters', 'videos'), maxVideoBytes = MAX_VIDEO_BYTES,
+  kokotomo = createKokotomoClient(),
 }) {
   const routes = [
     // line：回線番のモグが選んだ回線（wifi / local / offline）
@@ -118,6 +120,13 @@ export function createApp({
 
     // ---- やりくり献立との連結（最新の献立の「きょうの晩ごはん」と、画面のアドレス） ----
     ['GET', /^\/api\/kondate$/, () => sim.kondateSummary()],
+
+    // ---- こことも（移動サポートのアプリ）との連結：ライブ会場のバリアフリーメモ ----
+    ['GET', /^\/api\/kokotomo\/venue$/, async ({ query }) => {
+      const name = (query.get('name') || '').trim().slice(0, 30);
+      if (!name) throw new HttpError(400, '会場の名前がありません');
+      return kokotomo.venueMemo(name);
+    }],
 
     // ---- posts（フロントエンド） ----
     ['GET', /^\/api\/posts$/, () => {

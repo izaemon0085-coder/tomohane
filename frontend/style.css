@@ -124,6 +124,9 @@ html[data-oshi-color] .oshi-hero { color: var(--accent-text); }
 .goods-list li { display: flex; gap: 8px; align-items: center; background: var(--surface-2); border-radius: 10px; padding: 6px 10px; }
 .goods-list li span:first-child { flex: 1; overflow-wrap: anywhere; }
 .friends-list li { background: var(--surface-2); border-radius: 10px; padding: 8px 10px; font-size: .9rem; overflow-wrap: anywhere; }
+.access-list { list-style: none; margin: 4px 0; padding: 0; display: grid; gap: 6px; }
+.access-list li { background: var(--surface-2); border-radius: 10px; padding: 8px 10px; font-size: .9rem; display: grid; gap: 2px; overflow-wrap: anywhere; }
+.oshi-access .shiba-line { margin: 6px 0; }
 .shiba-line { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 8px; }
 .shiba-line p { margin: 0; }
 .oshi-dialog { width: min(440px, calc(100vw - 32px)); padding: 20px; color: var(--text); }

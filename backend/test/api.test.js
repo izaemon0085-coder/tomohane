@@ -10,6 +10,7 @@ import { createSimulation } from '../simulation.js';
 import { MEETING_SCRIPT } from '../agents.js';
 import { qrMatrix } from '../../shared/qrcode.js';
 import { precheck, isHarsh } from '../../shared/precheck.js';
+import { createKokotomoClient } from '../kokotomo.js';
 
 let server;
 let base;
@@ -18,13 +19,23 @@ let sim;
 let videoDir;
 const MAX_TEST_VIDEO = 1024;
 
+// こことも の代わり（テストでは本物を起動しない）
+const kokotomoReplies = new Map();
+const fakeKokotomoFetch = async (url) => {
+  const name = new URL(url).searchParams.get('name');
+  if (name === 'こわれた') throw new Error('つながらない');
+  const body = kokotomoReplies.get(name) ?? { found: false, searchUrl: 'http://localhost:3100/venues.html#q=x' };
+  return { ok: true, json: async () => body };
+};
+
 before(async () => {
   store = createStore();
   sim = createSimulation(store, {
     random: () => 0, replyDelayMs: null, checkInternet: async () => true, lanAddresses: () => ['192.168.0.10'],
   });
   videoDir = mkdtempSync(join(tmpdir(), 'letters-'));
-  server = http.createServer(createApp({ store, sim, videoDir, maxVideoBytes: MAX_TEST_VIDEO }));
+  const kokotomo = createKokotomoClient({ baseUrl: 'http://localhost:3100', fetchImpl: fakeKokotomoFetch });
+  server = http.createServer(createApp({ store, sim, videoDir, maxVideoBytes: MAX_TEST_VIDEO, kokotomo }));
   await new Promise((r) => server.listen(0, r));
   base = `http://localhost:${server.address().port}`;
 });
@@ -450,4 +461,30 @@ test('送る前のチェック：はっきりした犯罪は、画面を通さ�
   assert.match(res.data.error, /闇バイト/);
   const ok = await call('/api/posts', { method: 'POST', body: { authorId: me.id, text: 'あいつほんとうざい' } });
   assert.equal(ok.status, 201, '声をかけるだけのものは、本人が選べば送れる');
+});
+
+test('こことも と連結：ライブ会場のバリアフリーメモを読む（送るのは会場の名前だけ）', async () => {
+  kokotomoReplies.set('さくらホール', {
+    found: true,
+    venue: { id: 'v_1', name: 'さくらホール', updatedAt: '2026-11-03T10:00:00Z' },
+    summary: [{ topic: 'elevator', label: 'エレベーター・スロープ', text: '東口を入って右', createdAt: '2026-11-03T10:00:00Z', count: 1 }],
+    url: 'http://localhost:3100/venues.html#v_1',
+  });
+  const { data } = await call(`/api/kokotomo/venue?name=${encodeURIComponent('さくらホール')}`);
+  assert.equal(data.linked, true);
+  assert.equal(data.found, true);
+  assert.equal(data.summary[0].text, '東口を入って右');
+  assert.equal(data.url, 'http://localhost:3100/venues.html#v_1');
+
+  const none = (await call(`/api/kokotomo/venue?name=${encodeURIComponent('まだない会場')}`)).data;
+  assert.deepEqual([none.linked, none.found], [true, false]);
+
+  const down = (await call(`/api/kokotomo/venue?name=${encodeURIComponent('こわれた')}`)).data;
+  assert.equal(down.linked, false, 'こことも が起動していなくても、ともはねは止まらない');
+  assert.match(down.url, /^http:\/\/localhost:3100\/venues\.html#q=/);
+
+  kokotomoReplies.set('あやしい', { found: true, venue: { name: 'x' }, summary: [], url: 'javascript:alert(1)' });
+  assert.match((await call(`/api/kokotomo/venue?name=${encodeURIComponent('あやしい')}`)).data.url, /^http:/, 'http 以外のリンクは使わない');
+
+  assert.equal((await call('/api/kokotomo/venue')).status, 400);
 });
