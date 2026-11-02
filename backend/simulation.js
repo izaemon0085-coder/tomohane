@@ -19,14 +19,14 @@ export function createSimulation(store, {
 
     if (agent.status === 'sleeping') {
       if (random() < 0.5) {
-        store.updateAgent(agent.id, { status: 'home', mood: brain.randomMood(random), activity: '伸びをしている' });
+        store.updateAgent(agent.id, { status: 'home', mood: brain.randomMood(agent, random), activity: '伸びをしている' });
         store.addDiary(agent.id, '目が覚めた');
       }
       return;
     }
 
     const roll = random();
-    if (roll < 0.25) {
+    if (roll < 0.15) {
       const post = store.createPost({ authorId: agent.id, text: brain.timelinePost(agent, random) });
       store.addDiary(agent.id, `タイムラインに投稿した：「${post.text.slice(0, 20)}…」`);
     } else if (roll < 0.5) {
@@ -42,7 +42,7 @@ export function createSimulation(store, {
       }
     } else if (roll < 0.9) {
       const activity = brain.homeActivity(agent, random);
-      store.updateAgent(agent.id, { activity, mood: brain.randomMood(random) });
+      store.updateAgent(agent.id, { activity, mood: brain.randomMood(agent, random) });
       store.addDiary(agent.id, activity.replace(/ている$/, 'た'));
     } else {
       store.updateAgent(agent.id, { status: 'sleeping', activity: 'すやすや眠っている' });
@@ -123,9 +123,9 @@ export function createSimulation(store, {
     const agent = agentByRole(meeting, role);
     store.updateMeeting(meeting.id, { turn: meeting.turn + 1 });
 
-    if (step === 'facilitator:close') {
+    if (step.endsWith(':close')) {
       const summary = brain.summarizeMeeting(store.getMeeting(meeting.id), store.usersById());
-      store.addMeetingMessage(meeting.id, { authorId: agent.id, text: 'まとめます。おつかれさまでした！' });
+      store.addMeetingMessage(meeting.id, { authorId: agent.id, text: 'よし、まとめよう。結論はタイムラインに投稿しておく。おつかれさま。' });
       const post = store.createPost({ authorId: agent.id, text: summary.slice(0, 280) });
       store.updateMeeting(meeting.id, {
         status: 'closed', summary, summaryPostId: post.id, speakerId: null, closedAt: new Date().toISOString(),

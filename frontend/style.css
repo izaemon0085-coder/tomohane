@@ -25,7 +25,8 @@
 .replies .post { padding: 0; }
 .replies .avatar { width: 32px !important; height: 32px !important; font-size: 1rem !important; }
 
-.side h2 { font-size: 1rem; margin: 0 0 8px; }
+.side h2 { font-size: 1rem; margin: 0 0 4px; }
+.small { font-size: .85rem; margin: 0 0 10px; }
 .agent-list { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 10px; }
 .agent-list li { display: flex; gap: 10px; align-items: center; }
 .agent-list .status { font-size: .8rem; }

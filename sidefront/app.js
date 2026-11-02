@@ -15,7 +15,7 @@ function houseHtml(a) {
   return `<article class="house" id="${a.id}" data-agent="${a.id}" data-status="${a.status}" style="--c:${a.color}">
     <div class="roof">${escapeHtml(a.house)}</div>
     <div class="walls">
-      <div class="window" aria-hidden="true"><span class="resident">${a.emoji}</span>${a.status === 'sleeping' ? '<span class="zzz">z z Z</span>' : ''}</div>
+      <div class="window" aria-hidden="true"><img class="resident" src="${a.avatar}" alt="">${a.status === 'sleeping' ? '<span class="zzz">z z Z</span>' : ''}</div>
       <h2>${escapeHtml(a.name)} <span class="badge">${escapeHtml(a.roleLabel)}</span></h2>
       <div class="meta muted">${STATUS_LABEL[a.status]}・気分：${escapeHtml(a.mood)}・投稿 ${a.postCount}</div>
       <div class="activity">${escapeHtml(a.activity)}</div>
@@ -42,7 +42,7 @@ async function renderDialog() {
     </div>
     <p>${escapeHtml(a.bio)}</p>
     <p><strong>${STATUS_LABEL[a.status]}</strong>：${escapeHtml(a.activity)}（気分：${escapeHtml(a.mood)}）</p>
-    ${lastSpeech ? `<p class="speech">${a.emoji} 「${escapeHtml(lastSpeech)}」</p>` : ''}
+    ${lastSpeech ? `<p class="speech">${avatarHtml(a, 28)} 「${escapeHtml(lastSpeech)}」</p>` : ''}
     <div class="dlg-actions">
       <button class="btn" data-knock="${a.id}">✊ ノックする</button>
       ${a.status === 'meeting' ? '<a class="btn ghost" href="/sub/">🗣️ 会議室へ様子を見に行く</a>' : ''}

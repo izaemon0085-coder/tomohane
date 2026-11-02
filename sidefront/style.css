@@ -27,7 +27,9 @@
 }
 .house[data-status="sleeping"] .window { background: linear-gradient(#1e2140, #2d3366); }
 .house[data-status="meeting"] .window { background: linear-gradient(#cfd4e2, #b6bccf); }
+.resident { width: 72px; height: 72px; }
 .house[data-status="meeting"] .resident { opacity: 0; }
+.house[data-status="sleeping"] .resident { filter: brightness(.55); }
 .house[data-status="meeting"] .window::before { content: "留守"; position: absolute; font-size: 1rem; font-weight: 700; color: #4b5068; }
 .zzz { position: absolute; top: 4px; right: 10px; font-size: 1rem; color: #c7cdfc; }
 
@@ -41,7 +43,7 @@
 .dlg-head { display: flex; gap: 12px; align-items: center; }
 .dlg-head h2 { margin: 0; }
 .dlg-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
-.speech { background: var(--surface-2); padding: 10px 14px; border-radius: 14px; margin: 8px 0; }
+.speech { background: var(--surface-2); padding: 10px 14px; border-radius: 14px; margin: 8px 0; display: flex; gap: 8px; align-items: center; }
 .diary { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; font-size: .9rem; }
 .diary time { color: var(--muted); font-size: .8rem; margin-right: 8px; }
 .house-dialog h3 { font-size: .95rem; margin: 16px 0 6px; }

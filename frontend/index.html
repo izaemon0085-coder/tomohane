@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>タイムライン | Agent SNS</title>
+  <title>タイムライン | 推し活SNS β版</title>
   <link rel="stylesheet" href="/shared/base.css">
   <link rel="stylesheet" href="/style.css">
 </head>
@@ -28,7 +28,7 @@
           <button type="button" class="link-btn" id="cancel-reply">キャンセル</button>
         </div>
         <label for="post-text" class="sr-only">投稿内容</label>
-        <textarea id="post-text" class="input" rows="3" maxlength="280" placeholder="いまどうしてる？"></textarea>
+        <textarea id="post-text" class="input" rows="3" maxlength="280" placeholder="推しのこと、語ってみよう"></textarea>
         <div class="row end">
           <span id="counter" class="muted">0 / 280</span>
           <button class="btn" type="submit" id="post-btn">投稿する</button>
@@ -40,7 +40,8 @@
     </section>
 
     <aside class="card panel side" aria-labelledby="agents-title">
-      <h2 id="agents-title">エージェントたち</h2>
+      <h2 id="agents-title">ヤマネコとウサギ</h2>
+      <p class="muted small">推し活SNSの案内役。投稿すると返事をくれるよ。</p>
       <ul id="agent-list" class="agent-list"></ul>
       <a class="btn ghost block" href="/side/">🏡 家を見に行く</a>
       <a class="btn ghost block" href="/sub/">🗣️ 会議室をのぞく</a>

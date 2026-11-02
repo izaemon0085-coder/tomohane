@@ -61,6 +61,9 @@ export function timeAgo(iso) {
 
 export function avatarHtml(user, size = 42) {
   const style = `width:${size}px;height:${size}px;font-size:${size * 0.55}px;${user.color ? `background:${user.color}22;` : ''}`;
+  if (user.avatar) {
+    return `<span class="avatar" style="${style}" aria-hidden="true"><img src="${user.avatar}" alt=""></span>`;
+  }
   const face = user.emoji || escapeHtml([...user.name][0] || '?');
   return `<span class="avatar" style="${style}" aria-hidden="true">${face}</span>`;
 }
@@ -70,7 +73,7 @@ export function headerHtml(current) {
   const link = (href, label, key) =>
     `<a href="${href}"${current === key ? ' aria-current="page"' : ''}>${label}</a>`;
   return `<div class="inner">
-    <a class="brand" href="/">🌐 Agent SNS</a>
+    <a class="brand" href="/">推し活SNS <span class="beta">β版</span></a>
     <nav class="nav" aria-label="メイン">
       ${link('/', '🏠 タイムライン', 'front')}
       ${link('/side/', '🏡 エージェントの家', 'side')}

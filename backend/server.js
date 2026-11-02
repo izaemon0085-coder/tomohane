@@ -24,12 +24,13 @@ const MIME = {
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.ico': 'image/x-icon',
+  '.webp': 'image/webp',
 };
 
 function publicUser(u) {
   if (!u) return null;
-  const { id, kind, name, handle, emoji, color, roleLabel } = u;
-  return { id, kind, name, handle, emoji, color: color ?? null, roleLabel: roleLabel ?? null };
+  const { id, kind, name, handle, emoji, avatar, color, roleLabel } = u;
+  return { id, kind, name, handle, emoji, avatar: avatar ?? null, color: color ?? null, roleLabel: roleLabel ?? null };
 }
 
 function postView(post, usersById) {

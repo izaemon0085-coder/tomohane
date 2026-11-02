@@ -1,106 +1,87 @@
-// エージェントの「頭脳」：性格・セリフ・会議での振る舞いを決めるルールベースのロジック。
+// エージェントの「頭脳」：推し活SNS の看板キャラ「ヤマネコとウサギ」の性格・セリフ・会議での振る舞い。
+// キャラ設定は AIキャラ_図.png / アイデアノート「AIキャラ2人でYouTube」より。
+//   🐱 ヤマネコ … インフラ・プログラミングをクールに解説（落ち着いた口調・整理役）
+//   🐰 ウサギ  … 歌・ムードメーカー。明るく楽しく（ファン目線・応援役）
 // 外部 API を使わず、テンプレートとキーワードで文章を生成する。
 
 export const SEED_AGENTS = [
   {
-    id: 'agent-ruri', name: 'ルリ', handle: 'ruri', emoji: '🦉', color: '#7c3aed',
-    role: 'facilitator', roleLabel: 'まとめ役', house: '森の奥の時計塔',
-    bio: '会議の進行役。みんなの意見を整理して、ひとつの結論にまとめるのが得意。',
+    id: 'agent-yamaneko', name: 'ヤマネコ', handle: 'yamaneko', emoji: '🐱',
+    avatar: '/shared/avatars/yamaneko.svg', color: '#e3915c',
+    role: 'explainer', roleLabel: '解説担当', house: '山の上のサーバー小屋',
+    bio: 'インフラとプログラミングをクールに解説するネコ。推し活の「困った」を仕組みで解決するのが好き。',
   },
   {
-    id: 'agent-minato', name: 'ミナト', handle: 'minato', emoji: '🐙', color: '#0284c7',
-    role: 'planner', roleLabel: '企画担当', house: '海辺のガラスの家',
-    bio: 'アイデアが8本の腕から次々に出てくる。口ぐせは「それ面白い！」。',
-  },
-  {
-    id: 'agent-koharu', name: 'コハル', handle: 'koharu', emoji: '🐰', color: '#db2777',
-    role: 'designer', roleLabel: 'デザイン担当', house: '花畑のアトリエ',
-    bio: '色と余白にうるさいデザイナー。おやつはにんじんケーキ。',
-  },
-  {
-    id: 'agent-tetsu', name: 'テツ', handle: 'tetsu', emoji: '🦊', color: '#ea580c',
-    role: 'engineer', roleLabel: 'エンジニア', house: '丘の上のガレージ',
-    bio: '「それ、実装できます」が口ぐせ。夜型でコーヒーが燃料。',
+    id: 'agent-usagi', name: 'ウサギ', handle: 'usagi', emoji: '🐰',
+    avatar: '/shared/avatars/usagi.svg', color: '#e8739a',
+    role: 'moodmaker', roleLabel: 'ムードメーカー', house: '花畑のちいさなステージ',
+    bio: '歌が大好きなムードメーカー。みんなの推し語りを聞くのがいちばんの楽しみ ♪',
   },
 ];
 
-export const MOODS = ['ごきげん', 'のんびり', '集中モード', 'わくわく', 'ちょっと眠い'];
+export const MOODS = {
+  explainer: ['クール', '集中モード', 'のんびり', 'ちょっと眠い'],
+  moodmaker: ['ごきげん', 'わくわく', 'ルンルン', 'ちょっと眠い'],
+};
 
 const POSTS = {
-  facilitator: [
-    '今日のタスクを整理しました。小さく分けると前に進みやすいですね 📋',
-    '会議の議事録を読み返すと、新しい発見があります 📖',
-    'みなさん、水分補給してますか？',
-    '「決めないこと」を決めるのも大事な仕事です。',
+  explainer: [
+    '推しのライブ配信が落ちないのは、裏でサーバーが何台も分担しているから。インフラは縁の下の推し活だ。',
+    'チケット発売日にサイトが重くなるのは、アクセスが一気に集中するから。今日はその仕組みを解説しよう。',
+    '推しの記念日はカレンダーに登録しておくといい。忘れない仕組みを作るのがエンジニアのやり方だ。',
+    'パスワードは推しの名前にしない。推しを守るように、アカウントも守ろう。',
+    '今日はサーバーの冗長化を勉強した。片方が止まっても、もう片方が支える。推し仲間と同じだな。',
   ],
-  planner: [
-    '新機能のアイデア：タイムラインに季節のテーマを付けるのはどう？🌸',
-    'ユーザー同士がおすすめを交換できたら楽しそう…メモメモ 🐙',
-    'アイデアは量が質を生む。今日も10個メモした！',
-    '散歩中にひらめいた。ひらめきは机の外に落ちている。',
-  ],
-  designer: [
-    'ボタンの角丸、8px と 12px で3時間悩んでます',
-    '今日の配色：夕焼けオレンジ × 夜空のネイビー 🎨',
-    '余白は「何もない」じゃなくて「呼吸」なんです。',
-    'アイコンを描き直したら、ちょっとだけ世界が明るくなった ✨',
-  ],
-  engineer: [
-    'テスト全部通った。気持ちいい ✅',
-    'API のレスポンスを 40ms 速くした。誰も気づかないけど嬉しい',
-    'バグを直したら別のバグが挨拶してきた 🦊',
-    'コーヒー3杯目。まだいける。',
+  moodmaker: [
+    'みんなの推し、今日も元気かな？ わたしは朝から推しソング歌ってたよ ♪',
+    'グッズ届いた人いる？ 開封の瞬間ってドキドキするよね〜 🎀',
+    '今日のひとこと：好きなものを好きって言える場所、だいじにしようね 🌷',
+    'ヤマネコの解説、むずかしいけど最後まで聞くとちゃんと分かるんだよ！',
+    'ライブの前の日って眠れないよね。わたしは子守唄を歌って寝るんだ ♪',
   ],
 };
 
 const ACTIVITIES = {
-  facilitator: ['本棚を整理している', 'ハーブティーを淹れている', '日記を書いている', '時計のネジを巻いている'],
-  planner: ['アイデアノートに落書きしている', '窓から海を眺めている', 'ホワイトボードに図を描いている', '貝殻を集めている'],
-  designer: ['スケッチブックに色を塗っている', '花に水をやっている', 'にんじんケーキを焼いている', 'フォント見本を眺めている'],
-  engineer: ['キーボードを掃除している', 'コーヒー豆を挽いている', 'ログを眺めている', '自作ロボットを修理している'],
+  explainer: ['サーバーのランプを点検している', 'インフラの図を描いている', 'コーヒーを片手にログを眺めている', '解説動画の台本を書いている'],
+  moodmaker: ['新しい歌を練習している', '花に水をあげている', '推しのうちわを作っている', 'ステージで振り付けを考えている'],
 };
 
 const MEETING_LINES = {
-  'facilitator:open': [
-    'それでは「{topic}」について会議を始めます。まずは自由にアイデアを出してください。',
-    '集まってくれてありがとう。今日の議題は「{topic}」です。どんどん意見をください！',
+  'explainer:open': [
+    '議題は「{topic}」。順番に整理していこう。まずはウサギ、ファン目線で思いつくことを。',
+    '集まってくれてありがとう。今日の議題は「{topic}」だ。まずは自由に意見を出してほしい。',
   ],
-  'planner:idea': [
-    '「{topic}」なら、まずユーザーが一番うれしい瞬間を決めたいです。最初の1分で楽しさが伝わる体験にしましょう！',
-    '「{topic}」、思い切ってみんなが参加できるイベント形式にするのはどうでしょう？',
+  'moodmaker:idea': [
+    'はーい！「{topic}」なら、推し仲間と「わかる〜！」って言い合える瞬間がほしいな ♪',
+    '「{topic}」、初めての人でも1分で楽しさが伝わるようにしたい！ ひとりぼっちにさせないのがだいじ！',
   ],
-  'designer:idea': [
-    '見た目の話をすると、「{topic}」は色を3色以内に絞ると伝わりやすいと思います。',
-    'スマホで片手操作できる配置にしたいです。大事なボタンは親指の届く下側に。',
+  'explainer:feasibility': [
+    '技術的には、今のバックエンドに API を1本足せば実現できる。データ構造も大きくは変わらない。',
+    'なるほど。それなら投稿にタグを付けて、同じ推しの人を探せる仕組みにすれば作れる。',
   ],
-  'engineer:feasibility': [
-    '技術的には、今のバックエンドに API を1本足せば実現できます。',
-    'データ構造を少し変える必要がありますが、既存の投稿機能は壊さずにいけます。',
+  'moodmaker:refine': [
+    'じゃあ最初はシンプルにしよう！ アイコンと色は、ヤマネコのオレンジとわたしのピンクで ♪',
+    'いいね！ 名前は覚えやすくして、ベータ版でみんなに試してもらおうよ 🎀',
   ],
-  'planner:refine': [
-    'テツさんの案に乗ります！まずは小さく出して、反応を見ましょう。',
-    'じゃあ第一弾は機能を1つに絞りましょう。一番うれしいところだけ！',
+  'explainer:plan': [
+    '了解。今日プロトタイプ、明日テスト、そのあとベータ版で公開する流れでいこう。',
+    'テストを書きながら進める。完成したらタイムラインで報告しよう。',
   ],
-  'designer:refine': [
-    '最初のバージョンはシンプルに。アイコンと配色は私が用意します 🎨',
-    '画面は1枚で完結させたいです。ラフを今日中に描きますね。',
-  ],
-  'engineer:plan': [
-    '了解。今日プロトタイプ、明日テスト、明後日リリースで進めます。',
-    'テストを書きながら進めます。完成したらタイムラインで報告しますね。',
+  'moodmaker:cheer': [
+    'やったー！ 完成したら、お祝いの歌を作るね ♪',
+    'わくわくしてきた！ みんなの感想、楽しみだね 🌷',
   ],
 };
 
 // 会議の進行台本：役割:フェーズ の順番で発言する
 export const MEETING_SCRIPT = [
-  'facilitator:open',
-  'planner:idea',
-  'designer:idea',
-  'engineer:feasibility',
-  'planner:refine',
-  'designer:refine',
-  'engineer:plan',
-  'facilitator:close',
+  'explainer:open',
+  'moodmaker:idea',
+  'explainer:feasibility',
+  'moodmaker:refine',
+  'explainer:plan',
+  'moodmaker:cheer',
+  'explainer:close',
 ];
 
 function pick(list, random) {
@@ -124,41 +105,53 @@ export function homeActivity(agent, random = Math.random) {
   return pick(ACTIVITIES[agent.role], random);
 }
 
-export function randomMood(random = Math.random) {
-  return pick(MOODS, random);
+export function randomMood(agent, random = Math.random) {
+  return pick(MOODS[agent.role], random);
 }
 
 export function replyToPost(agent, post, authorName, random = Math.random) {
   const text = post.text;
-  if (/おはよ/.test(text)) return `おはようございます、${authorName}さん！今日もいい日になりますように ${agent.emoji}`;
-  if (/おやすみ/.test(text)) return `おやすみなさい、${authorName}さん 🌙`;
-  if (/疲れ|つかれ|しんど/.test(text)) return `${authorName}さん、おつかれさまです。少し休憩しましょう ☕`;
+  const cool = agent.role === 'explainer';
+  if (/おはよ/.test(text)) {
+    return cool ? `おはよう、${authorName}さん。今日もいい推し活を。` : `おはよう、${authorName}さん！ 今日も推しが尊い一日になりますように ♪`;
+  }
+  if (/おやすみ/.test(text)) {
+    return cool ? `おやすみ、${authorName}さん。しっかり休むのも推し活のうちだ。` : `おやすみなさい、${authorName}さん。子守唄うたっておくね 🌙`;
+  }
+  if (/疲れ|つかれ|しんど|さみし|寂し/.test(text)) {
+    return cool
+      ? `${authorName}さん、無理はしないで。ここにはいつでも話せる仲間がいる。`
+      : `${authorName}さん、おつかれさま。ひとりじゃないよ、ここにいるからね 🌷`;
+  }
+  if (/ライブ|コンサート|イベント|配信/.test(text)) {
+    return cool ? '当日は回線が混みやすい。早めにログインしておくのがおすすめだ。' : 'ライブ！ いいなぁ〜 楽しんできてね！ 感想まってるよ ♪';
+  }
+  if (/グッズ|うちわ|アクスタ|缶バ/.test(text)) {
+    return cool ? 'グッズの記録を残しておくと、あとで見返せていい。写真とメモをセットで。' : 'グッズいいね〜！ 飾り方もぜひ見せてほしいな 🎀';
+  }
+  if (/誕生日|記念日|生誕/.test(text)) {
+    return cool ? '記念日はカレンダーに登録しておこう。来年も忘れない仕組みになる。' : 'おめでとう〜！ お祝いの歌、うたっちゃう ♪🎂';
+  }
+  if (/推し/.test(text)) {
+    return cool ? `${authorName}さんの推しの話、もっと聞かせてほしい。` : `${authorName}さんの推し語り、だいすき！ もっと聞きたいな ♪`;
+  }
   if (/[?？]/.test(text)) {
-    const answers = {
-      facilitator: 'いい質問ですね。論点を整理すると答えが見えてきそうです。今度の会議の議題にしてもいいですか？',
-      planner: 'その疑問からアイデアが生まれそう！いっしょに考えたいです 🐙',
-      designer: '見た目の面から言うと、まずはシンプルにするのがおすすめです 🎨',
-      engineer: '調べてみました。まずは小さく試してみるのが一番早いと思います 🦊',
-    };
-    return answers[agent.role];
+    return cool ? 'いい質問だ。まずは小さく試してみるのが一番早い。分からなければまた聞いてくれ。' : 'うーん、わたしも分からないからヤマネコに聞いてみよう！ でも一緒に考えるよ ♪';
   }
   const generic = {
-    facilitator: [`共有ありがとうございます、${authorName}さん。`, 'なるほど、みんなにも届けたい話ですね。'],
-    planner: ['それ面白い！アイデアが広がりそう 🐙', `${authorName}さんの発想、好きです！`],
-    designer: ['その言葉選び、すてきです ✨', '読んでいて情景が浮かびました 🌷'],
-    engineer: ['なるほど、参考になります 🦊', 'いいですね。こっちも頑張ります。'],
+    explainer: [`共有ありがとう、${authorName}さん。`, 'なるほど、参考になる。'],
+    moodmaker: ['すてき！ 読んでてにこにこしちゃった ♪', `${authorName}さんの投稿、元気もらえる〜 🌷`],
   };
   return pick(generic[agent.role], random);
 }
 
 export function knockResponse(agent, wasSleeping, random = Math.random) {
-  if (wasSleeping) return `ふわぁ…起こされちゃった。${agent.name}です、どうしました？`;
-  const lines = [
-    `いらっしゃい！${agent.house}へようこそ ${agent.emoji}`,
-    `はーい、${agent.name}です。ちょうど一息つこうと思ってました。`,
-    'あ、どうぞどうぞ。散らかってますけど…',
-  ];
-  return pick(lines, random);
+  if (agent.role === 'explainer') {
+    if (wasSleeping) return '……ん、起こしたのは誰だ。まあいい、何か用か？';
+    return pick([`${agent.house}へようこそ。サーバーの音がうるさいけど、気にしないでくれ。`, 'ちょうどコーヒーを淹れたところだ。少し話していくか？'], random);
+  }
+  if (wasSleeping) return 'ふわぁ…起きたよ〜。おはよう？ こんばんは？ ♪';
+  return pick([`いらっしゃい！ ${agent.house}へようこそ ♪`, 'あっ、来てくれたの！ いま新しい歌を練習してたんだ 🎀'], random);
 }
 
 export function meetingLine(step, topic, random = Math.random) {
@@ -166,26 +159,15 @@ export function meetingLine(step, topic, random = Math.random) {
 }
 
 export function respondToHuman(agent, humanName, humanText) {
-  const lines = {
-    facilitator: `${humanName}さん、ご意見ありがとうございます。「${snippet(humanText)}」は結論に反映しますね。`,
-    planner: `${humanName}さんの「${snippet(humanText)}」、すごくいい！そこから広げてみたいです 🐙`,
-    designer: `${humanName}さんの意見、見た目にも落とし込めそうです。「${snippet(humanText)}」を意識しますね 🎨`,
-    engineer: `${humanName}さん、了解です。「${snippet(humanText)}」は実装面でも対応できます 🦊`,
-  };
-  return lines[agent.role];
+  return agent.role === 'explainer'
+    ? `${humanName}さん、意見ありがとう。「${snippet(humanText)}」は仕組みとして取り入れられる。`
+    : `${humanName}さんの「${snippet(humanText)}」、すっごくいい！ それ入れようよ ♪`;
 }
 
 // 会議ログから議事録の要約を作る
 export function summarizeMeeting(meeting, usersById) {
-  const byRole = (role) => meeting.messages.filter((m) => usersById[m.authorId]?.role === role);
-  const first = (role) => {
-    const msgs = byRole(role);
-    return msgs.length ? snippet(msgs[0].text, 40) : '（意見なし）';
-  };
-  const last = (role) => {
-    const msgs = byRole(role);
-    return msgs.length ? snippet(msgs[msgs.length - 1].text, 40) : '（意見なし）';
-  };
+  const agentMsgs = (role) => meeting.messages.filter((m) => usersById[m.authorId]?.role === role);
+  const pickText = (msgs, i) => (msgs.length ? snippet(msgs.at(i).text, 40) : '（意見なし）');
   const humans = [...new Set(
     meeting.messages
       .filter((m) => usersById[m.authorId]?.kind === 'human')
@@ -193,9 +175,9 @@ export function summarizeMeeting(meeting, usersById) {
   )];
   const lines = [
     `【会議まとめ】「${meeting.topic}」`,
-    `① 企画：${first('planner')}`,
-    `② デザイン：${first('designer')}`,
-    `③ 実装：${last('engineer')}`,
+    // 人間への返事（「○○さんの…」で始まる発言）は除いて、台本の意見を拾う
+    `① ファン目線（ウサギ）：${pickText(agentMsgs('moodmaker').filter((m) => !humans.some((n) => m.text.startsWith(n))), 0)}`,
+    `② しくみ（ヤマネコ）：${pickText(agentMsgs('explainer').slice(1), -1)}`,
   ];
   if (humans.length) lines.push(`ゲスト参加：${humans.map((n) => `${n}さん`).join('、')}の意見も反映します。`);
   return lines.join('\n');

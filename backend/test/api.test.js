@@ -70,18 +70,19 @@ test('入力チェック', async () => {
   assert.equal((await call('/api/posts', { method: 'POST', body: { authorId: me.id, text: '   ' } })).status, 400);
   assert.equal((await call('/api/posts', { method: 'POST', body: { authorId: me.id, text: 'あ'.repeat(281) } })).status, 400);
   assert.equal((await call('/api/posts', { method: 'POST', body: { authorId: 'nobody', text: 'hi' } })).status, 404);
-  assert.equal((await call('/api/users', { method: 'POST', body: { name: 'ルリ' } })).status, 409);
+  assert.equal((await call('/api/users', { method: 'POST', body: { name: 'ヤマネコ' } })).status, 409);
   assert.equal((await call('/api/nothing')).status, 404);
 });
 
 test('サイドフロント：エージェントの家とノック', async () => {
   const { data: agents } = await call('/api/agents');
-  assert.equal(agents.length, 4);
+  assert.equal(agents.length, 2);
+  assert.deepEqual(agents.map((a) => a.name), ['ヤマネコ', 'ウサギ']);
   const id = agents[0].id;
   store.updateAgent(id, { status: 'sleeping' });
   const { data } = await call(`/api/agents/${id}/knock`, { method: 'POST' });
   assert.equal(data.agent.status, 'home', 'ノックで起きる');
-  assert.match(data.message, /起こされ/);
+  assert.match(data.message, /起こし|起きた/);
   const { data: detail } = await call(`/api/agents/${id}`);
   assert.ok(detail.diary.length >= 2);
   assert.ok(Array.isArray(detail.posts));
