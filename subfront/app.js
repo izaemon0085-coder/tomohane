@@ -2,6 +2,7 @@
 import {
   api, onServerEvents, getMe, login, escapeHtml, timeAgo, avatarHtml, headerHtml, toast,
 } from '/shared/api.js';
+import { speak, speakButtonHtml } from '/shared/speech.js';
 
 const $ = (sel) => document.querySelector(sel);
 const list = $('#meeting-list');
@@ -65,7 +66,7 @@ function renderMeeting() {
       <li class="msg ${msg.author.kind}">
         ${avatarHtml(msg.author, 36)}
         <div class="bubble"><span class="who">${escapeHtml(msg.author.name)}</span>
-        <span class="muted small">${timeAgo(msg.createdAt)}</span><p>${escapeHtml(msg.text)}</p></div>
+        <span class="muted small">${timeAgo(msg.createdAt)}</span>${speakButtonHtml(msg.id, `${msg.author.name}の発言を読み上げ`)}<p>${escapeHtml(msg.text)}</p></div>
       </li>`).join('') || '<li class="muted">みんなが席についています…</li>'}</ol>
     ${open ? `
       <form class="say" id="say-form">
@@ -129,6 +130,12 @@ view.addEventListener('submit', async (e) => {
 });
 
 view.addEventListener('click', async (e) => {
+  const speakBtn = e.target.closest('[data-speak]');
+  if (speakBtn) {
+    const msg = meetings.find((m) => m.id === selectedId)?.messages.find((x) => x.id === speakBtn.dataset.speak);
+    if (msg) speak(msg.text, msg.author, speakBtn);
+    return;
+  }
   if (e.target.id !== 'step-btn') return;
   try {
     await api(`/meetings/${selectedId}/step`, { method: 'POST' });

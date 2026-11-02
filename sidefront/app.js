@@ -2,6 +2,7 @@
 import {
   api, onServerEvents, escapeHtml, timeAgo, avatarHtml, headerHtml, STATUS_LABEL, toast,
 } from '/shared/api.js';
+import { speak, speakButtonHtml, stopSpeaking } from '/shared/speech.js';
 
 const town = document.querySelector('#town');
 const dialog = document.querySelector('#house-dialog');
@@ -42,7 +43,7 @@ async function renderDialog() {
     </div>
     <p>${escapeHtml(a.bio)}</p>
     <p><strong>${STATUS_LABEL[a.status]}</strong>：${escapeHtml(a.activity)}（気分：${escapeHtml(a.mood)}）</p>
-    ${lastSpeech ? `<p class="speech">${avatarHtml(a, 28)} 「${escapeHtml(lastSpeech)}」</p>` : ''}
+    ${lastSpeech ? `<p class="speech">${avatarHtml(a, 28)} 「${escapeHtml(lastSpeech)}」${speakButtonHtml('knock', `${a.name}のセリフを読み上げ`)}</p>` : ''}
     <div class="dlg-actions">
       <button class="btn" data-knock="${a.id}">✊ ノックする</button>
       ${a.status === 'meeting' ? '<a class="btn ghost" href="/sub/">🗣️ 会議室へ様子を見に行く</a>' : ''}
@@ -72,18 +73,26 @@ town.addEventListener('click', (e) => {
 
 dialog.addEventListener('click', async (e) => {
   if (e.target === dialog || e.target.closest('[data-close]')) dialog.close();
+  const speakBtn = e.target.closest('[data-speak]');
+  if (speakBtn && openAgentId) {
+    const a = await api(`/agents/${openAgentId}`);
+    speak(lastSpeech, a, speakBtn);
+    return;
+  }
   const knock = e.target.closest('[data-knock]');
   if (knock) {
     try {
       const res = await api(`/agents/${knock.dataset.knock}/knock`, { method: 'POST' });
       lastSpeech = res.message;
       await renderDialog();
+      speak(lastSpeech, res.agent, dialog.querySelector('[data-speak]')); // 【仮】ノックの返事を声で聞かせる
     } catch (err) {
       toast(err.message);
     }
   }
 });
 dialog.addEventListener('close', () => {
+  stopSpeaking();
   openAgentId = null;
   history.replaceState(null, '', location.pathname);
 });

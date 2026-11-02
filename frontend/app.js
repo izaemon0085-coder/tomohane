@@ -2,6 +2,7 @@
 import {
   api, onServerEvents, getMe, login, escapeHtml, timeAgo, avatarHtml, headerHtml, STATUS_LABEL,
 } from '/shared/api.js';
+import { speak, speakButtonHtml } from '/shared/speech.js';
 
 const $ = (sel) => document.querySelector(sel);
 const header = $('#header');
@@ -41,6 +42,7 @@ function postHtml(post, replies = []) {
         <div class="actions">
           <button class="action${liked ? ' liked' : ''}" data-like="${post.id}" aria-pressed="${Boolean(liked)}"
             aria-label="いいね ${post.likeCount}件">${liked ? '♥' : '♡'} ${post.likeCount}</button>
+          ${speakButtonHtml(post.id, `${a.name}さんの投稿を読み上げ`)}
           ${replies ? `<button class="action" data-reply="${post.id}">💬 返信${replies.length ? ` ${replies.length}` : ''}</button>` : ''}
         </div>
         ${replies && replies.length ? `<ol class="replies">${replies.map((r) => postHtml(r, null)).join('')}</ol>` : ''}
@@ -121,6 +123,12 @@ composer.addEventListener('submit', async (e) => {
 $('#cancel-reply').addEventListener('click', () => setReply(null));
 
 timeline.addEventListener('click', async (e) => {
+  const speakBtn = e.target.closest('[data-speak]');
+  if (speakBtn) {
+    const post = posts.find((p) => p.id === speakBtn.dataset.speak);
+    if (post) speak(post.text, post.author, speakBtn);
+    return;
+  }
   const likeBtn = e.target.closest('[data-like]');
   const replyBtn = e.target.closest('[data-reply]');
   if (replyBtn) {
