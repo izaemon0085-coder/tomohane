@@ -12,8 +12,11 @@ export async function api(path, { method = 'GET', body } = {}) {
 
 // サーバーからの変更通知を受け取り、コールバックごとにまとめて（デバウンスして）呼ぶ
 // 例: onServerEvents({ post: loadPosts, agent: loadAgents })
+// 1ページで接続は1本だけにして、画面と遊び場で共有する
+let sharedSource = null;
 export function onServerEvents(handlers, delay = 150) {
-  const source = new EventSource('/api/events');
+  sharedSource ||= new EventSource('/api/events');
+  const source = sharedSource;
   const timers = new Map();
   for (const [type, callback] of Object.entries(handlers)) {
     source.addEventListener(type, () => {

@@ -1,0 +1,95 @@
+/* キャラの遊び場：画面の下の帯をヤマネコとウサギが歩き回る */
+body.has-playground { padding-bottom: var(--pg-height, 120px); }
+
+.playground {
+  position: fixed; left: 0; right: 0; bottom: 0; height: var(--pg-height, 120px); z-index: 20;
+  pointer-events: none; /* 下の画面の操作をじゃましない */
+  background: linear-gradient(transparent, color-mix(in srgb, #9ccf7a 22%, transparent) 70%);
+}
+.playground::after { /* 地面 */
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 14px;
+  background: color-mix(in srgb, #8bc26a 45%, var(--bg));
+  border-top: 2px solid color-mix(in srgb, #6fa84f 50%, var(--bg));
+}
+
+.pg-char {
+  --size: 68px; --x: 0px; --facing: 1;
+  position: absolute; bottom: 12px; left: 0; z-index: 1;
+  width: var(--size); height: calc(var(--size) + 10px);
+  transform: translateX(var(--x));
+  border: none; background: none; padding: 0; cursor: pointer;
+  pointer-events: auto; font: inherit; color: var(--text);
+}
+.pg-char:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 12px; }
+.pg-body {
+  position: absolute; left: 0; bottom: 6px; width: var(--size); height: var(--size);
+  transform: scaleX(var(--facing)); transform-origin: center bottom;
+}
+.pg-body img { width: 100%; height: 100%; display: block; filter: drop-shadow(0 2px 2px rgb(0 0 0 / 15%)); }
+.pg-shadow {
+  position: absolute; left: 15%; right: 15%; bottom: 0; height: 8px; border-radius: 50%;
+  background: rgb(0 0 0 / 18%);
+}
+
+/* 歩く：ヤマネコはゆらゆら、ウサギはぴょんぴょん */
+.pg-char[data-action="walk"] .pg-body img { animation: pg-sway .6s ease-in-out infinite; }
+.pg-char[data-id="agent-usagi"][data-action="walk"] .pg-body img { animation: pg-hop .45s ease-in-out infinite; }
+.pg-char[data-action="play"] .pg-body img { animation: pg-hop .35s ease-in-out infinite; }
+.pg-char.pg-jump .pg-body { animation: pg-jump .6s cubic-bezier(.3, .7, .4, 1); }
+.pg-char.speaking .pg-body img { filter: drop-shadow(0 0 6px var(--accent)); }
+
+@keyframes pg-sway { 50% { transform: rotate(-6deg) translateY(-2px); } }
+/* 跳ねる高さはキャラの大きさに比例させる */
+@keyframes pg-hop { 50% { transform: translateY(calc(var(--size) * -0.2)); } }
+@keyframes pg-jump {
+  0% { translate: 0 0; }
+  40% { translate: 0 calc(var(--size) * -0.55); }
+  100% { translate: 0 0; }
+}
+
+/* お昼寝中 */
+.pg-zzz { display: none; position: absolute; top: -6px; right: -18px; font-size: .8rem; font-weight: 700; color: #7c86d8; }
+.pg-char[data-status="sleeping"] .pg-zzz { display: block; animation: pg-float 2s ease-in-out infinite; }
+.pg-char[data-status="sleeping"] .pg-body { transform: scaleX(var(--facing)) rotate(-80deg) translate(14px, 6px); }
+@keyframes pg-float { 50% { translate: 0 -6px; opacity: .6; } }
+
+/* 吹き出し */
+.pg-bubble {
+  position: absolute; bottom: calc(100% + 6px); left: 50%; translate: -50% 0;
+  width: max-content; max-width: min(240px, 70vw);
+  background: var(--surface); color: var(--text); border: 2px solid var(--border);
+  border-radius: 14px; padding: 6px 10px; font-size: .85rem; line-height: 1.4;
+  box-shadow: var(--shadow); text-align: left; white-space: normal; pointer-events: none;
+}
+.pg-bubble::after {
+  content: ""; position: absolute; top: 100%; left: 50%; translate: -50% 0;
+  border: 7px solid transparent; border-top-color: var(--border);
+}
+.pg-char[data-edge="left"] .pg-bubble { left: 0; translate: 0 0; }
+.pg-char[data-edge="left"] .pg-bubble::after { left: calc(var(--size) / 2); }
+.pg-char[data-edge="right"] .pg-bubble { left: auto; right: 0; translate: 0 0; }
+.pg-char[data-edge="right"] .pg-bubble::after { left: auto; right: calc(var(--size) / 2); translate: 50% 0; }
+.pg-char[data-id="agent-usagi"] .pg-bubble { border-color: color-mix(in srgb, var(--pink) 55%, var(--border)); }
+
+.playground-controls {
+  position: fixed; right: 12px; bottom: calc(var(--pg-height, 120px) + 6px); z-index: 21;
+  display: flex; gap: 6px; align-items: center;
+}
+.playground[hidden] + .playground-controls { bottom: 12px; }
+.playground-toggle, .pg-sizes {
+  border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  border-radius: 999px; box-shadow: var(--shadow); font-size: .85rem;
+}
+.playground-toggle { padding: 4px 10px; cursor: pointer; }
+.pg-sizes { display: flex; padding: 2px; }
+.pg-sizes[hidden] { display: none; }
+.pg-sizes button {
+  border: none; background: none; color: var(--muted); cursor: pointer;
+  padding: 2px 9px; border-radius: 999px; font: inherit;
+}
+.pg-sizes button[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); }
+.playground-toggle:focus-visible, .pg-sizes button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pg-char *, .pg-char { animation: none !important; }
+}
