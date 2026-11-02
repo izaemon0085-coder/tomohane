@@ -2,6 +2,8 @@
 // ・token は URL の「#」のうしろに入れる。# のうしろはサーバーの記録や、ほかのサイトへの Referer に残らない
 // ・封筒をタップしたら「とどいた」とサーバーに知らせる（送った人だけに届く）
 // ・送った人が「ためしに開く」ときは ?preview を付けるので、とどいた記録はしない
+import { DEFAULT_TYPEFACE, fontStack } from '/shared/typefaces.js';
+
 const $ = (sel) => document.querySelector(sel);
 const token = decodeURIComponent(location.hash.slice(1));
 const preview = new URLSearchParams(location.search).has('preview');
@@ -25,6 +27,11 @@ async function load() {
     return showError('いまはつながりません。少したってから、もう一度ひらいてね。');
   }
 
+  // 送った人が選んだ字体にする（てがき風は線が細いので、open.css で文字を少し大きくする）
+  if (letter.typeface && letter.typeface !== DEFAULT_TYPEFACE) {
+    document.documentElement.style.setProperty('--typeface', fontStack(letter.typeface));
+    document.documentElement.dataset.typeface = letter.typeface;
+  }
   document.title = `${letter.to}へのお手紙`;
   $('#to-line').textContent = `${letter.to}へ`;
   $('#to-small').textContent = `${letter.to}へ`;

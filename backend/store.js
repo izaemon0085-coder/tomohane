@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { SEED_AGENTS, MOODS } from './agents.js';
+import { DEFAULT_TYPEFACE, TYPEFACE_KEYS } from '../shared/typefaces.js';
 
 export const MAX_POST_LENGTH = 280;
 export const MAX_NAME_LENGTH = 20;
@@ -288,12 +289,13 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
     // ともはねのほかのユーザーには送らない。届け方は「紙の手紙＋QR」だけで、
     // QR の中の token を知っている人だけが受け取りページを開ける。
     // 一覧・ビデオの入れ替え・削除は、作ったときに一度だけ返す合言葉（key）がないとできない
-    createLetter({ authorId, to, from, note = '' }) {
+    createLetter({ authorId, to, from, note = '', typeface = DEFAULT_TYPEFACE }) {
       const author = requireUser(authorId);
       if (author.kind !== 'human') throw new HttpError(400, '手紙を書けるのは人間のユーザーだけです');
       if (state.letters.filter((l) => l.authorId === authorId).length >= MAX_LETTERS_PER_USER) {
         throw new HttpError(400, `手紙は${MAX_LETTERS_PER_USER}通までです。古い手紙を消してからつくってください`);
       }
+      if (!TYPEFACE_KEYS.includes(typeface)) throw new HttpError(400, '字体が正しくありません');
       const key = randomToken();
       const letter = {
         id: newId('l'),
@@ -304,6 +306,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
         from: cleanText(from, MAX_NAME_LENGTH, '差出人の名前'),
         note: note === '' || note == null ? '' : cleanText(note, MAX_NOTE_LENGTH, 'ひとこと'),
         paper: 'cream', // β版の便箋は1種類
+        typeface, // 便箋の画像と受け取りページの字体
         video: null,
         createdAt: now(),
         openedAt: null,

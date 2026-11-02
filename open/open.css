@@ -9,7 +9,8 @@
   --flap: #eccdae;
   --seal: #c9566a;
   --accent: #b8562a;
-  font-family: "Hiragino Maru Gothic ProN", "Hiragino Sans", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+  /* 字体は、送った人が手紙に選んだもの（--typeface は open.js が入れる） */
+  font-family: var(--typeface, "Hiragino Maru Gothic ProN", "Hiragino Sans", "Yu Gothic UI", "Meiryo", system-ui, sans-serif);
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -33,6 +34,7 @@ body {
   margin: 0; min-height: 100vh; display: flex; flex-direction: column;
   background: var(--bg); color: var(--text); line-height: 1.7; font-size: 18px;
 }
+html[data-typeface="klee"] body { font-size: 20px; }
 .open-page { flex: 1; width: 100%; max-width: 640px; margin: 0 auto; padding: 32px 16px; display: flex; flex-direction: column; justify-content: center; }
 .loading { text-align: center; color: var(--muted); }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }

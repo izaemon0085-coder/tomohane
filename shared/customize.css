@@ -90,6 +90,8 @@ html[data-font="l"] { font-size: 18px; }
 .kk-group { border: none; padding: 0; margin: 14px 0 0; }
 .kk-group legend { font-weight: 700; font-size: .95rem; margin-bottom: 6px; padding: 0; }
 .kk-options, .kk-swatches { display: flex; flex-wrap: wrap; gap: 6px; }
+.kk-typeface span { font-size: 1.05rem; }
+.kk-typeface input:checked + span { font-weight: 400; }
 .kk-chip input, .kk-swatch input { position: absolute; opacity: 0; pointer-events: none; }
 .kk-chip span {
   display: inline-block; padding: 4px 12px; border-radius: 999px; cursor: pointer;

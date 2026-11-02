@@ -3,6 +3,8 @@
 // ・手紙の合言葉（key）はこの端末の localStorage にだけ置く。合言葉がないと、一覧・削除はできない
 import { api, getMe, login, escapeHtml, timeAgo, headerHtml, toast, onServerEvents } from '/shared/api.js';
 import { qrMatrix, qrSvg, drawQr } from '/shared/qrcode.js';
+import { TYPEFACES, DEFAULT_TYPEFACE, fontStack, loadTypeface } from '/shared/typefaces.js';
+import { getDesign } from '/shared/customize.js';
 
 const $ = (sel) => document.querySelector(sel);
 const form = $('#letter-form');
@@ -10,7 +12,6 @@ const STORE_KEY = 'tomohane:letters';
 const MAX_SECONDS = 180;
 const MAX_BYTES = 200 * 1024 * 1024;
 const TYPE_BY_EXT = { mp4: 'video/mp4', m4v: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm' };
-const FONT = '"Hiragino Maru Gothic ProN", "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif';
 
 let me = getMe();
 let video = null; // { file, type }
@@ -59,6 +60,33 @@ function render() {
   $('#letter-app').hidden = !me;
   if (me && !form.elements.from.value) form.elements.from.value = me.name;
 }
+
+// ---- 2. 字体：はじめは、きせかえで選んでいる字体。見本は宛名で見せる ----
+function renderTypefaces() {
+  const current = getDesign().typeface || DEFAULT_TYPEFACE;
+  $('#typeface-options').innerHTML = TYPEFACES.map((t) => `<label class="typeface-option">
+      <input type="radio" name="typeface" value="${t.key}"${t.key === current ? ' checked' : ''}>
+      <span class="typeface-sample" style="font-family:${fontStack(t.key).replaceAll('"', "'")}"></span>
+      <span class="typeface-name">${t.label}</span>
+    </label>`).join('');
+  updateSamples();
+}
+function updateSamples() {
+  const to = form.elements.to.value.trim() || 'おばあちゃん';
+  for (const el of document.querySelectorAll('.typeface-sample')) el.textContent = `${to}へ`;
+}
+form.addEventListener('input', (e) => { if (e.target.name === 'to') updateSamples(); });
+form.addEventListener('change', (e) => {
+  if (e.target.name !== 'typeface') return;
+  const lines = {
+    system: ['yamaneko', 'ふつうの字。どのスマホでも、いちばん読みやすい。'],
+    zenmaru: ['usagi', 'まるくてやさしい字 ♪ ふんわりした手紙になるね！'],
+    klee: ['fukurou', 'ほう、手書きのような字。受け取りページでは、少し大きめに出しますぞ。'],
+    kiwi: ['shiba', 'ぽってりしてて、あったかいっす！'],
+  };
+  const [who, text] = lines[e.target.value] || [];
+  if (who) guide(who, text);
+});
 
 // ---- 1. 宛名など：電話番号や住所らしきものがあればフクロウが注意する ----
 const PRIVATE_PATTERNS = [
@@ -181,7 +209,8 @@ form.addEventListener('submit', async (e) => {
   status.textContent = 'お手紙をつくっています…';
   let letter;
   try {
-    letter = await api('/letters', { method: 'POST', body: { authorId: me.id, to, from, note } });
+    const typeface = form.elements.typeface?.value || DEFAULT_TYPEFACE;
+    letter = await api('/letters', { method: 'POST', body: { authorId: me.id, to, from, note, typeface } });
     writeSaved([...savedLetters(), { id: letter.id, key: letter.key, userId: me.id }]);
     progress.hidden = false;
     progress.value = 0;
@@ -207,6 +236,7 @@ form.addEventListener('submit', async (e) => {
   status.textContent = '';
   form.reset();
   form.elements.from.value = me.name;
+  updateSamples();
   clearVideo();
   await showResult({ ...letter, hasVideo: true }, letter.key);
   guide('shiba', `できたっす！ ${to}、きっと喜ぶっす！`);
@@ -274,6 +304,12 @@ async function download(canvas, name) {
   setTimeout(() => URL.revokeObjectURL(a.href), 10000);
 }
 
+// canvas の文字の書き方。字体ファイルには太字がないので、太字は「ふつう」の字体のときだけ使う
+function fontFor(letter, size, { bold = false } = {}) {
+  const key = letter.typeface || DEFAULT_TYPEFACE;
+  return `${bold && key === DEFAULT_TYPEFACE ? 'bold ' : ''}${size}px ${fontStack(key)}`;
+}
+
 // 便箋（A4 を 150dpi で）：ふちは推しカラー、手書き用の罫線、いちばん下に QR コード
 function paperCanvas({ letter, url }) {
   const W = 1240;
@@ -294,7 +330,7 @@ function paperCanvas({ letter, url }) {
   ctx.globalAlpha = 1;
 
   ctx.fillStyle = '#3d2e22';
-  ctx.font = `bold 60px ${FONT}`;
+  ctx.font = fontFor(letter, 64, { bold: true });
   ctx.fillText(`${letter.to}へ`, 120, 200);
 
   ctx.strokeStyle = '#e6d3bd';
@@ -306,7 +342,7 @@ function paperCanvas({ letter, url }) {
     ctx.stroke();
   }
 
-  ctx.font = `bold 48px ${FONT}`;
+  ctx.font = fontFor(letter, 50, { bold: true });
   ctx.textAlign = 'right';
   ctx.fillText(`${letter.from}より`, W - 120, 1300);
   ctx.textAlign = 'left';
@@ -322,12 +358,12 @@ function paperCanvas({ letter, url }) {
   ctx.setLineDash([]);
 
   ctx.fillStyle = '#6f5e50';
-  ctx.font = `bold 38px ${FONT}`;
+  ctx.font = fontFor(letter, 38, { bold: true });
   ctx.fillText('♡ さいごまで読んだら', 120, qy + 110);
   ctx.fillText('　シールをめくってね', 120, qy + 165);
-  ctx.font = `30px ${FONT}`;
+  ctx.font = fontFor(letter, 30);
   ctx.fillText('ビデオレターが見られます', 120, qy + 235);
-  ctx.font = `22px ${FONT}`;
+  ctx.font = fontFor(letter, 22);
   ctx.fillText('ともはね 手紙キット', 120, H - 90);
   return canvas;
 }
@@ -343,19 +379,23 @@ function qrCanvas({ letter, url }) {
   drawQr(ctx, qrMatrix(url), 50, 40, 700);
   ctx.textAlign = 'center';
   ctx.fillStyle = '#3d2e22';
-  ctx.font = `bold 44px ${FONT}`;
+  ctx.font = fontFor(letter, 44, { bold: true });
   ctx.fillText('めくると ビデオレター', W / 2, 820);
   ctx.fillStyle = '#6f5e50';
-  ctx.font = `30px ${FONT}`;
+  ctx.font = fontFor(letter, 30);
   ctx.fillText(`${letter.to}へ`, W / 2, 885);
   return canvas;
 }
 
-$('#save-paper').addEventListener('click', () => {
-  if (current) download(paperCanvas(current), `便箋_${current.letter.to}へ.png`);
+$('#save-paper').addEventListener('click', async () => {
+  if (!current) return;
+  await loadTypeface(current.letter.typeface);
+  download(paperCanvas(current), `便箋_${current.letter.to}へ.png`);
 });
-$('#save-qr').addEventListener('click', () => {
-  if (current) download(qrCanvas(current), `QR_${current.letter.to}へ.png`);
+$('#save-qr').addEventListener('click', async () => {
+  if (!current) return;
+  await loadTypeface(current.letter.typeface);
+  download(qrCanvas(current), `QR_${current.letter.to}へ.png`);
 });
 $('#copy-link').addEventListener('click', async () => {
   if (!current) return;
@@ -459,5 +499,6 @@ $('#login-form').addEventListener('submit', async (e) => {
 });
 
 render();
+renderTypefaces();
 loadMine();
 onServerEvents({ letter: loadMine });

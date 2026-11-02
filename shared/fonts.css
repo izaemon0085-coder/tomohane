@@ -1,0 +1,19 @@
+/* きせかえの字体（ファイルは shared/fonts/。使われたときにだけ読み込まれる） */
+@font-face {
+  font-family: "Zen Maru Gothic";
+  src: url("/shared/fonts/ZenMaruGothic-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Klee One";
+  src: url("/shared/fonts/KleeOne-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Kiwi Maru";
+  src: url("/shared/fonts/KiwiMaru-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}

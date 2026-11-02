@@ -29,6 +29,8 @@ const MIME = {
   '.ico': 'image/x-icon',
   '.webmanifest': 'application/manifest+json',
   '.webp': 'image/webp',
+  '.woff2': 'font/woff2',
+  '.txt': 'text/plain; charset=utf-8',
 };
 
 function publicUser(u) {
@@ -56,14 +58,17 @@ function meetingView(meeting, usersById) {
 // 作った人が見る手紙（合言葉のハッシュと、だれが作ったかは返さない）
 function letterOwnerView(l) {
   return {
-    id: l.id, token: l.token, to: l.to, from: l.from, note: l.note, paper: l.paper,
+    id: l.id, token: l.token, to: l.to, from: l.from, note: l.note, paper: l.paper, typeface: l.typeface ?? 'system',
     hasVideo: Boolean(l.video), videoSize: l.video?.size ?? null, createdAt: l.createdAt, openedAt: l.openedAt,
   };
 }
 
 // 受け取った人が見る手紙（QR から開く。id や作った人のユーザー情報は出さない）
 function letterOpenView(l) {
-  return { to: l.to, from: l.from, note: l.note, paper: l.paper, hasVideo: Boolean(l.video), createdAt: l.createdAt };
+  return {
+    to: l.to, from: l.from, note: l.note, paper: l.paper, typeface: l.typeface ?? 'system',
+    hasVideo: Boolean(l.video), createdAt: l.createdAt,
+  };
 }
 
 async function readJson(req) {

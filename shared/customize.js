@@ -1,7 +1,8 @@
-// きせかえ：推しカラー・背景のもよう・飾り・レイアウトを自分の好きに変えられる。
+// きせかえ：推しカラー・字体・背景のもよう・飾り・レイアウトを自分の好きに変えられる。
 // 設定はこのブラウザに保存する（β版。あとでアカウントに保存して、どの端末でも同じにできる）。
 import { api } from '/shared/api.js';
 import { opinionsFor, closingLines } from '/shared/kisekae-opinions.js';
+import { TYPEFACES, DEFAULT_TYPEFACE, fontStack } from '/shared/typefaces.js';
 
 const KEY = 'agent-sns:design';
 
@@ -28,10 +29,10 @@ const PATTERNS = [
 const MARKS = ['', '💖', '⭐', '🎀', '🌸', '👑', '🌙', '🐾', '🎤', '🍀'];
 const DEFAULTS = {
   color: '', pattern: 'none', mark: '', oshiName: '', sparkle: false, sticker: false,
-  side: 'auto', width: 'normal', card: 'round', font: 'm',
+  side: 'auto', width: 'normal', card: 'round', font: 'm', typeface: DEFAULT_TYPEFACE,
 };
 
-// ★β版は「推しカラー」だけ変えられる。もよう・飾り・レイアウトは作ってあるが、正式版まで隠しておく。
+// ★β版は「推しカラー」と「字体」だけ変えられる。もよう・飾り・レイアウトは作ってあるが、正式版まで隠しておく。
 //   正式版で全部使えるようにするときは false にする。
 export const BETA_COLOR_ONLY = true;
 
@@ -40,15 +41,20 @@ function readStored() {
 }
 function load() {
   const stored = readStored();
-  // β版では、前に保存した色以外の設定は使わない（保存はそのまま残すので、正式版で復活する）
-  return BETA_COLOR_ONLY ? { ...DEFAULTS, color: stored.color || '' } : { ...DEFAULTS, ...stored };
+  // β版では、前に保存した色と字体以外の設定は使わない（保存はそのまま残すので、正式版で復活する）
+  const typeface = TYPEFACES.some((t) => t.key === stored.typeface) ? stored.typeface : DEFAULT_TYPEFACE;
+  return BETA_COLOR_ONLY
+    ? { ...DEFAULTS, color: stored.color || '', typeface }
+    : { ...DEFAULTS, ...stored, typeface };
 }
 function save(d) {
-  const data = BETA_COLOR_ONLY ? { ...readStored(), color: d.color } : d;
+  const data = BETA_COLOR_ONLY ? { ...readStored(), color: d.color, typeface: d.typeface } : d;
   try { localStorage.setItem(KEY, JSON.stringify(data)); } catch { /* 保存できなくても見た目は変わる */ }
 }
 
 let design = load();
+// いまのきせかえ（手紙キットが、推しカラーや字体をそのまま使うため）
+export const getDesign = () => design;
 
 // ---- 色の計算 ----
 function hexToRgb(hex) {
@@ -111,6 +117,8 @@ export function applyDesign(d = design) {
   root.dataset.width = d.width;
   root.dataset.card = d.card;
   root.dataset.font = d.font;
+  if (d.typeface && d.typeface !== DEFAULT_TYPEFACE) root.style.setProperty('--typeface', fontStack(d.typeface));
+  else root.style.removeProperty('--typeface');
   root.toggleAttribute('data-sparkle', d.sparkle);
   root.toggleAttribute('data-sticker', d.sticker && Boolean(d.mark));
   renderBanner(d);
@@ -215,7 +223,7 @@ function renderPanel() {
         <button class="btn ghost" value="close" aria-label="閉じる">✕</button>
       </div>
       <p class="muted kk-note">${BETA_COLOR_ONLY
-        ? 'β版では「推しカラー」だけ変えられます。もようや飾り、レイアウトの変更は正式版でお楽しみに。設定はこのブラウザに保存されます。'
+        ? 'β版では「推しカラー」と「字体」を変えられます。もようや飾り、レイアウトの変更は正式版でお楽しみに。設定はこのブラウザに保存されます。'
         : '推しの色や飾りで、画面を自分好みにできます。設定はこのブラウザに保存されます。'}</p>
       <div class="kk-opinion" aria-live="polite"></div>
 
@@ -226,6 +234,13 @@ function renderPanel() {
             <input type="radio" name="color" value="${c.hex}"${d.color === c.hex ? ' checked' : ''}><span class="sr-only">${c.name}</span></label>`).join('')}
           <label class="kk-custom" title="好きな色を選ぶ">🎨<input type="color" name="customColor" value="${d.color || '#ec5f9a'}" aria-label="好きな色を選ぶ"></label>
         </div>
+      </fieldset>
+
+      <fieldset class="kk-group"><legend>字体</legend>
+        <div class="kk-options">
+          ${TYPEFACES.map((t) => `<label class="kk-chip kk-typeface"><input type="radio" name="typeface" value="${t.key}"${t.key === d.typeface ? ' checked' : ''}><span style="font-family:${fontStack(t.key).replaceAll('"', "'")}">${t.label}</span></label>`).join('')}
+        </div>
+        <p class="muted kk-note">手紙キットの便箋にも使えます。</p>
       </fieldset>
 
       ${BETA_COLOR_ONLY ? '' : `${radioGroup('pattern', '背景のもよう', PATTERNS, d.pattern)}
@@ -250,7 +265,7 @@ function renderPanel() {
       ${radioGroup('font', '文字の大きさ', [{ key: 's', label: '小' }, { key: 'm', label: '中' }, { key: 'l', label: '大' }], d.font)}`}
 
       <div class="kk-foot">
-        <button type="button" class="btn ghost" data-reset>${BETA_COLOR_ONLY ? 'はじめの色に戻す' : 'はじめの見た目に戻す'}</button>
+        <button type="button" class="btn ghost" data-reset>${BETA_COLOR_ONLY ? 'はじめの色と字体に戻す' : 'はじめの見た目に戻す'}</button>
         <button class="btn" value="close">できた！</button>
       </div>
     </form>`;

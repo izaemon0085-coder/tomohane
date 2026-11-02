@@ -308,7 +308,8 @@ test('手紙キット：つくる → 合言葉がないと見られない → �
 
   const { status: s2, data: view } = await call(`/api/open/${letter.token}`);
   assert.equal(s2, 200);
-  assert.deepEqual(Object.keys(view).sort(), ['createdAt', 'from', 'hasVideo', 'note', 'paper', 'to']);
+  assert.deepEqual(Object.keys(view).sort(), ['createdAt', 'from', 'hasVideo', 'note', 'paper', 'to', 'typeface']);
+  assert.equal(view.typeface, 'system', '字体を選ばなければ、ふつうの字体');
   assert.equal(view.to, 'おばあちゃん');
   assert.equal((await call('/api/open/nonexistent-token-123456')).status, 404);
 
@@ -395,4 +396,21 @@ test('QR コード：URL の長さに合わせて大きさが決まり、3つの
   assert.ok(finder(short, 0, 0) && finder(short, 0, short.length - 7) && finder(short, short.length - 7, 0));
   assert.equal(qrMatrix('a'.repeat(200)).length, 57, '型番10');
   assert.throws(() => qrMatrix('a'.repeat(300)), /長すぎ/);
+});
+
+test('字体：手紙に選んだ字体が受け取りページに伝わり、字体のファイルが配信される', async () => {
+  const { data: letter } = await makeLetter('字体の人', { typeface: 'klee' });
+  assert.equal(letter.typeface, 'klee');
+  assert.equal((await call(`/api/open/${letter.token}`)).data.typeface, 'klee');
+  assert.equal((await makeLetter('字体の人', { typeface: 'comic-sans' })).status, 400, '一覧にない字体は使えない');
+
+  for (const file of ['ZenMaruGothic-Regular.woff2', 'KleeOne-Regular.woff2', 'KiwiMaru-Regular.woff2']) {
+    const res = await fetch(`${base}/shared/fonts/${file}`);
+    assert.equal(res.status, 200, file);
+    assert.equal(res.headers.get('content-type'), 'font/woff2');
+    await res.arrayBuffer();
+  }
+  const css = await (await fetch(`${base}/shared/fonts.css`)).text();
+  assert.match(css, /Klee One/);
+  assert.equal((await fetch(`${base}/shared/fonts/OFL-KleeOne.txt`)).status, 200, 'ライセンス文も一緒に置く');
 });

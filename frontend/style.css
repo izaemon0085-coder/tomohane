@@ -155,6 +155,15 @@ html[data-oshi-color] .oshi-hero { color: var(--accent-text); }
 }
 .paper-sample span { height: 2px; background: #e6d3bd; }
 .paper-sample .qr-spot { position: absolute; right: 7px; bottom: 7px; width: 20px; height: 20px; background: repeating-conic-gradient(#3d2e22 0 25%, #fff 0 50%) 0 0 / 6px 6px; border: 1px dashed var(--accent); }
+.typeface-group { border: 0; padding: 0; margin: 14px 0 0; min-width: 0; }
+.typeface-group legend { font-size: .9rem; font-weight: 700; padding: 0; margin-bottom: 6px; }
+.typeface-options { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; }
+.typeface-option { position: relative; display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 2px solid var(--border); border-radius: 12px; cursor: pointer; background: var(--surface); }
+.typeface-option input { position: absolute; opacity: 0; pointer-events: none; }
+.typeface-option:has(input:checked) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--surface)); }
+.typeface-option:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.typeface-sample { font-size: 1.25rem; overflow-wrap: anywhere; }
+.typeface-name { font-size: .8rem; color: var(--muted); }
 .video-pick { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; cursor: pointer; }
 .video-pick:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
 .video-preview { display: block; width: 100%; max-height: 360px; margin-top: 10px; border-radius: 12px; background: #000; }
