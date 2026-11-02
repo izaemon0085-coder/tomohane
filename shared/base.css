@@ -57,7 +57,8 @@ button, input, textarea { font: inherit; color: inherit; }
 }
 .nav a:hover { background: var(--surface-2); color: var(--text); }
 .nav a[aria-current="page"] { background: var(--accent); color: var(--accent-text); }
-.me { margin-left: auto; font-size: .9rem; color: var(--muted); }
+.kisekae-btn { margin-left: auto; }
+.me { font-size: .9rem; color: var(--muted); }
 
 .page { max-width: 1080px; margin: 0 auto; padding: 20px 16px 64px; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }

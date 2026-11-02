@@ -1,0 +1,112 @@
+/* きせかえ：推しカラー・もよう・飾り・レイアウト（設定は shared/customize.js が html の属性に入れる） */
+
+/* ---- 推しカラー：背景やふちを推しの色でほんのり染める ---- */
+html[data-oshi-color] {
+  --bg: color-mix(in srgb, var(--oshi) 9%, #fffaf6);
+  --surface-2: color-mix(in srgb, var(--oshi) 11%, #ffffff);
+  --border: color-mix(in srgb, var(--oshi) 24%, #ece6e0);
+  --pink: var(--oshi);
+}
+@media (prefers-color-scheme: dark) {
+  html[data-oshi-color] {
+    --bg: color-mix(in srgb, var(--oshi) 12%, #17141a);
+    --surface: color-mix(in srgb, var(--oshi) 6%, #221e25);
+    --surface-2: color-mix(in srgb, var(--oshi) 16%, #2a2530);
+    --border: color-mix(in srgb, var(--oshi) 30%, #3a3440);
+  }
+}
+a, .brand { color: var(--accent-ink, var(--accent)); }
+
+/* ---- 背景のもよう ---- */
+body {
+  background-image: var(--pattern-image, none);
+  background-size: var(--pattern-size, auto);
+  background-attachment: fixed;
+}
+
+/* ---- 推しマーク ---- */
+.brand::before { content: var(--oshi-mark, ""); }
+html[data-sticker] .card:not(dialog) { position: relative; }
+html[data-sticker] .card:not(dialog)::after {
+  content: var(--oshi-mark); position: absolute; top: -10px; right: 10px;
+  font-size: 1.2rem; transform: rotate(12deg); pointer-events: none;
+  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 20%));
+}
+
+/* ---- 推しの名前のバナー ---- */
+.oshi-banner {
+  text-align: center; font-weight: 700; padding: 6px 16px; font-size: .95rem;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 22%, transparent), transparent);
+  color: var(--accent-ink, var(--accent)); overflow-wrap: anywhere;
+}
+
+/* ---- キラキラのヘッダー ---- */
+html[data-sparkle] .site-header {
+  background:
+    radial-gradient(circle at 12% 30%, #fff 0 1.5px, transparent 2px),
+    radial-gradient(circle at 38% 70%, #fff 0 1.2px, transparent 1.7px),
+    radial-gradient(circle at 63% 25%, #fff 0 1.8px, transparent 2.3px),
+    radial-gradient(circle at 88% 65%, #fff 0 1.3px, transparent 1.8px),
+    linear-gradient(110deg, color-mix(in srgb, var(--accent) 30%, var(--surface)), color-mix(in srgb, var(--pink) 25%, var(--surface)));
+  animation: kk-twinkle 3s ease-in-out infinite;
+}
+@keyframes kk-twinkle { 50% { filter: brightness(1.06) saturate(1.1); } }
+
+/* ---- レイアウト：サイドの欄の位置 ---- */
+html[data-side="left"] .layout { grid-template-columns: 280px minmax(0, 1fr); }
+html[data-side="left"] .layout > .side { order: -1; }
+html[data-side="right"] .room-layout { grid-template-columns: minmax(0, 1fr) 300px; }
+html[data-side="right"] .room-layout > aside { order: 2; }
+@media (max-width: 800px) {
+  html[data-side] .layout, html[data-side] .room-layout { grid-template-columns: 1fr; }
+}
+
+/* ---- レイアウト：画面の幅 ---- */
+html[data-width="narrow"] .page, html[data-width="narrow"] .site-header .inner { max-width: 860px; }
+html[data-width="wide"] .page, html[data-width="wide"] .site-header .inner { max-width: 1400px; }
+
+/* ---- カードの形 ---- */
+html[data-card="soft"] { --radius: 24px; }
+html[data-card="square"] { --radius: 4px; }
+
+/* ---- 文字の大きさ ---- */
+html[data-font="s"] { font-size: 14px; }
+html[data-font="l"] { font-size: 18px; }
+
+/* ---- ヘッダーのきせかえボタン ---- */
+.kisekae-btn {
+  border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  border-radius: 999px; padding: 4px 12px; cursor: pointer; font-size: .9rem;
+}
+.kisekae-btn:hover { background: var(--surface-2); }
+.kisekae-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ---- きせかえパネル ---- */
+.kisekae { width: min(520px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 20px; color: var(--text); }
+.kisekae::backdrop { background: rgb(0 0 0 / 40%); }
+.kk-head { display: flex; justify-content: space-between; align-items: center; }
+.kk-head h2 { margin: 0; font-size: 1.2rem; }
+.kk-note { font-size: .85rem; margin: 4px 0 8px; }
+.kk-group { border: none; padding: 0; margin: 14px 0 0; }
+.kk-group legend { font-weight: 700; font-size: .95rem; margin-bottom: 6px; padding: 0; }
+.kk-options, .kk-swatches { display: flex; flex-wrap: wrap; gap: 6px; }
+.kk-chip input, .kk-swatch input { position: absolute; opacity: 0; pointer-events: none; }
+.kk-chip span {
+  display: inline-block; padding: 4px 12px; border-radius: 999px; cursor: pointer;
+  background: var(--surface-2); border: 2px solid transparent; font-size: .9rem;
+}
+.kk-chip input:checked + span { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, var(--surface)); font-weight: 700; }
+.kk-chip input:focus-visible + span, .kk-swatch input:focus-visible ~ *, .kk-swatch:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.kk-swatch {
+  position: relative; width: 34px; height: 34px; border-radius: 50%; cursor: pointer;
+  background: var(--sw); border: 3px solid var(--surface); box-shadow: 0 0 0 1px var(--border);
+}
+.kk-swatch:has(input:checked) { box-shadow: 0 0 0 3px var(--text); }
+.kk-default { width: auto; padding: 0 10px; border-radius: 999px; display: grid; place-items: center; font-size: .8rem; background: var(--surface-2); }
+.kk-custom { display: flex; align-items: center; gap: 4px; cursor: pointer; padding: 0 6px; border-radius: 999px; background: var(--surface-2); }
+.kk-custom input { width: 32px; height: 28px; border: none; background: none; padding: 0; cursor: pointer; }
+.kk-field { display: grid; gap: 4px; font-size: .9rem; margin-bottom: 8px; }
+.kk-check { display: flex; gap: 8px; align-items: center; font-size: .9rem; margin: 4px 0; }
+.kk-foot { display: flex; justify-content: space-between; gap: 8px; margin-top: 18px; flex-wrap: wrap; }
+
+@media (prefers-reduced-motion: reduce) { html[data-sparkle] .site-header { animation: none; } }

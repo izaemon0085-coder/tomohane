@@ -88,6 +88,7 @@ export function headerHtml(current) {
       ${link('/side/', '🏡 エージェントの家', 'side')}
       ${link('/sub/', '🗣️ 会議室', 'sub')}
     </nav>
+    <button type="button" class="kisekae-btn" data-open-customize title="推しカラーや飾りで画面をきせかえ">🎨 きせかえ</button>
     <span class="me">${me ? `${escapeHtml(me.name)} さん` : '未ログイン'}</span>
   </div>`;
 }
