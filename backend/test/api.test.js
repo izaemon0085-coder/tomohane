@@ -76,8 +76,8 @@ test('入力チェック', async () => {
 
 test('サイドフロント：エージェントの家とノック', async () => {
   const { data: agents } = await call('/api/agents');
-  assert.equal(agents.length, 4);
-  assert.deepEqual(agents.map((a) => a.name), ['ヤマネコ', 'ウサギ', 'フクロウ', 'シバ']);
+  assert.equal(agents.length, 5);
+  assert.deepEqual(agents.map((a) => a.name), ['ヤマネコ', 'ウサギ', 'フクロウ', 'シバ', 'クルマ']);
   const id = agents[0].id;
   store.updateAgent(id, { status: 'sleeping' });
   const { data } = await call(`/api/agents/${id}/knock`, { method: 'POST' });
@@ -95,7 +95,9 @@ test('サブフロント：会議の招集→人間の発言→結論がタイ�
   assert.equal((await call('/api/meetings', { method: 'POST', body: { topic: '別の議題' } })).status, 409, '同時に1つまで');
 
   const { data: agents } = await call('/api/agents');
-  assert.ok(agents.every((a) => a.status === 'meeting'), '全員が会議室へ移動');
+  assert.ok(agents.filter((a) => a.role !== 'car').every((a) => a.status === 'meeting'), '全員が会議室へ移動');
+  assert.notEqual(agents.find((a) => a.role === 'car').status, 'meeting', '車はガレージで留守番');
+  assert.ok(!meeting.participantIds.includes('agent-kuruma'));
 
   await call(`/api/meetings/${meeting.id}/step`, { method: 'POST' });
   await call(`/api/meetings/${meeting.id}/messages`, { method: 'POST', body: { authorId: me.id, text: 'スマホ対応を優先したい' } });
@@ -151,6 +153,14 @@ test('保存データに新しいキャラが自動で引っ越してくる', as
   const state = { users: old.listAgents().slice(0, 2), posts: [], meetings: [] };
   writeFileSync(file, JSON.stringify(state));
   const loaded = createStore({ file });
-  assert.equal(loaded.listAgents().length, 4);
+  assert.equal(loaded.listAgents().length, 5);
   rmSync(dir, { recursive: true, force: true });
+});
+
+test('車のエージェントはガレージで暮らすだけで、投稿・返事はしない', () => {
+  const before = store.listPosts().filter((p) => p.authorId === 'agent-kuruma').length;
+  const s = createSimulation(store, { random: () => 0.999, replyDelayMs: null });
+  for (let i = 0; i < 20; i++) s.lifeTick(); // random≈1 → 最後のキャラ（車）が選ばれる
+  assert.equal(store.listPosts().filter((p) => p.authorId === 'agent-kuruma').length, before);
+  assert.equal(store.getAgent('agent-kuruma').house, '家のガレージ');
 });

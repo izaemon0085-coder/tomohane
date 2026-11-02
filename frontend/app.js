@@ -70,7 +70,7 @@ async function loadPosts() {
 let agents = [];
 async function loadAgents() {
   agents = await api('/agents');
-  $('#agent-list').innerHTML = agents.map((a) => `<li>
+  $('#agent-list').innerHTML = agents.filter((a) => a.role !== 'car').map((a) => `<li>
     ${avatarHtml(a, 36, { speak: a.id, label: `${a.name}の自己紹介を聞く` })}
     <div><a href="/side/#${a.id}">${escapeHtml(a.name)}</a> <span class="badge">${escapeHtml(a.roleLabel)}</span>
     <div class="status muted">${STATUS_LABEL[a.status]}・${escapeHtml(a.activity)}</div></div>

@@ -49,3 +49,37 @@
 .house-dialog h3 { font-size: .95rem; margin: 16px 0 6px; }
 .mini-posts { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; font-size: .9rem; }
 .mini-posts li { background: var(--surface-2); padding: 8px 10px; border-radius: 10px; white-space: pre-wrap; }
+
+/* ガレージ（車のエージェントの住まい） */
+.garage-area { margin-top: 36px; }
+.garage-area h2 { margin: 0 0 4px; font-size: 1.2rem; }
+.garage-area > p { margin: 0 0 16px; }
+.garage { --c: #4a7fc1; max-width: 560px; cursor: pointer; }
+.garage-roof {
+  background: color-mix(in srgb, var(--c) 75%, #333); color: #fff; font-weight: 700; font-size: .85rem;
+  padding: 8px 16px; border-radius: var(--radius) var(--radius) 0 0;
+  clip-path: polygon(4% 0, 96% 0, 100% 100%, 0 100%);
+  text-align: center;
+}
+.garage-body {
+  display: grid; grid-template-columns: 200px 1fr; gap: 16px; align-items: center;
+  background: var(--surface); border: 1px solid var(--border); border-top: none;
+  border-radius: 0 0 var(--radius) var(--radius); box-shadow: var(--shadow); padding: 14px;
+}
+@media (max-width: 520px) { .garage-body { grid-template-columns: 1fr; } }
+.garage-door {
+  position: relative; height: 120px; border-radius: 8px; overflow: hidden;
+  background: linear-gradient(#3b3f4a, #23262d); display: grid; place-items: end center;
+}
+.garage-door .car { width: 120px; height: 120px; margin-bottom: -10px; }
+/* シャッター：眠っている（エンジン停止）ときは閉まる */
+.shutter {
+  position: absolute; inset: 0; transform: translateY(-100%); transition: transform .6s ease;
+  background: repeating-linear-gradient(#b8bec9 0 10px, #9aa1ad 10px 12px);
+}
+.garage[data-status="sleeping"] .shutter { transform: translateY(0); }
+.garage-info h3 { margin: 0; font-size: 1.1rem; }
+.garage-info .meta { font-size: .85rem; }
+.garage-info .activity { font-size: .9rem; margin: 4px 0 8px; }
+.garage-info .door { font-size: .85rem; font-weight: 600; }
+@media (prefers-reduced-motion: reduce) { .shutter { transition: none; } }

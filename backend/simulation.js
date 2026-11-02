@@ -10,7 +10,9 @@ export function createSimulation(store, {
   clock = () => new Date(),
 } = {}) {
   const timers = [];
-  const awakeAgents = () => store.listAgents().filter((a) => a.status === 'home');
+  // 車（ガレージ）は投稿・返事・会議に出てこないので、交流するのは isSocialAgent のキャラだけ
+  const socialAgents = () => store.listAgents().filter(brain.isSocialAgent);
+  const awakeAgents = () => socialAgents().filter((a) => a.status === 'home');
 
   // ---------- 家での暮らし ----------
   function lifeTick() {
@@ -22,6 +24,19 @@ export function createSimulation(store, {
       if (random() < 0.5) {
         store.updateAgent(agent.id, { status: 'home', mood: brain.randomMood(agent, random), activity: '伸びをしている' });
         store.addDiary(agent.id, '目が覚めた');
+      }
+      return;
+    }
+
+    // 車はガレージでのんびり過ごすだけ（投稿・返事・いいねはしない）
+    if (!brain.isSocialAgent(agent)) {
+      if (random() < 0.8) {
+        const activity = brain.homeActivity(agent, random);
+        store.updateAgent(agent.id, { activity, mood: brain.randomMood(agent, random) });
+        store.addDiary(agent.id, activity.replace(/ている$/, 'た'));
+      } else {
+        store.updateAgent(agent.id, { status: 'sleeping', activity: 'エンジンを止めて休んでいる' });
+        store.addDiary(agent.id, 'エンジンを止めた');
       }
       return;
     }
@@ -80,7 +95,7 @@ export function createSimulation(store, {
   // トゲのある言葉→フクロウ（寝ていても起きる）、はじめての投稿・さみしい投稿→シバ、ほかは起きている誰か
   function chooseResponder(post) {
     const roles = brain.preferredResponderRoles(post, { isFirstPost: !post.replyTo && isFirstPostOf(post) });
-    const agents = store.listAgents();
+    const agents = socialAgents();
     for (const role of roles) {
       const agent = agents.find((a) => a.role === role && a.status !== 'meeting');
       if (!agent) continue;
@@ -122,7 +137,7 @@ export function createSimulation(store, {
   // ---------- 会議室 ----------
   function startMeeting({ topic, createdBy }) {
     if (store.openMeeting()) throw new HttpError(409, '会議室は使用中です。いまの会議が終わるまで待ってください');
-    const agents = store.listAgents();
+    const agents = socialAgents(); // 車はガレージで留守番
     const meeting = store.createMeeting({ topic, createdBy, participantIds: agents.map((a) => a.id) });
     for (const a of agents) {
       if (a.status === 'sleeping') store.addDiary(a.id, '会議に呼ばれて起きた');

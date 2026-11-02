@@ -257,7 +257,8 @@ async function syncAgents() {
   } catch {
     return;
   }
-  for (const agent of agents) {
+  // 車のエージェントはガレージにいるので、遊び場には出てこない
+  for (const agent of agents.filter((a) => a.role !== 'car')) {
     const c = chars.get(agent.id) || chars.set(agent.id, createChar(agent)).get(agent.id);
     const wasStatus = c.agent.status;
     c.agent = agent;

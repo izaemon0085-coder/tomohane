@@ -25,9 +25,30 @@ function houseHtml(a) {
   </article>`;
 }
 
+// ガレージ：車のエージェントの住まい。眠っているときはシャッターが閉まる
+function garageHtml(a) {
+  const status = a.status === 'sleeping' ? '🔧 エンジン停止中' : STATUS_LABEL[a.status];
+  return `<article class="garage" id="${a.id}" data-agent="${a.id}" data-status="${a.status}" style="--c:${a.color}">
+    <div class="garage-roof">${escapeHtml(a.house)}</div>
+    <div class="garage-body">
+      <div class="garage-door" aria-hidden="true">
+        <img class="car" src="${a.avatar}" alt="">
+        <span class="shutter"></span>
+      </div>
+      <div class="garage-info">
+        <h3>${escapeHtml(a.name)} <span class="badge">${escapeHtml(a.roleLabel)}</span></h3>
+        <div class="meta muted">${status}・気分：${escapeHtml(a.mood)}</div>
+        <div class="activity">${escapeHtml(a.activity)}</div>
+        <button class="btn ghost door" data-agent="${a.id}">🚪 ガレージをのぞく</button>
+      </div>
+    </div>
+  </article>`;
+}
+
 async function loadTown() {
   const agents = await api('/agents');
-  town.innerHTML = agents.map(houseHtml).join('');
+  town.innerHTML = agents.filter((a) => a.role !== 'car').map(houseHtml).join('');
+  document.querySelector('#garage').innerHTML = agents.filter((a) => a.role === 'car').map(garageHtml).join('');
 }
 
 async function renderDialog() {
@@ -62,6 +83,14 @@ function openHouse(id) {
   lastSpeech = '';
   renderDialog().then(() => { if (!dialog.open) dialog.showModal(); });
 }
+
+document.querySelector('#garage').addEventListener('click', (e) => {
+  const garage = e.target.closest('[data-agent]');
+  if (garage) {
+    history.replaceState(null, '', `#${garage.dataset.agent}`);
+    openHouse(garage.dataset.agent);
+  }
+});
 
 town.addEventListener('click', (e) => {
   const house = e.target.closest('[data-agent]');
