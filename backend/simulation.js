@@ -167,7 +167,7 @@ export function createSimulation(store, {
     const today = kondate.todayMenu(menu, clock());
     const total = menu.days.reduce((sum, d) => sum + (Number(d.cost) || 0), 0);
     const talk = brain.kondateTalk({
-      today: today && { ...today, dinner: kondate.dishName(today.dinner) },
+      today: today && { ...today, dinner: kondate.mainDish(today.dinner) },
       total, days: menu.days.length, period: menu.period || '献立',
     });
     const usable = (id) => { try { return store.getAgent(id).status !== 'meeting'; } catch { return false; } };
@@ -187,7 +187,7 @@ export function createSimulation(store, {
       url: kondate.YARIKURI_URL,
       createdAt: latestMenu.createdAt,
       period: latestMenu.period,
-      todayDinner: today ? kondate.dishName(today.dinner) : null,
+      todayDinner: today ? kondate.mainDish(today.dinner) : null,
     };
   }
 

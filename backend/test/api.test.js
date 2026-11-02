@@ -267,3 +267,9 @@ test('やりくり献立と連結：新しい献立ができたら、キャラ�
   assert.equal(summary.linked, true);
   assert.equal(summary.todayDinner, '肉じゃが');
 });
+
+test('やりくり献立：料理がいくつも並ぶときは、主な料理だけにする', async () => {
+  const { mainDish } = await import('../kondate.js');
+  assert.equal(mainDish('鶏むね肉の照り焼きとキャベツの千切り、玉ねぎと卵のスープ、ご飯（鶏むね肉・キャベツ）'), '鶏むね肉の照り焼きとキャベツの千切り など');
+  assert.equal(mainDish('カレー（豚こま）'), 'カレー');
+});

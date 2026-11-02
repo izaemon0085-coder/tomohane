@@ -350,7 +350,7 @@ export function kondateTalk({ today, total, days, period }) {
   return {
     post: { agentId: 'agent-usagi', text: `やりくり献立に新しい献立ができたよ〜！ きょうの晩ごはんは「${dinner}」だって ♪ おいしそう！` },
     replies: [
-      { agentId: 'agent-yamaneko', text: `${period}（${days}日分）で食費は約${yen}円。特売品をちゃんと使っている。やりくり上手だ。` },
+      { agentId: 'agent-yamaneko', text: `${period}の食費は約${yen}円。予算を考えて作られた献立だ。やりくり上手だな。` },
       { agentId: 'agent-shiba', text: 'ごはんしっかり食べて、推し活もがんばるっす！ おなか鳴ってきたっす！' },
     ],
   };

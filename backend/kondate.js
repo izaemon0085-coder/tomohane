@@ -31,3 +31,10 @@ export function todayMenu(menu, today = new Date()) {
 export function dishName(text = '') {
   return String(text).replace(/[（(][^）)]*[）)]/g, '').trim() || String(text);
 }
+
+// いくつかの料理が並んでいるときは、主な料理（最初の1つ）だけにして「など」を付ける
+export function mainDish(text = '') {
+  const dishes = dishName(text).split(/[、,，]/).map((d) => d.trim()).filter(Boolean);
+  if (!dishes.length) return '';
+  return dishes.length > 1 ? `${dishes[0]} など` : dishes[0];
+}
