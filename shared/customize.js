@@ -39,16 +39,18 @@ export const BETA_COLOR_ONLY = true;
 function readStored() {
   try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch { return {}; }
 }
-// 保存した値は、決まった形のものだけ使う（ほかのスクリプトが書きかえても、画面の HTML に入らないように）
+// 色・もよう・推しマークは、決まった形のものだけ使う（保存した値も、画面で選んだ値も）
+// ほかのスクリプトが書きかえても、パネルの HTML に入らないように
 const isColor = (v) => typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v);
+function clean(d) {
+  const out = { ...d };
+  if ('color' in out) out.color = isColor(out.color) ? out.color : '';
+  if ('pattern' in out) out.pattern = PATTERNS.some((p) => p.key === out.pattern) ? out.pattern : DEFAULTS.pattern;
+  if ('mark' in out) out.mark = MARKS.includes(out.mark) ? out.mark : DEFAULTS.mark;
+  return out;
+}
 function load() {
-  const raw = readStored();
-  const stored = {
-    ...raw,
-    color: isColor(raw.color) ? raw.color : '',
-    pattern: PATTERNS.some((p) => p.key === raw.pattern) ? raw.pattern : DEFAULTS.pattern,
-    mark: MARKS.includes(raw.mark) ? raw.mark : DEFAULTS.mark,
-  };
+  const stored = clean({ color: '', pattern: DEFAULTS.pattern, mark: DEFAULTS.mark, ...readStored() });
   // β版では、前に保存した色と字体以外の設定は使わない（保存はそのまま残すので、正式版で復活する）
   const typeface = TYPEFACES.some((t) => t.key === stored.typeface) ? stored.typeface : DEFAULT_TYPEFACE;
   return BETA_COLOR_ONLY
@@ -151,7 +153,7 @@ function renderBanner(d) {
 }
 
 function update(patch) {
-  design = { ...design, ...patch };
+  design = { ...design, ...clean(patch) };
   save(design);
   applyDesign();
   syncPanel();
