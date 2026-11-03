@@ -3,7 +3,7 @@ import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createStore, HttpError } from './store.js';
+import { createStore, HttpError, ageGroup, SESSION_DAYS } from './store.js';
 import { createSimulation } from './simulation.js';
 import { lanAddresses } from './net.js';
 import { MAX_VIDEO_BYTES, removeVideo, saveVideo, serveVideo } from './letters.js';
@@ -72,6 +72,26 @@ function letterOpenView(l) {
   };
 }
 
+// ログインしている本人に返す情報（パスワードのハッシュや回復コードは返さない）
+function meView(u) {
+  return { ...publicUser(u), loginId: u.loginId, role: u.role ?? 'user', ageGroup: ageGroup(u.birthdate), birthdate: u.birthdate };
+}
+
+// ログインのしるしは、JavaScript からは読めないクッキーに入れる
+const SESSION_COOKIE = 'tomohane_session';
+function readCookie(req, name) {
+  for (const part of String(req.headers.cookie || '').split(';')) {
+    const [k, ...v] = part.trim().split('=');
+    if (k === name) return decodeURIComponent(v.join('='));
+  }
+  return null;
+}
+function sessionCookie(req, token, maxAge) {
+  // https のとき（AWS 版など）だけ Secure を付ける。家の Wi-Fi（http）でも使えるように
+  const secure = req.socket.encrypted || req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
+  return `${SESSION_COOKIE}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}${secure}`;
+}
+
 async function readJson(req) {
   let size = 0;
   const chunks = [];
@@ -90,6 +110,16 @@ async function readJson(req) {
   }
 }
 
+// ログインしていなければ 401。本人以外のページなら 403
+function needLogin(me) {
+  if (!me) throw new HttpError(401, 'ログインしてください');
+  return me;
+}
+function self(me, userId) {
+  if (needLogin(me).id !== userId) throw new HttpError(403, '自分のページだけ見られます');
+  return userId;
+}
+
 export function createApp({
   store, sim, port = Number(process.env.PORT) || 3000,
   videoDir = join(ROOT, 'data', 'letters', 'videos'), maxVideoBytes = MAX_VIDEO_BYTES,
@@ -106,16 +136,17 @@ export function createApp({
 
     // ---- users ----
     ['GET', /^\/api\/users$/, () => store.listUsers().map(publicUser)],
-    ['POST', /^\/api\/users$/, ({ body }) => [201, publicUser(store.findOrCreateHuman(body.name))]],
+    // 前の「名前だけで入る」は使わない（なりすましができてしまうため）
+    ['POST', /^\/api\/users$/, () => { throw new HttpError(410, 'ログインしてください（/login.html）'); }],
 
-    // ---- 推しの情報（わたしの推しページ） ----
-    ['GET', /^\/api\/users\/([\w-]+)\/oshi$/, ({ params }) => store.getOshi(params[0])],
-    ['PUT', /^\/api\/users\/([\w-]+)\/oshi$/, ({ params, body }) => store.updateOshi(params[0], body)],
-    ['POST', /^\/api\/users\/([\w-]+)\/oshi\/goods$/, ({ params, body }) => [201, store.addGoods(params[0], body.name)]],
-    ['DELETE', /^\/api\/users\/([\w-]+)\/oshi\/goods\/([\w-]+)$/, ({ params }) => store.removeGoods(params[0], params[1])],
-    ['GET', /^\/api\/users\/([\w-]+)\/oshi\/friends$/, ({ params }) => {
+    // ---- 推しの情報（わたしの推しページ）：本人だけが見られる・変えられる ----
+    ['GET', /^\/api\/users\/([\w-]+)\/oshi$/, ({ params, me }) => store.getOshi(self(me, params[0]))],
+    ['PUT', /^\/api\/users\/([\w-]+)\/oshi$/, ({ params, body, me }) => store.updateOshi(self(me, params[0]), body)],
+    ['POST', /^\/api\/users\/([\w-]+)\/oshi\/goods$/, ({ params, body, me }) => [201, store.addGoods(self(me, params[0]), body.name)]],
+    ['DELETE', /^\/api\/users\/([\w-]+)\/oshi\/goods\/([\w-]+)$/, ({ params, me }) => store.removeGoods(self(me, params[0]), params[1])],
+    ['GET', /^\/api\/users\/([\w-]+)\/oshi\/friends$/, ({ params, me }) => {
       const users = store.usersById();
-      return store.oshiFriendsPosts(params[0]).map((p) => postView(p, users));
+      return store.oshiFriendsPosts(self(me, params[0])).map((p) => postView(p, users));
     }],
 
     // ---- やりくり献立との連結（最新の献立の「きょうの晩ごはん」と、画面のアドレス） ----
@@ -133,13 +164,13 @@ export function createApp({
       const users = store.usersById();
       return store.listPosts().map((p) => postView(p, users));
     }],
-    ['POST', /^\/api\/posts$/, ({ body }) => {
-      const post = store.createPost({ authorId: body.authorId, text: body.text, replyTo: body.replyTo });
-      if (store.getUser(post.authorId).kind === 'human') sim.onHumanPost(post);
+    ['POST', /^\/api\/posts$/, ({ body, me }) => {
+      const post = store.createPost({ authorId: needLogin(me).id, text: body.text, replyTo: body.replyTo });
+      sim.onHumanPost(post);
       return [201, postView(post, store.usersById())];
     }],
-    ['POST', /^\/api\/posts\/([\w-]+)\/like$/, ({ params, body }) =>
-      postView(store.toggleLike(params[0], body.userId), store.usersById())],
+    ['POST', /^\/api\/posts\/([\w-]+)\/like$/, ({ params, me }) =>
+      postView(store.toggleLike(params[0], needLogin(me).id), store.usersById())],
 
     // ---- agents（サイドフロント：家） ----
     ['GET', /^\/api\/agents$/, () => store.listAgents().map((a) => ({
@@ -160,22 +191,20 @@ export function createApp({
       const users = store.usersById();
       return store.listMeetings().map((m) => meetingView(m, users));
     }],
-    ['POST', /^\/api\/meetings$/, ({ body }) =>
-      [201, meetingView(sim.startMeeting({ topic: body.topic, createdBy: body.createdBy }), store.usersById())]],
+    ['POST', /^\/api\/meetings$/, ({ body, me }) =>
+      [201, meetingView(sim.startMeeting({ topic: body.topic, createdBy: needLogin(me).id }), store.usersById())]],
     ['GET', /^\/api\/meetings\/([\w-]+)$/, ({ params }) =>
       meetingView(store.getMeeting(params[0]), store.usersById())],
-    ['POST', /^\/api\/meetings\/([\w-]+)\/messages$/, ({ params, body }) => {
-      const author = store.getUser(body.authorId);
-      if (author.kind !== 'human') throw new HttpError(403, 'エージェントの発言はサーバーが行います');
-      store.addMeetingMessage(params[0], { authorId: author.id, text: body.text });
+    ['POST', /^\/api\/meetings\/([\w-]+)\/messages$/, ({ params, body, me }) => {
+      store.addMeetingMessage(params[0], { authorId: needLogin(me).id, text: body.text });
       return [201, meetingView(store.getMeeting(params[0]), store.usersById())];
     }],
     ['POST', /^\/api\/meetings\/([\w-]+)\/step$/, ({ params }) =>
       meetingView(sim.stepMeeting(params[0]), store.usersById())],
 
     // ---- 手紙キット（作る人）：合言葉はヘッダー X-Letter-Key で送る ----
-    ['POST', /^\/api\/letters$/, ({ body }) => {
-      const { letter, key } = store.createLetter(body);
+    ['POST', /^\/api\/letters$/, ({ body, me }) => {
+      const { letter, key } = store.createLetter({ ...body, authorId: needLogin(me).id });
       return [201, { ...letterOwnerView(letter), key }];
     }],
     ['GET', /^\/api\/letters\/([\w-]+)$/, ({ params, headers }) =>
@@ -191,6 +220,41 @@ export function createApp({
     ['GET', /^\/api\/open\/([\w-]+)$/, ({ params }) => letterOpenView(store.letterByToken(params[0]))],
     ['POST', /^\/api\/open\/([\w-]+)\/opened$/, ({ params }) => letterOpenView(store.markLetterOpened(params[0]))],
   ];
+
+  // ---- ログイン（クッキーを書くので、ふつうのルートとは別に扱う） ----
+  async function handleAuth(req, res, pathname, me) {
+    if (!pathname.startsWith('/api/auth/')) return false;
+    const action = pathname.slice('/api/auth/'.length);
+    if (action === 'me' && req.method === 'GET') {
+      sendJson(res, 200, me ? meView(me) : null);
+      return true;
+    }
+    if (req.method !== 'POST') throw new HttpError(404, 'API が見つかりません');
+    const body = await readJson(req);
+    const login = (user, extra = {}) => {
+      const token = store.startSession(user.id);
+      res.setHeader('Set-Cookie', sessionCookie(req, token, SESSION_DAYS * 86400));
+      sendJson(res, 200, { me: meView(user), ...extra });
+    };
+    if (action === 'register') {
+      const { user, recoveryCodes } = await store.register(body);
+      login(user, { recoveryCodes });
+    } else if (action === 'login') {
+      login(await store.login(body));
+    } else if (action === 'recover') {
+      const { user, codesLeft } = await store.recover(body);
+      login(user, { codesLeft });
+    } else if (action === 'logout' || action === 'logout-all') {
+      const token = readCookie(req, SESSION_COOKIE);
+      if (action === 'logout-all' && me) store.endAllSessions(me.id);
+      else if (token) store.endSession(token);
+      res.setHeader('Set-Cookie', sessionCookie(req, '', 0));
+      sendJson(res, 200, { ok: true });
+    } else {
+      throw new HttpError(404, 'API が見つかりません');
+    }
+    return true;
+  }
 
   // 動画は JSON ではなく、ファイルそのものをやりとりする
   async function handleVideo(req, res, pathname) {
@@ -268,12 +332,21 @@ export function createApp({
     try {
       if (pathname === '/api/events' && req.method === 'GET') return handleEvents(req, res);
       if (pathname.startsWith('/api/')) {
+        // よそのページからの書きこみは受けつけない（Origin が来ていれば、このサーバーのものか確かめる）
+        const origin = req.headers.origin;
+        if (req.method !== 'GET' && origin && origin !== 'null') {
+          let host = null;
+          try { host = new URL(origin).host; } catch { /* こわれた Origin */ }
+          if (host !== req.headers.host) throw new HttpError(403, 'ほかのページからは操作できません');
+        }
+        const me = store.sessionUser(readCookie(req, SESSION_COOKIE));
+        if (await handleAuth(req, res, pathname, me)) return;
         if (await handleVideo(req, res, pathname)) return;
         for (const [method, pattern, fn] of routes) {
           const m = pathname.match(pattern);
           if (!m || method !== req.method) continue;
           const body = method === 'POST' || method === 'PUT' ? await readJson(req) : {};
-          const result = await fn({ params: m.slice(1), body, query: url.searchParams, headers: req.headers });
+          const result = await fn({ params: m.slice(1), body, query: url.searchParams, headers: req.headers, me });
           const [status, data] = Array.isArray(result) && typeof result[0] === 'number' ? result : [200, result];
           return sendJson(res, status, data);
         }

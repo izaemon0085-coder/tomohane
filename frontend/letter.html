@@ -13,14 +13,10 @@
 <body>
   <header class="site-header" id="header"></header>
   <main class="page letter-page">
-    <form id="login-form" class="card panel" hidden>
-      <label for="login-name"><strong>名前を決めると、お手紙がつくれます</strong></label>
-      <div class="row">
-        <input id="login-name" class="input" maxlength="20" placeholder="例：さいとう" autocomplete="nickname" required>
-        <button class="btn" type="submit">はじめる</button>
-      </div>
-      <p class="error" id="login-error"></p>
-    </form>
+    <div id="login-form" class="card panel" hidden>
+      <p><strong>ログインすると、お手紙がつくれます</strong></p>
+      <a class="btn" href="/login.html" data-login-link>ログイン・はじめる</a>
+    </div>
 
     <div id="letter-app" hidden>
       <section class="letter-hero">

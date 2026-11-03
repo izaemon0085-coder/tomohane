@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ログイン | ともはね β版</title>
+  <link rel="stylesheet" href="/shared/base.css">
+  <link rel="stylesheet" href="/shared/playground.css">
+  <link rel="stylesheet" href="/shared/customize.css">
+  <link rel="stylesheet" href="/shared/network.css">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="site-header" id="header"></header>
+  <main class="page login-page">
+    <!-- ログインしていないとき -->
+    <section id="auth" hidden>
+      <div class="guide" role="status" aria-live="polite">
+        <img src="/shared/avatars/shiba.svg" alt="" width="44" height="44" id="guide-face">
+        <div><p class="muted small" id="guide-name">シバから</p><p id="guide-text">ようこそっす！ はじめての人は「はじめる」、前に登録した人は「ログイン」っす！</p></div>
+      </div>
+      <div class="tabs" role="tablist" aria-label="ログインのしかた">
+        <button type="button" role="tab" id="tab-login" aria-controls="panel-login" aria-selected="true">ログイン</button>
+        <button type="button" role="tab" id="tab-register" aria-controls="panel-register" aria-selected="false">はじめる</button>
+        <button type="button" role="tab" id="tab-recover" aria-controls="panel-recover" aria-selected="false">パスワードを忘れた</button>
+      </div>
+
+      <form id="panel-login" class="card panel" role="tabpanel" aria-labelledby="tab-login">
+        <label class="field">ログインID<input class="input" name="loginId" autocomplete="username" autocapitalize="none" required></label>
+        <label class="field">パスワード<input class="input" name="password" type="password" autocomplete="current-password" required></label>
+        <p class="error" role="alert"></p>
+        <button class="btn" type="submit">ログイン</button>
+      </form>
+
+      <form id="panel-register" class="card panel" role="tabpanel" aria-labelledby="tab-register" hidden>
+        <label class="field">ログインID（半角の英小文字・数字・_ で3〜20文字。ログインのときだけ使う）
+          <input class="input" name="loginId" autocomplete="username" autocapitalize="none" pattern="[a-z0-9_]{3,20}" required></label>
+        <label class="field">表示名（広場に出る名前）<input class="input" name="name" maxlength="20" autocomplete="nickname" required></label>
+        <label class="field">パスワード（8文字から）<input class="input" name="password" type="password" minlength="8" autocomplete="new-password" required></label>
+        <label class="field">生年月日（年齢に合ったページを出すために使います。ほかの人には見えません）
+          <input class="input" name="birthdate" type="date" required></label>
+        <p class="muted small">前に「名前だけ」で使っていた人は、同じ表示名で登録すると、推しページなどをそのまま引きつげます。</p>
+        <p class="error" role="alert"></p>
+        <button class="btn" type="submit">はじめる</button>
+      </form>
+
+      <form id="panel-recover" class="card panel" role="tabpanel" aria-labelledby="tab-recover" hidden>
+        <p class="muted small">登録したときに出た「回復コード」をひとつ使います。使ったコードは、もう使えません。</p>
+        <label class="field">ログインID<input class="input" name="loginId" autocomplete="username" autocapitalize="none" required></label>
+        <label class="field">回復コード（例：abcd-2345）<input class="input" name="code" autocomplete="one-time-code" autocapitalize="none" required></label>
+        <label class="field">新しいパスワード（8文字から）<input class="input" name="newPassword" type="password" minlength="8" autocomplete="new-password" required></label>
+        <p class="error" role="alert"></p>
+        <button class="btn" type="submit">パスワードを変える</button>
+      </form>
+    </section>
+
+    <!-- 登録したすぐあと：回復コード -->
+    <section id="codes" class="card panel" hidden aria-labelledby="codes-title">
+      <h1 id="codes-title">回復コード</h1>
+      <div class="say-line"><img src="/shared/avatars/yamaneko.svg" alt="" width="40" height="40">
+        <p>パスワードを忘れたときの、家のカギの予備だ。<strong>いまだけ表示する</strong>。紙に書くか、保存しておいてくれ。人には見せるな。</p></div>
+      <ol class="code-list" id="code-list"></ol>
+      <div class="row wrap">
+        <button type="button" class="btn ghost" id="save-codes">📄 テキストで保存</button>
+      </div>
+      <label class="row"><input type="checkbox" id="codes-done"> 書き留めた（保存した）</label>
+      <button type="button" class="btn" id="codes-next" disabled>はじめる</button>
+    </section>
+
+    <!-- ログインしているとき -->
+    <section id="account" class="card panel" hidden aria-labelledby="account-title">
+      <h1 id="account-title"></h1>
+      <dl class="account-list">
+        <dt>ログインID</dt><dd id="acc-login"></dd>
+        <dt>年齢の区分</dt><dd id="acc-age"></dd>
+        <dt>役割</dt><dd id="acc-role"></dd>
+      </dl>
+      <p class="note-line" id="acc-child" hidden>🐕 シバより：おうちの人と一緒に使ってほしいっす。おうちの人とつなぐ機能は、いま準備中っす。</p>
+      <div class="row wrap">
+        <a class="btn" id="acc-back" href="/">もどる</a>
+        <button type="button" class="btn ghost" id="logout">ログアウト</button>
+        <button type="button" class="btn ghost" id="logout-all">すべての端末からログアウト</button>
+      </div>
+    </section>
+  </main>
+  <script type="module" src="/login.js"></script>
+  <script type="module" src="/shared/customize.js"></script>
+  <script type="module" src="/shared/network.js"></script>
+  <script type="module" src="/shared/playground.js"></script>
+</body>
+</html>

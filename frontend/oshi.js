@@ -1,11 +1,11 @@
 // わたしの推しページ（推しダッシュボード）：推しの名前・ライブまで・誕生日まで・グッズの記録・同じ推しの仲間
-import { api, getMe, login, escapeHtml, timeAgo, headerHtml, toast } from '/shared/api.js';
+import { api, refreshMe, escapeHtml, timeAgo, headerHtml, toast } from '/shared/api.js';
 
 const $ = (sel) => document.querySelector(sel);
 const dialog = $('#edit-dialog');
 const form = $('#edit-form');
 
-let me = getMe();
+let me = await refreshMe();
 let oshi = null;
 
 function render() {
@@ -165,17 +165,6 @@ async function load() {
   loadAccess();
 }
 
-$('#login-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  $('#login-error').textContent = '';
-  try {
-    me = await login($('#login-name').value);
-    render();
-    load();
-  } catch (err) {
-    $('#login-error').textContent = err.message;
-  }
-});
 
 $('#edit-btn').addEventListener('click', () => {
   for (const key of ['name', 'liveDate', 'liveVenue', 'birthday']) form.elements[key].value = oshi?.[key] ?? '';

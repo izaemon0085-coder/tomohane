@@ -109,7 +109,7 @@ npm test         # API テスト
 - **回線番のモグ（会議室の金庫）**：15秒ごとに回線を見張り、インターネットにつながれば「📶 Wi-Fi」、インターネットが切れても同じ Wi-Fi の中なら「🏠 ローカル回線」、どちらもだめなら「🔌 この端末だけ」に自動で切り替える。ヘッダーの表示もそれに合わせて変わる。会議室の左下の「🔒 金庫（回線室）」で、切り替え盤と切り替えの記録が見られる（インターネットの確認先は環境変数 `NET_CHECK_HOST` で変えられる）
 - 近くの端末どうしで電波をバケツリレーする「メッシュ回線」は準備中
 
-> ⚠️ β版はまだログインにパスワードがないため、同じ Wi-Fi にいる人ならだれでも入れます。家など信頼できる Wi-Fi だけで使ってください。Windows で「ファイアウォールの許可」が出たら、プライベートネットワークだけ許可してください。
+> ⚠️ 家の Wi-Fi（`http://192.168.…`）で使うときは、通信が暗号になっていません。同じ Wi-Fi の中なら、パスワードを盗み見られるおそれがあります。家など信頼できる Wi-Fi だけで使ってください。Windows で「ファイアウォールの許可」が出たら、プライベートネットワークだけ許可してください。
 
 ### きせかえ（推し活デザイン）
 
@@ -143,24 +143,39 @@ npm test         # API テスト
 
 エージェントの発言はルールベース（テンプレート＋キーワード）なので、API キーなしで動きます。
 
+## 🔑 ログイン
+
+`/login.html` から、ログイン・はじめる（登録）・パスワードを忘れた、ができます。投稿・いいね・推しページ・手紙・会議の発言は、**ログインしている本人**として扱います（前の「名前だけで入る」は、なりすましができるのでやめました）。
+
+- **登録**：ログインID（半角の英小文字・数字・_）・表示名・パスワード（8文字から）・生年月日
+- **回復コード**：登録したときに8つ出る。パスワードを忘れたら1つ使って新しいパスワードにする（1回だけ使える。使うと、前のログインは全部切れる）。メールを使わないので、家の Wi-Fi だけでも使える
+- **年齢の区分**：生年月日から、子ども（12歳まで）・中高生（13〜17歳）・大人（18歳から）。β版は自己申告。保護者とつなぐ機能と、マイナンバーカードでの確認は、あとで足す
+- **管理者**：いちばん最初に登録した人が運営（管理者）になる
+- **引っ越し**：前に「名前だけ」で使っていた人は、同じ表示名で登録すると、推しページなどをそのまま引きつげる（最初に登録した人のものになる）
+- **守るしくみ**：パスワードと回復コードは元にもどせない形（scrypt・SHA-256）で保存／ログインのしるしは JavaScript から読めないクッキー（30日）／5回まちがえると5分待つ／ほかのページからの書きこみは受けつけない／推しページは本人だけが見られる
+
 ## API
 
 | メソッド | パス | 説明 |
 | --- | --- | --- |
 | GET | `/api/posts` | タイムライン |
-| POST | `/api/posts` | 投稿 `{authorId, text, replyTo?}` |
-| POST | `/api/posts/:id/like` | いいねの切り替え `{userId}` |
-| POST | `/api/users` | 名前で参加（同じ名前なら同じユーザー） `{name}` |
+| POST | `/api/posts` | 投稿 `{text, replyTo?}`（ログインが必要） |
+| POST | `/api/posts/:id/like` | いいねの切り替え（ログインが必要） |
+| POST | `/api/auth/register` | 登録 `{loginId, password, name, birthdate}` → 回復コードを返して、ログインする |
+| POST | `/api/auth/login` | ログイン `{loginId, password}` |
+| POST | `/api/auth/recover` | 回復コードで新しいパスワードにする `{loginId, code, newPassword}` |
+| POST | `/api/auth/logout`（`/logout-all`） | ログアウト（すべての端末から） |
+| GET | `/api/auth/me` | ログインしている本人（していなければ null） |
 | GET / PUT | `/api/users/:id/oshi` | わたしの推し（推しの名前・ライブの日・会場・誕生日） |
 | POST / DELETE | `/api/users/:id/oshi/goods`（`/:goodsId`） | グッズの記録を足す／消す |
 | GET | `/api/users/:id/oshi/friends` | 同じ推しの仲間の最近の投稿 |
 | GET | `/api/agents` / `/api/agents/:id` | エージェントの家の情報 |
 | POST | `/api/agents/:id/knock` | 家をノックする |
-| GET / POST | `/api/meetings` | 会議一覧／招集 `{topic, createdBy?}` |
+| GET / POST | `/api/meetings` | 会議一覧／招集 `{topic}`（招集はログインが必要） |
 | GET | `/api/meetings/:id` | 会議の詳細 |
-| POST | `/api/meetings/:id/messages` | 人間が発言 `{authorId, text}` |
+| POST | `/api/meetings/:id/messages` | 人間が発言 `{text}`（ログインが必要） |
 | POST | `/api/meetings/:id/step` | 会議を1手進める |
-| POST | `/api/letters` | 手紙をつくる `{authorId, to, from, note?, typeface?}` → 合言葉 `key` と受け取り用の `token` を返す |
+| POST | `/api/letters` | 手紙をつくる `{to, from, note?, typeface?}`（ログインが必要） → 合言葉 `key` と受け取り用の `token` を返す |
 | GET / DELETE | `/api/letters/:id` | 手紙を見る／消す（ヘッダー `X-Letter-Key` に合言葉） |
 | PUT | `/api/letters/:id/video` | ビデオを入れる（本文に動画そのもの。mp4・mov・webm。合言葉が必要） |
 | GET | `/api/open/:token` | 受け取りページ用の手紙（宛名・差出人・ひとことだけ） |

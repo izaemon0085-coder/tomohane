@@ -13,14 +13,10 @@
 <body>
   <header class="site-header" id="header"></header>
   <main class="page">
-    <form id="login-form" class="card panel" hidden>
-      <label for="login-name"><strong>名前を決めると、自分の推しページが作れます</strong></label>
-      <div class="row">
-        <input id="login-name" class="input" maxlength="20" placeholder="例：さいとう" autocomplete="nickname" required>
-        <button class="btn" type="submit">はじめる</button>
-      </div>
-      <p class="error" id="login-error"></p>
-    </form>
+    <div id="login-form" class="card panel" hidden>
+      <p><strong>ログインすると、自分の推しページが作れます</strong></p>
+      <a class="btn" href="/login.html" data-login-link>ログイン・はじめる</a>
+    </div>
 
     <div id="dash" hidden>
       <!-- 推しカラーの帯（色は「きせかえ」の推しカラー） -->

@@ -203,3 +203,22 @@ html[data-oshi-color] .oshi-hero { color: var(--accent-text); }
 .letter-info { min-width: 0; overflow-wrap: anywhere; }
 .letter-status { font-size: .88rem; }
 .letter-status.opened { color: var(--like); font-weight: 700; }
+
+/* ===== ログイン ===== */
+.login-page { max-width: 560px; }
+.login-page .panel { padding: 18px 20px; }
+.tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.tabs [role="tab"] { border: 1px solid var(--border); background: var(--surface); border-radius: 999px; padding: 8px 14px; min-height: 44px; cursor: pointer; }
+.tabs [role="tab"][aria-selected="true"] { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 700; }
+.tabs [role="tab"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.login-page .btn { min-height: 44px; display: inline-flex; align-items: center; text-decoration: none; }
+.login-page [hidden] { display: none !important; }
+.say-line { display: flex; gap: 10px; align-items: flex-start; }
+.say-line p { margin: 0; }
+.code-list { columns: 2; font-size: 1.15rem; margin: 12px 0; padding-left: 1.6em; }
+.code-list code { font-family: ui-monospace, "Consolas", monospace; letter-spacing: .05em; }
+.account-list { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 8px 0 14px; }
+.account-list dt { color: var(--muted); }
+.account-list dd { margin: 0; font-weight: 700; }
+.chat-login p { margin: 0 0 8px; }
+.chat-login .btn, .panel > .btn { display: inline-flex; align-items: center; min-height: 44px; text-decoration: none; }

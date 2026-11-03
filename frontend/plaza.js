@@ -1,6 +1,6 @@
 // 広場（フロントエンド）：人間とキャラのおしゃべり。タイムラインを LINE のような会話の形で見せる
 import {
-  api, onServerEvents, getMe, login, escapeHtml, timeAgo, avatarHtml, headerHtml, toast,
+  api, onServerEvents, refreshMe, escapeHtml, timeAgo, avatarHtml, headerHtml, toast,
 } from '/shared/api.js';
 import { speak } from '/shared/speech.js';
 import { sendPost, getOutbox, flushOutbox } from '/shared/outbox.js';
@@ -14,7 +14,7 @@ const textarea = $('#post-text');
 const log = $('#chat-log');
 const replyTarget = $('#reply-target');
 
-let me = getMe();
+let me = await refreshMe();
 let replyTo = null;
 let posts = [];
 let agentsById = {};
@@ -109,17 +109,6 @@ function setReply(postId) {
   }
 }
 
-loginForm.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  $('#login-error').textContent = '';
-  try {
-    me = await login($('#login-name').value);
-    renderAuth();
-    render();
-  } catch (err) {
-    $('#login-error').textContent = err.message;
-  }
-});
 
 // Enter で送信、Shift+Enter で改行
 textarea.addEventListener('keydown', (e) => {
@@ -189,7 +178,7 @@ composer.addEventListener('submit', async (e) => {
   checkedText = null;
   btn.disabled = true;
   try {
-    const result = await sendPost({ authorId: me.id, text: textarea.value.trim(), replyTo });
+    const result = await sendPost({ authorId: me.id, text: textarea.value.trim(), replyTo }); // authorId は送信待ちの表示用。サーバーはログインしている本人として扱う
     textarea.value = '';
     setReply(null);
     if (result.queued) {
@@ -217,12 +206,12 @@ log.addEventListener('click', async (e) => {
   }
   const replyBtn = e.target.closest('[data-reply]');
   if (replyBtn) {
-    if (!me) return $('#login-name').focus();
+    if (!me) return loginForm.querySelector('a').focus();
     return setReply(replyBtn.dataset.reply);
   }
   const likeBtn = e.target.closest('[data-like]');
   if (likeBtn) {
-    if (!me) return $('#login-name').focus();
+    if (!me) return loginForm.querySelector('a').focus();
     try {
       await api(`/posts/${likeBtn.dataset.like}/like`, { method: 'POST', body: { userId: me.id } });
       await loadPosts();

@@ -24,14 +24,10 @@
 
       <ol id="chat-log" class="chat-log" aria-live="polite"></ol>
 
-      <form id="login-form" class="chat-login" hidden>
-        <label for="login-name"><strong>名前を決めて、おしゃべりに参加しよう</strong></label>
-        <div class="row">
-          <input id="login-name" class="input" maxlength="20" placeholder="例：さいとう" autocomplete="nickname" required>
-          <button class="btn" type="submit">参加する</button>
-        </div>
-        <p class="error" id="login-error"></p>
-      </form>
+      <div id="login-form" class="chat-login" hidden>
+        <p><strong>ログインすると、おしゃべりに参加できます</strong></p>
+        <a class="btn" href="/login.html" data-login-link>ログイン・はじめる</a>
+      </div>
 
       <form id="composer" class="chat-composer" hidden>
         <!-- 送る前のチェック：キャラたちの警告・質問・意見・寄り添い（shared/precheck.js） -->

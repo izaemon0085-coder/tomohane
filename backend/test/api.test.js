@@ -44,13 +44,27 @@ after(() => {
   rmSync(videoDir, { recursive: true, force: true });
 });
 
-async function call(path, { method = 'GET', body } = {}) {
+async function call(path, { method = 'GET', body, as, headers = {} } = {}) {
   const res = await fetch(base + path, {
     method,
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(as ? { Cookie: as.cookie } : {}), ...headers },
     body: body ? JSON.stringify(body) : undefined,
   });
-  return { status: res.status, data: await res.json() };
+  return { status: res.status, data: await res.json(), res };
+}
+
+// 登録してログインした人をつくる（同じ名前なら、前につくった人をそのまま使う）
+const people = new Map();
+let seq = 0;
+async function signup(name, { birthdate = '1990-01-01' } = {}) {
+  if (people.has(name)) return people.get(name);
+  seq += 1;
+  const r = await call('/api/auth/register', { method: 'POST', body: { loginId: `user${seq}`, password: `pass-word-${seq}`, name, birthdate } });
+  assert.equal(r.status, 200, `${name} の登録: ${r.data.error ?? ''}`);
+  const cookie = r.res.headers.get('set-cookie').split(';')[0];
+  const person = { ...r.data.me, cookie, loginId: `user${seq}`, password: `pass-word-${seq}`, recoveryCodes: r.data.recoveryCodes };
+  people.set(name, person);
+  return person;
 }
 
 test('3つのフロントが配信される', async () => {
@@ -68,21 +82,20 @@ test('ディレクトリ外のファイルは配信しない', async () => {
 });
 
 test('ユーザー登録・投稿・いいね・返信', async () => {
-  const { status, data: me } = await call('/api/users', { method: 'POST', body: { name: 'テスター' } });
-  assert.equal(status, 201);
-  const again = await call('/api/users', { method: 'POST', body: { name: 'テスター' } });
-  assert.equal(again.data.id, me.id, '同じ名前なら同じユーザー');
+  const me = await signup('テスター');
+  assert.equal((await call('/api/users', { method: 'POST', body: { name: 'テスター' } })).status, 410, '名前だけでは入れない');
+  assert.equal((await call('/api/posts', { method: 'POST', body: { authorId: me.id, text: 'なりすまし' } })).status, 401, 'ログインしていないと投稿できない');
 
-  const created = await call('/api/posts', { method: 'POST', body: { authorId: me.id, text: 'おはよう！' } });
+  const created = await call('/api/posts', { method: 'POST', as: me, body: { text: 'おはよう！' } });
   assert.equal(created.status, 201);
   assert.equal(created.data.author.name, 'テスター');
 
-  const liked = await call(`/api/posts/${created.data.id}/like`, { method: 'POST', body: { userId: me.id } });
+  const liked = await call(`/api/posts/${created.data.id}/like`, { method: 'POST', as: me });
   assert.equal(liked.data.likeCount, 1);
-  const unliked = await call(`/api/posts/${created.data.id}/like`, { method: 'POST', body: { userId: me.id } });
+  const unliked = await call(`/api/posts/${created.data.id}/like`, { method: 'POST', as: me });
   assert.equal(unliked.data.likeCount, 0);
 
-  const reply = await call('/api/posts', { method: 'POST', body: { authorId: me.id, text: '返信です', replyTo: created.data.id } });
+  const reply = await call('/api/posts', { method: 'POST', as: me, body: { text: '返信です', replyTo: created.data.id } });
   assert.equal(reply.data.replyTo, created.data.id);
 
   const { data: posts } = await call('/api/posts');
@@ -90,11 +103,10 @@ test('ユーザー登録・投稿・いいね・返信', async () => {
 });
 
 test('入力チェック', async () => {
-  const { data: me } = await call('/api/users', { method: 'POST', body: { name: 'チェック' } });
-  assert.equal((await call('/api/posts', { method: 'POST', body: { authorId: me.id, text: '   ' } })).status, 400);
-  assert.equal((await call('/api/posts', { method: 'POST', body: { authorId: me.id, text: 'あ'.repeat(281) } })).status, 400);
-  assert.equal((await call('/api/posts', { method: 'POST', body: { authorId: 'nobody', text: 'hi' } })).status, 404);
-  assert.equal((await call('/api/users', { method: 'POST', body: { name: 'ヤマネコ' } })).status, 409);
+  const me = await signup('チェック');
+  assert.equal((await call('/api/posts', { method: 'POST', as: me, body: { text: '   ' } })).status, 400);
+  assert.equal((await call('/api/posts', { method: 'POST', as: me, body: { text: 'あ'.repeat(281) } })).status, 400);
+  assert.equal((await call('/api/auth/register', { method: 'POST', body: { loginId: 'neko1', password: 'password-123', name: 'ヤマネコ', birthdate: '2000-01-01' } })).status, 409, 'キャラの名前は使えない');
   assert.equal((await call('/api/nothing')).status, 404);
 });
 
@@ -113,10 +125,10 @@ test('サイドフロント：エージェントの家とノック', async () =>
 });
 
 test('サブフロント：会議の招集→人間の発言→結論がタイムラインへ', async () => {
-  const { data: me } = await call('/api/users', { method: 'POST', body: { name: '議長' } });
-  const { status, data: meeting } = await call('/api/meetings', { method: 'POST', body: { topic: '新機能', createdBy: me.id } });
+  const me = await signup('議長');
+  const { status, data: meeting } = await call('/api/meetings', { method: 'POST', as: me, body: { topic: '新機能' } });
   assert.equal(status, 201);
-  assert.equal((await call('/api/meetings', { method: 'POST', body: { topic: '別の議題' } })).status, 409, '同時に1つまで');
+  assert.equal((await call('/api/meetings', { method: 'POST', as: me, body: { topic: '別の議題' } })).status, 409, '同時に1つまで');
 
   const { data: agents } = await call('/api/agents');
   assert.ok(agents.filter((a) => a.place === 'house').every((a) => a.status === 'meeting'), '家のキャラ全員が会議室へ移動');
@@ -125,7 +137,7 @@ test('サブフロント：会議の招集→人間の発言→結論がタイ�
   assert.ok(!meeting.participantIds.includes('agent-kuruma'));
 
   await call(`/api/meetings/${meeting.id}/step`, { method: 'POST' });
-  await call(`/api/meetings/${meeting.id}/messages`, { method: 'POST', body: { authorId: me.id, text: 'スマホ対応を優先したい' } });
+  await call(`/api/meetings/${meeting.id}/messages`, { method: 'POST', as: me, body: { text: 'スマホ対応を優先したい' } });
   const answered = await call(`/api/meetings/${meeting.id}/step`, { method: 'POST' });
   assert.match(answered.data.messages.at(-1).text, /議長さん/, 'エージェントが人間の発言に応答');
 
@@ -152,19 +164,19 @@ test('エージェントの暮らしが進む', () => {
 });
 
 test('はじめての投稿にはシバ、トゲのある言葉にはフクロウが返事をする', async () => {
-  const { data: me } = await call('/api/users', { method: 'POST', body: { name: 'しんじん' } });
-  const { data: first } = await call('/api/posts', { method: 'POST', body: { authorId: me.id, text: 'よろしくお願いします' } });
+  const me = await signup('しんじん');
+  const { data: first } = await call('/api/posts', { method: 'POST', as: me, body: { text: 'よろしくお願いします' } });
   const r1 = sim.respondToHumanPost(store.getPost(first.id));
   assert.equal(r1.authorId, 'agent-shiba');
   assert.match(r1.text, /はじめまして/);
 
   store.updateAgent('agent-fukurou', { status: 'sleeping' });
-  const { data: harsh } = await call('/api/posts', { method: 'POST', body: { authorId: me.id, text: 'あいつほんとうざい' } });
+  const { data: harsh } = await call('/api/posts', { method: 'POST', as: me, body: { text: 'あいつほんとうざい' } });
   const r2 = sim.respondToHumanPost(store.getPost(harsh.id));
   assert.equal(r2.authorId, 'agent-fukurou', '寝ていても見守り番が起きて返事をする');
   assert.match(r2.text, /トゲ/);
 
-  const { data: lonely } = await call('/api/posts', { method: 'POST', body: { authorId: me.id, text: '今日はちょっとさみしい' } });
+  const { data: lonely } = await call('/api/posts', { method: 'POST', as: me, body: { text: '今日はちょっとさみしい' } });
   assert.equal(sim.respondToHumanPost(store.getPost(lonely.id)).authorId, 'agent-shiba');
 });
 
@@ -229,32 +241,33 @@ test('回線番のモグが Wi-Fi とローカル回線を切り替える', asyn
 });
 
 test('わたしの推しページ：推しの登録・グッズの記録・同じ推しの仲間', async () => {
-  const { data: a } = await call('/api/users', { method: 'POST', body: { name: '推し活A' } });
-  const { data: b } = await call('/api/users', { method: 'POST', body: { name: '推し活B' } });
+  const a = await signup('推し活A');
+  const b = await signup('推し活B');
 
-  const empty = await call(`/api/users/${a.id}/oshi`);
+  const empty = await call(`/api/users/${a.id}/oshi`, { as: a });
   assert.equal(empty.data.name, '');
 
   const saved = await call(`/api/users/${a.id}/oshi`, {
-    method: 'PUT', body: { name: 'ほしの', liveDate: '2026-12-24', liveVenue: '〇〇ホール', birthday: '2000-07-07' },
+    as: a, method: 'PUT', body: { name: 'ほしの', liveDate: '2026-12-24', liveVenue: '〇〇ホール', birthday: '2000-07-07' },
   });
   assert.equal(saved.status, 200);
   assert.equal(saved.data.name, 'ほしの');
-  assert.equal((await call(`/api/users/${a.id}/oshi`, { method: 'PUT', body: { liveDate: '12/24' } })).status, 400, '日付の形が違う');
+  assert.equal((await call(`/api/users/${a.id}/oshi`, { as: a, method: 'PUT', body: { liveDate: '12/24' } })).status, 400, '日付の形が違う');
 
-  const g = await call(`/api/users/${a.id}/oshi/goods`, { method: 'POST', body: { name: 'アクスタ' } });
+  const g = await call(`/api/users/${a.id}/oshi/goods`, { as: a, method: 'POST', body: { name: 'アクスタ' } });
   assert.equal(g.status, 201);
   assert.equal(g.data.goods.length, 1);
-  const removed = await call(`/api/users/${a.id}/oshi/goods/${g.data.goods[0].id}`, { method: 'DELETE' });
+  const removed = await call(`/api/users/${a.id}/oshi/goods/${g.data.goods[0].id}`, { as: a, method: 'DELETE' });
   assert.equal(removed.data.goods.length, 0);
 
   // 同じ推しの B さんの投稿が、A さんの「仲間」に出る
-  await call(`/api/users/${b.id}/oshi`, { method: 'PUT', body: { name: 'ほしの' } });
-  await call('/api/posts', { method: 'POST', body: { authorId: b.id, text: 'ほしの最高！' } });
-  const { data: friends } = await call(`/api/users/${a.id}/oshi/friends`);
+  await call(`/api/users/${b.id}/oshi`, { as: b, method: 'PUT', body: { name: 'ほしの' } });
+  await call('/api/posts', { method: 'POST', as: b, body: { text: 'ほしの最高！' } });
+  const { data: friends } = await call(`/api/users/${a.id}/oshi/friends`, { as: a });
   assert.ok(friends.some((p) => p.text === 'ほしの最高！'));
 
-  assert.equal((await call('/api/users/agent-usagi/oshi')).status, 400, 'キャラには推しページがない');
+  assert.equal((await call(`/api/users/${b.id}/oshi`, { as: a })).status, 403, 'ほかの人の推しページは見られない');
+  assert.equal((await call(`/api/users/${a.id}/oshi`)).status, 401);
 });
 
 test('やりくり献立と連結：新しい献立ができたら、キャラが広場で話題にする（1回だけ）', async () => {
@@ -298,8 +311,8 @@ test('やりくり献立：料理がいくつも並ぶときは、主な料理�
 
 // ---- 手紙キット ----
 async function makeLetter(name = '手紙の人', extra = {}) {
-  const { data: me } = await call('/api/users', { method: 'POST', body: { name } });
-  const res = await call('/api/letters', { method: 'POST', body: { authorId: me.id, to: 'おばあちゃん', from: 'ゆうた', note: '元気？', ...extra } });
+  const me = await signup(name);
+  const res = await call('/api/letters', { method: 'POST', as: me, body: { to: 'おばあちゃん', from: 'ゆうた', note: '元気？', ...extra } });
   return { me, ...res };
 }
 const putVideo = (letter, bytes, { key = letter.key, type = 'video/mp4' } = {}) => fetch(`${base}/api/letters/${letter.id}/video`, {
@@ -334,7 +347,7 @@ test('手紙キット：つくる → 合言葉がないと見られない → �
 test('手紙キット：入力チェック', async () => {
   assert.equal((await makeLetter('チェック2', { to: '  ' })).status, 400);
   assert.equal((await makeLetter('チェック2', { note: 'あ'.repeat(101) })).status, 400);
-  assert.equal((await call('/api/letters', { method: 'POST', body: { authorId: 'agent-usagi', to: 'a', from: 'b' } })).status, 400, 'キャラは手紙を書かない');
+  assert.equal((await call('/api/letters', { method: 'POST', body: { to: 'a', from: 'b' } })).status, 401, 'ログインしていないと手紙は書けない');
 });
 
 test('手紙キット：ビデオを入れる → 少しずつ取り出せる（Range）→ 入れ替えると古いファイルは消える', async () => {
@@ -455,11 +468,11 @@ test('送る前のチェック：はっきりした犯罪は、画面を通さ�
     assert.equal(precheck(text).level, 'block', text);
     assert.equal(precheck(text).reason, reason);
   }
-  const { data: me } = await call('/api/users', { method: 'POST', body: { name: 'チェックの人' } });
-  const res = await call('/api/posts', { method: 'POST', body: { authorId: me.id, text: '闇バイト募集してます、DMください' } });
+  const me = await signup('チェックの人');
+  const res = await call('/api/posts', { method: 'POST', as: me, body: { text: '闇バイト募集してます、DMください' } });
   assert.equal(res.status, 422);
   assert.match(res.data.error, /闇バイト/);
-  const ok = await call('/api/posts', { method: 'POST', body: { authorId: me.id, text: 'あいつほんとうざい' } });
+  const ok = await call('/api/posts', { method: 'POST', as: me, body: { text: 'あいつほんとうざい' } });
   assert.equal(ok.status, 201, '声をかけるだけのものは、本人が選べば送れる');
 });
 
@@ -487,4 +500,75 @@ test('こことも と連結：ライブ会場のバリアフリーメモを読�
   assert.match((await call(`/api/kokotomo/venue?name=${encodeURIComponent('あやしい')}`)).data.url, /^http:/, 'http 以外のリンクは使わない');
 
   assert.equal((await call('/api/kokotomo/venue')).status, 400);
+});
+
+// ---- ログイン ----
+test('ログイン：登録 → 本人の情報（パスワードは返さない）→ ログアウト → ログイン', async () => {
+  const me = await signup('ログインの人');
+  const { data: self } = await call('/api/auth/me', { as: me });
+  assert.equal(self.name, 'ログインの人');
+  assert.equal(self.ageGroup, 'adult');
+  for (const secret of ['passHash', 'recovery']) assert.equal(self[secret], undefined, `${secret} は返さない`);
+  assert.equal(me.recoveryCodes.length, 8, '回復コードは8つ');
+
+  const reg = await call('/api/auth/register', { method: 'POST', body: { loginId: 'cookie_check', password: 'long-password', name: 'クッキー', birthdate: '1990-01-01' } });
+  assert.match(reg.res.headers.get('set-cookie'), /HttpOnly; SameSite=Lax/, 'JavaScript から読めないクッキー');
+
+  await call('/api/auth/logout', { method: 'POST', as: me });
+  assert.equal((await call('/api/auth/me', { as: me })).data, null, 'ログアウトしたら、そのしるしは使えない');
+  const again = await call('/api/auth/login', { method: 'POST', body: { loginId: me.loginId, password: me.password } });
+  assert.equal(again.status, 200);
+  assert.equal(again.data.me.id, me.id);
+});
+
+test('ログイン：入力チェック', async () => {
+  const reg = (body) => call('/api/auth/register', { method: 'POST', body: { loginId: 'check_user', password: 'password-ok', name: 'チェック登録', birthdate: '1990-01-01', ...body } });
+  assert.equal((await reg({ loginId: 'あ' })).status, 400, 'ログインIDは半角英数字');
+  assert.equal((await reg({ password: 'short' })).status, 400, 'パスワードは8文字から');
+  assert.equal((await reg({ password: 'check_user-123' })).status, 400, 'パスワードにログインIDを入れない');
+  assert.equal((await reg({ birthdate: '' })).status, 400);
+  assert.equal((await reg({ birthdate: '2999-01-01' })).status, 400, '未来の生年月日');
+  const me = await signup('名前かぶり');
+  assert.equal((await reg({ name: '名前かぶり' })).status, 409, '表示名は使われている');
+  assert.equal((await reg({ loginId: me.loginId })).status, 409, 'ログインIDは使われている');
+});
+
+test('ログイン：5回まちがえると、しばらく待たせる', async () => {
+  const me = await signup('まちがえる人');
+  for (let i = 0; i < 5; i++) {
+    assert.equal((await call('/api/auth/login', { method: 'POST', body: { loginId: me.loginId, password: 'wrong-password' } })).status, 401);
+  }
+  assert.equal((await call('/api/auth/login', { method: 'POST', body: { loginId: me.loginId, password: me.password } })).status, 429, '正しくても、しばらくは入れない');
+});
+
+test('ログイン：回復コードで新しいパスワードに（コードは1回だけ・前のログインは切れる）', async () => {
+  const me = await signup('わすれた人');
+  const [code] = me.recoveryCodes;
+  const r = await call('/api/auth/recover', { method: 'POST', body: { loginId: me.loginId, code: code.toUpperCase(), newPassword: 'brand-new-pass' } });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.codesLeft, 7);
+  assert.equal((await call('/api/auth/me', { as: me })).data, null, '前のログインは切れる');
+  assert.equal((await call('/api/auth/recover', { method: 'POST', body: { loginId: me.loginId, code, newPassword: 'another-pass-1' } })).status, 401, '同じコードは2回使えない');
+  assert.equal((await call('/api/auth/login', { method: 'POST', body: { loginId: me.loginId, password: 'brand-new-pass' } })).status, 200);
+});
+
+test('ログイン：年齢の区分・最初の人は管理者・名前だけのユーザーの引っ越し', async () => {
+  const kid = await signup('こども', { birthdate: `${new Date().getFullYear() - 10}-01-01` });
+  const teen = await signup('ちゅうがくせい', { birthdate: `${new Date().getFullYear() - 15}-01-01` });
+  assert.equal(kid.ageGroup, 'child');
+  assert.equal(teen.ageGroup, 'teen');
+  const admins = store.listUsers().filter((u) => u.role === 'admin');
+  assert.equal(admins.length, 1, '管理者は最初に登録した1人だけ');
+
+  const old = store.findOrCreateHuman('むかしの人');
+  const moved = await signup('むかしの人');
+  assert.equal(moved.id, old.id, '名前だけのユーザーを引きつぐ');
+});
+
+test('ログイン：よそのページからの書きこみは受けつけない', async () => {
+  const me = await signup('よその人');
+  const r = await call('/api/posts', { method: 'POST', as: me, body: { text: 'こんにちは' }, headers: { Origin: 'http://evil.example' } });
+  assert.equal(r.status, 403);
+  const ok = await call('/api/posts', { method: 'POST', as: me, body: { text: 'こんにちは' }, headers: { Origin: base } });
+  assert.equal(ok.status, 201);
 });

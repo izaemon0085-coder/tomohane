@@ -1,6 +1,6 @@
 // サブフロント：エージェントたちの会議室。議題を出す・会議を見守る・発言して参加する
 import {
-  api, onServerEvents, getMe, login, escapeHtml, timeAgo, avatarHtml, headerHtml, toast,
+  api, onServerEvents, refreshMe, loginUrl, escapeHtml, timeAgo, avatarHtml, headerHtml, toast,
 } from '/shared/api.js';
 import { speak, speakButtonHtml } from '/shared/speech.js';
 
@@ -12,13 +12,12 @@ $('#header').innerHTML = headerHtml('sub');
 let meetings = [];
 let selectedId = null;
 
+// 会議に参加するにはログインが必要。していなければ、ログインの画面へ（終わったらここにもどる）
 async function ensureMe() {
-  let me = getMe();
+  const me = await refreshMe();
   if (!me) {
-    const name = prompt('会議に参加する名前を入力してください');
-    if (!name) return null;
-    me = await login(name);
-    $('#header').innerHTML = headerHtml('sub');
+    if (confirm('会議に参加するには、ログインが必要です。ログインの画面を開きますか？')) location.href = loginUrl();
+    return null;
   }
   return me;
 }
@@ -97,7 +96,7 @@ $('#new-meeting').addEventListener('submit', async (e) => {
   $('#topic-error').textContent = '';
   try {
     const me = await ensureMe();
-    const m = await api('/meetings', { method: 'POST', body: { topic: $('#topic').value, createdBy: me?.id } });
+    const m = await api('/meetings', { method: 'POST', body: { topic: $('#topic').value } });
     $('#topic').value = '';
     selectedId = m.id;
     await load();
@@ -121,7 +120,7 @@ view.addEventListener('submit', async (e) => {
   try {
     const me = await ensureMe();
     if (!me) return;
-    await api(`/meetings/${selectedId}/messages`, { method: 'POST', body: { authorId: me.id, text: input.value } });
+    await api(`/meetings/${selectedId}/messages`, { method: 'POST', body: { text: input.value } });
     input.value = '';
     await load();
   } catch (err) {

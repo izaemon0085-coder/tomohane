@@ -1,7 +1,8 @@
 // データストア：ユーザー・エージェント・投稿・会議・手紙をメモリで保持し、任意で JSON ファイルに保存する。
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, randomUUID, scrypt as scryptCb, timingSafeEqual } from 'node:crypto';
+import { promisify } from 'node:util';
 import { SEED_AGENTS, MOODS } from './agents.js';
 import { DEFAULT_TYPEFACE, TYPEFACE_KEYS } from '../shared/typefaces.js';
 import { precheck } from '../shared/precheck.js';
@@ -17,6 +18,49 @@ const MAX_DIARY = 20;
 // 手紙の合言葉。サーバーには「ハッシュ」だけを残し、合言葉そのものは作った人のブラウザだけが持つ
 const randomToken = () => randomBytes(18).toString('base64url');
 const hashKey = (key) => createHash('sha256').update(String(key)).digest();
+
+// ---- ログイン ----
+// パスワードは scrypt（わざと時間のかかる計算）で、元にもどせない形にしてから保存する
+const scrypt = promisify(scryptCb);
+export const SESSION_DAYS = 30;
+const RECOVERY_CODES = 8;
+const LOCK_AFTER_FAILS = 5;
+const LOCK_MS = 5 * 60 * 1000;
+const LOGIN_ID = /^[a-z0-9_]{3,20}$/;
+
+async function hashPassword(password) {
+  const salt = randomBytes(16);
+  const hash = await scrypt(String(password).normalize('NFKC'), salt, 32);
+  return `${salt.toString('hex')}:${hash.toString('hex')}`;
+}
+async function checkPassword(password, stored) {
+  if (!stored) return false;
+  const [salt, hash] = stored.split(':');
+  const got = await scrypt(String(password).normalize('NFKC'), Buffer.from(salt, 'hex'), 32);
+  return timingSafeEqual(got, Buffer.from(hash, 'hex'));
+}
+// 回復コード（パスワードを忘れたときの予備のカギ）。読みまちがえにくい文字だけで作る
+const CODE_CHARS = 'abcdefghjkmnpqrstuvwxyz23456789';
+function newRecoveryCode() {
+  const bytes = randomBytes(8);
+  const s = [...bytes].map((b) => CODE_CHARS[b % CODE_CHARS.length]).join('');
+  return `${s.slice(0, 4)}-${s.slice(4)}`;
+}
+const hashCode = (code) => createHash('sha256').update(String(code).trim().toLowerCase()).digest('hex');
+const hashSession = (token) => createHash('sha256').update(String(token)).digest('hex');
+
+// 生年月日から年齢の区分を出す。子ども（12歳まで）・中高生（13〜17歳）・大人（18歳から）
+export function ageOf(birthdate, today = new Date()) {
+  const [y, m, d] = birthdate.split('-').map(Number);
+  let age = today.getFullYear() - y;
+  if (today.getMonth() + 1 < m || (today.getMonth() + 1 === m && today.getDate() < d)) age -= 1;
+  return age;
+}
+export function ageGroup(birthdate, today = new Date()) {
+  if (!birthdate) return null;
+  const age = ageOf(birthdate, today);
+  return age < 13 ? 'child' : age < 18 ? 'teen' : 'adult';
+}
 
 export class HttpError extends Error {
   constructor(status, message) {
@@ -78,7 +122,10 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
   syncSeedAgents(state, now);
   state.meta ??= {};
   state.letters ??= [];
+  state.sessions ??= [];
   const listeners = new Set();
+  const loginFails = new Map(); // ログインID → { count, until }（パスワードの総当たりを防ぐ）
+  const clockMs = () => Date.parse(now());
   let saveTimer = null;
 
   function save() {
@@ -157,6 +204,101 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       state.users.push(user);
       emit('user', user);
       return user;
+    },
+
+    // ---- ログイン ----
+    // 登録。今いる「名前だけのユーザー」と同じ名前なら、そのユーザーを引きつぐ（β版の引っ越し）
+    async register({ loginId, password, name, birthdate }) {
+      const id = String(loginId ?? '').trim().toLowerCase();
+      if (!LOGIN_ID.test(id)) throw new HttpError(400, 'ログインIDは、半角の英小文字・数字・_ で3〜20文字にしてください');
+      if (state.users.some((u) => u.loginId === id)) throw new HttpError(409, 'そのログインIDは使われています');
+      const pw = String(password ?? '');
+      if ([...pw].length < 8 || [...pw].length > 64) throw new HttpError(400, 'パスワードは8〜64文字にしてください');
+      if (pw.toLowerCase().includes(id)) throw new HttpError(400, 'パスワードに、ログインIDを入れないでください');
+      const clean = cleanText(name, MAX_NAME_LENGTH, '表示名');
+      if (state.users.some((u) => u.kind === 'agent' && u.name === clean)) throw new HttpError(409, 'その名前はエージェントが使っています');
+      if (typeof birthdate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(birthdate) || Number.isNaN(Date.parse(birthdate))) {
+        throw new HttpError(400, '生年月日を入れてください');
+      }
+      const age = ageOf(birthdate, new Date(clockMs()));
+      if (age < 0 || age > 120) throw new HttpError(400, '生年月日が正しくありません');
+
+      let user = state.users.find((u) => u.kind === 'human' && u.name === clean);
+      if (user?.passHash) throw new HttpError(409, 'その表示名は使われています');
+      if (!user) {
+        user = { id: newId('u'), kind: 'human', name: clean, handle: clean, emoji: null, createdAt: now() };
+        state.users.push(user);
+      }
+      const codes = Array.from({ length: RECOVERY_CODES }, newRecoveryCode);
+      Object.assign(user, {
+        loginId: id,
+        passHash: await hashPassword(pw),
+        recovery: codes.map(hashCode),
+        birthdate,
+        // いちばん最初に登録した人が運営（管理者）。β版を家で動かす人がそのまま管理者になる
+        role: state.users.some((u) => u.role === 'admin') ? 'user' : 'admin',
+      });
+      emit('user', user);
+      return { user, recoveryCodes: codes };
+    },
+    async login({ loginId, password }) {
+      const id = String(loginId ?? '').trim().toLowerCase();
+      const fail = loginFails.get(id);
+      if (fail?.until > clockMs()) throw new HttpError(429, 'まちがいが続いたので、5分ほど待ってからもう一度どうぞ');
+      const user = state.users.find((u) => u.loginId === id);
+      const ok = user ? await checkPassword(password, user.passHash) : false;
+      if (!ok) {
+        const count = (fail?.count ?? 0) + 1;
+        loginFails.set(id, { count, until: count >= LOCK_AFTER_FAILS ? clockMs() + LOCK_MS : 0 });
+        throw new HttpError(401, 'ログインIDかパスワードがちがいます');
+      }
+      loginFails.delete(id);
+      return user;
+    },
+    // 回復コードを1つ使って、新しいパスワードにする（コードは1回だけ）
+    async recover({ loginId, code, newPassword }) {
+      const id = String(loginId ?? '').trim().toLowerCase();
+      const fail = loginFails.get(`recover:${id}`);
+      if (fail?.until > clockMs()) throw new HttpError(429, 'まちがいが続いたので、5分ほど待ってからもう一度どうぞ');
+      const user = state.users.find((u) => u.loginId === id);
+      const h = hashCode(code);
+      if (!user || !user.recovery?.includes(h)) {
+        const count = (fail?.count ?? 0) + 1;
+        loginFails.set(`recover:${id}`, { count, until: count >= LOCK_AFTER_FAILS ? clockMs() + LOCK_MS : 0 });
+        throw new HttpError(401, 'ログインIDか回復コードがちがいます');
+      }
+      const pw = String(newPassword ?? '');
+      if ([...pw].length < 8 || [...pw].length > 64) throw new HttpError(400, 'パスワードは8〜64文字にしてください');
+      user.recovery = user.recovery.filter((x) => x !== h);
+      user.passHash = await hashPassword(pw);
+      this.endAllSessions(user.id); // 前のログインは全部切る
+      save();
+      return { user, codesLeft: user.recovery.length };
+    },
+    // ログインのしるし（セッション）。トークンそのものは保存せず、ハッシュだけを持つ
+    startSession(userId) {
+      requireUser(userId);
+      const token = randomBytes(32).toString('base64url');
+      const t = clockMs();
+      state.sessions = state.sessions.filter((s) => s.expiresAt > t);
+      state.sessions.push({ hash: hashSession(token), userId, createdAt: t, expiresAt: t + SESSION_DAYS * 86400000 });
+      save();
+      return token;
+    },
+    sessionUser(token) {
+      if (!token) return null;
+      const h = hashSession(token);
+      const s = state.sessions.find((x) => x.hash === h && x.expiresAt > clockMs());
+      return s ? userById(s.userId) || null : null;
+    },
+    endSession(token) {
+      const h = hashSession(token);
+      state.sessions = state.sessions.filter((s) => s.hash !== h);
+      save();
+    },
+    endAllSessions(userId) {
+      state.sessions = state.sessions.filter((s) => s.userId !== userId);
+      save();
     },
 
     // ---- 推しの情報（わたしの推しページ） ----

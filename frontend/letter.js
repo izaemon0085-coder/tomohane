@@ -1,7 +1,7 @@
 // 手紙キット：宛名 → 便箋 → ビデオ → QR コード。できた便箋と QR は画像で保存して、セブンイレブンのアプリで印刷する
 // ・ともはねのほかのユーザーには送らない。届け方は紙の手紙＋QR だけ
 // ・手紙の合言葉（key）はこの端末の localStorage にだけ置く。合言葉がないと、一覧・削除はできない
-import { api, getMe, login, escapeHtml, timeAgo, headerHtml, toast, onServerEvents } from '/shared/api.js';
+import { api, refreshMe, escapeHtml, timeAgo, headerHtml, toast, onServerEvents } from '/shared/api.js';
 import { qrMatrix, qrSvg, drawQr } from '/shared/qrcode.js';
 import { TYPEFACES, DEFAULT_TYPEFACE, fontStack, loadTypeface } from '/shared/typefaces.js';
 import { getDesign } from '/shared/customize.js';
@@ -14,7 +14,7 @@ const MAX_SECONDS = 180;
 const MAX_BYTES = 200 * 1024 * 1024;
 const TYPE_BY_EXT = { mp4: 'video/mp4', m4v: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm' };
 
-let me = getMe();
+let me = await refreshMe();
 let video = null; // { file, type }
 let previewUrl = null;
 let current = null; // いま「できあがり」に出している手紙 { letter, key, url }
@@ -205,7 +205,7 @@ form.addEventListener('submit', async (e) => {
   let letter;
   try {
     const typeface = form.elements.typeface?.value || DEFAULT_TYPEFACE;
-    letter = await api('/letters', { method: 'POST', body: { authorId: me.id, to, from, note, typeface } });
+    letter = await api('/letters', { method: 'POST', body: { to, from, note, typeface } });
     writeSaved([...savedLetters(), { id: letter.id, key: letter.key, userId: me.id }]);
     progress.hidden = false;
     progress.value = 0;
@@ -481,17 +481,6 @@ $('#my-letters').addEventListener('click', async (e) => {
   }
 });
 
-$('#login-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  $('#login-error').textContent = '';
-  try {
-    me = await login($('#login-name').value);
-    render();
-    loadMine();
-  } catch (err) {
-    $('#login-error').textContent = err.message;
-  }
-});
 
 render();
 renderTypefaces();

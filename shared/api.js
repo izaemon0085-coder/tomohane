@@ -35,6 +35,8 @@ export function onServerEvents(handlers, delay = 150) {
   return source;
 }
 
+// ログインしている人。本当のしるしはサーバーのクッキー（JavaScript からは読めない）にあり、
+// ここには画面をすぐ出すための写しだけを置く（オフラインのときも名前を出せるように）
 const ME_KEY = 'agent-sns:me';
 export function getMe() {
   try {
@@ -43,13 +45,43 @@ export function getMe() {
     return null;
   }
 }
-export async function login(name) {
-  const user = await api('/users', { method: 'POST', body: { name } });
-  try { localStorage.setItem(ME_KEY, JSON.stringify(user)); } catch { /* 保存できなくても続行 */ }
-  return user;
+function setMeCache(user) {
+  try {
+    if (user) localStorage.setItem(ME_KEY, JSON.stringify(user));
+    else localStorage.removeItem(ME_KEY);
+  } catch { /* 保存できなくても続行 */ }
 }
-export function logout() {
-  try { localStorage.removeItem(ME_KEY); } catch { /* noop */ }
+// サーバーに「いまログインしているのはだれ？」と聞く。オフラインなら写しを使う
+export async function refreshMe() {
+  try {
+    const user = await api('/auth/me');
+    setMeCache(user);
+    return user;
+  } catch (err) {
+    if (err.offline) return getMe();
+    setMeCache(null);
+    return null;
+  }
+}
+export function rememberMe(user) {
+  setMeCache(user);
+}
+// ログインの画面へ（ログインしたら、いまの画面にもどってくる）
+export function loginUrl() {
+  return `/login.html?next=${encodeURIComponent(location.pathname + location.search + location.hash)}`;
+}
+export async function logout({ everywhere = false } = {}) {
+  try {
+    await api(everywhere ? '/auth/logout-all' : '/auth/logout', { method: 'POST' });
+  } catch { /* オフラインでも、この端末の写しは消す */ }
+  setMeCache(null);
+}
+// data-login-link のついたリンクは、押したときに「いまの画面にもどる」ログインのアドレスにする
+if (typeof document !== 'undefined') {
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest?.('[data-login-link]');
+    if (a) a.href = loginUrl();
+  });
 }
 
 export const STATUS_LABEL = {
@@ -101,7 +133,9 @@ export function headerHtml(current) {
     </nav>
     <button type="button" class="net-chip" data-open-network data-net-chip title="ローカル回線のようす">📶</button>
     <button type="button" class="kisekae-btn" data-open-customize title="推しカラーや飾りで画面をきせかえ">🎨 きせかえ</button>
-    <span class="me">${me ? `${escapeHtml(me.name)} さん` : '未ログイン'}</span>
+    ${me
+    ? `<a class="me" href="/login.html" title="アカウント・ログアウト">${escapeHtml(me.name)} さん</a>`
+    : '<a class="me" href="/login.html" data-login-link>ログイン</a>'}
   </div>`;
 }
 
