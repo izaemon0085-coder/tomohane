@@ -1,6 +1,6 @@
 // きせかえ：推しカラー・字体・背景のもよう・飾り・レイアウトを自分の好きに変えられる。
 // 設定はこのブラウザに保存する（β版。あとでアカウントに保存して、どの端末でも同じにできる）。
-import { api } from '/shared/api.js';
+import { api, escapeHtml } from '/shared/api.js';
 import { opinionsFor, closingLines } from '/shared/kisekae-opinions.js';
 import { TYPEFACES, DEFAULT_TYPEFACE, fontStack } from '/shared/typefaces.js';
 
@@ -242,7 +242,7 @@ function renderPanel() {
           <label class="kk-swatch kk-default" title="はじめの色"><input type="radio" name="color" value=""${d.color ? '' : ' checked'}><span>なし</span></label>
           ${OSHI_COLORS.map((c) => `<label class="kk-swatch" title="${c.name}" style="--sw:${c.hex}">
             <input type="radio" name="color" value="${c.hex}"${d.color === c.hex ? ' checked' : ''}><span class="sr-only">${c.name}</span></label>`).join('')}
-          <label class="kk-custom" title="好きな色を選ぶ">🎨<input type="color" name="customColor" value="${d.color || '#ec5f9a'}" aria-label="好きな色を選ぶ"></label>
+          <label class="kk-custom" title="好きな色を選ぶ">🎨<input type="color" name="customColor" value="${escapeHtml(d.color || '#ec5f9a')}" aria-label="好きな色を選ぶ"></label>
         </div>
       </fieldset>
 
