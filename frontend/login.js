@@ -7,9 +7,14 @@ const AGE = { child: '子ども（12歳まで）', teen: '中高生（13〜17歳
 const ROLE = { admin: '運営（管理者）', user: 'ユーザー' };
 
 // ログインしたあとに、もどる画面（このサイトの中のページだけ）
+// 「/\よそ.example」のような書き方も、ブラウザはよそのサイトとして読むので、アドレスとして組み立ててから確かめる
 function nextUrl() {
   const next = new URLSearchParams(location.search).get('next') || '/';
-  return next.startsWith('/') && !next.startsWith('//') && !next.startsWith('/login.html') ? next : '/';
+  if (!next.startsWith('/') || /[\\\s]/.test(next)) return '/';
+  let u;
+  try { u = new URL(next, location.origin); } catch { return '/'; }
+  if (u.origin !== location.origin || u.pathname.startsWith('/login.html')) return '/';
+  return u.pathname + u.search + u.hash;
 }
 
 function guide(face, name, text) {

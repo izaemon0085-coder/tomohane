@@ -31,7 +31,7 @@ export function createTomohaneLink({ baseUrl, gameId, secret, fetchImpl = fetch,
     // 通行証（1分・1回だけ）を、ともはねに確かめてもらう
     async redeem(ticket) {
       if (!/^[\w-]{16,64}$/.test(String(ticket ?? ''))) throw new Error('通行証の形が正しくありません');
-      const res = await fetchImpl(`${root}/ticket/${ticket}`, { headers, signal: AbortSignal.timeout(timeoutMs) });
+      const res = await fetchImpl(`${root}/ticket/${encodeURIComponent(ticket)}`, { headers, signal: AbortSignal.timeout(timeoutMs) });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `ともはねに確かめられませんでした（${res.status}）`);
       return { gameId: String(data.gameId), name: String(data.name), ageGroup: data.ageGroup };

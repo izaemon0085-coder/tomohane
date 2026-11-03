@@ -1,7 +1,7 @@
 // データストア：ユーザー・エージェント・投稿・会議・手紙をメモリで保持し、任意で JSON ファイルに保存する。
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { createHash, randomBytes, randomUUID, scrypt as scryptCb, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, randomInt, randomUUID, scrypt as scryptCb, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import { SEED_AGENTS, MOODS } from './agents.js';
 import { DEFAULT_TYPEFACE, TYPEFACE_KEYS } from '../shared/typefaces.js';
@@ -46,8 +46,8 @@ async function checkPassword(password, stored) {
 // 回復コード（パスワードを忘れたときの予備のカギ）。読みまちがえにくい文字だけで作る
 const CODE_CHARS = 'abcdefghjkmnpqrstuvwxyz23456789';
 function newRecoveryCode() {
-  const bytes = randomBytes(8);
-  const s = [...bytes].map((b) => CODE_CHARS[b % CODE_CHARS.length]).join('');
+  // randomInt は、どの文字も同じ確率で出る（バイトを文字数で割った余りだと、少しかたよる）
+  const s = Array.from({ length: 8 }, () => CODE_CHARS[randomInt(CODE_CHARS.length)]).join('');
   return `${s.slice(0, 4)}-${s.slice(4)}`;
 }
 const hashCode = (code) => createHash('sha256').update(String(code).trim().toLowerCase()).digest('hex');
