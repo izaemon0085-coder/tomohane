@@ -320,6 +320,23 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
     },
 
     // ゴーストエージェント：自己ベストを更新した回数と、続けた日数だけ（ラップの記録そのものは来ない）
+    // そらとも：ミッション達成の数と遊んだ回数だけ
+    setSoratomoId(userId, soratomoId) {
+      const user = requireUser(userId);
+      if (user.soratomoId !== soratomoId) {
+        user.soratomoId = soratomoId;
+        save();
+      }
+    },
+    setSoratomoResults(soratomoId, { missions, plays }) {
+      const user = state.users.find((u) => u.soratomoId === soratomoId);
+      if (!user) throw new HttpError(404, 'ユーザーが見つかりません');
+      const n = (v) => (Number.isInteger(v) && v >= 0 && v <= 1e6 ? v : null);
+      if (n(missions) === null || n(plays) === null || missions > plays) throw new HttpError(400, '記録の数が正しくありません');
+      user.soratomo = { missions, plays, updatedAt: now() };
+      emit('user', user);
+      return user.soratomo;
+    },
     // ころとも：ゴールした回数と遊んだ回数だけ
     setKorotomoId(userId, korotomoId) {
       const user = requireUser(userId);

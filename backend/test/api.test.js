@@ -647,3 +647,16 @@ test('ころとも：ともはねのゲームとして、ゴールの回数と�
   assert.equal((await call('/api/link/korotomo-results', { method: 'POST', headers: S, body: { gameId: info.gameId, goals: 2, plays: 3 } })).status, 200);
   assert.deepEqual((await call('/api/auth/me', { as: me })).data.korotomo.goals, 2);
 });
+
+test('そらとも：ともはねのゲームとして、ミッション達成の数と遊んだ回数だけ受けとる', async () => {
+  const me = await signup('そらともの人');
+  const S = { 'X-Link-Secret': 'tomohane-dev-link-secret' };
+  const r = await fetch(`${base}/api/link/soratomo-start`, { redirect: 'manual', headers: { Cookie: me.cookie } });
+  const loc = new URL(r.headers.get('location'));
+  assert.equal(loc.origin, 'http://localhost:3800');
+  const info = (await call(`/api/link/soratomo-ticket/${loc.searchParams.get('ticket')}`, { headers: S })).data;
+  assert.match(info.gameId, /^s_/);
+  assert.equal((await call('/api/link/soratomo-results', { method: 'POST', headers: S, body: { gameId: info.gameId, missions: 2, plays: 1 } })).status, 400);
+  assert.equal((await call('/api/link/soratomo-results', { method: 'POST', headers: S, body: { gameId: info.gameId, missions: 1, plays: 2 } })).status, 200);
+  assert.equal((await call('/api/auth/me', { as: me })).data.soratomo.missions, 1);
+});

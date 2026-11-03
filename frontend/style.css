@@ -61,6 +61,12 @@
   background: #fff; color: #2b2420; text-decoration: none; font-weight: 800; font-size: clamp(.65rem, 1.6vw, .85rem);
   padding: 3px 10px; border-radius: 999px; border: 2px solid #7fa7c9;
 }
+.soratomo-spot {
+  position: absolute; right: 3%; top: 44%; z-index: 2; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;
+  background: #1b2560; color: #fff; text-decoration: none; font-weight: 800; font-size: clamp(.65rem, 1.6vw, .85rem);
+  padding: 3px 10px; border-radius: 999px; border: 2px solid #6fd3ff;
+}
+.soratomo-spot:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
 .korotomo-spot:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
 .ground-spot:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
 .mystery-sign {

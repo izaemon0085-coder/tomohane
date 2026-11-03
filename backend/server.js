@@ -8,7 +8,7 @@ import { createSimulation } from './simulation.js';
 import { lanAddresses } from './net.js';
 import { MAX_VIDEO_BYTES, removeVideo, saveVideo, serveVideo } from './letters.js';
 import { createKokotomoClient } from './kokotomo.js';
-import { createGameLink, GHOST_URL, MISETOMO_URL, KOROTOMO_URL } from './gamelink.js';
+import { createGameLink, GHOST_URL, MISETOMO_URL, KOROTOMO_URL, SORATOMO_URL } from './gamelink.js';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 
@@ -80,6 +80,7 @@ function meView(u) {
     game: u.game ?? null,
     ghost: u.ghost ?? null,
     korotomo: u.korotomo ?? null,
+    soratomo: u.soratomo ?? null,
   };
 }
 
@@ -134,6 +135,7 @@ export function createApp({
   ghostLink = createGameLink({ app: 'ghost', gameUrl: GHOST_URL }),
   misetomoLink = createGameLink({ app: 'misetomo', gameUrl: MISETOMO_URL }),
   korotomoLink = createGameLink({ app: 'korotomo', gameUrl: KOROTOMO_URL }),
+  soratomoLink = createGameLink({ app: 'soratomo', gameUrl: SORATOMO_URL }),
 }) {
   const routes = [
     // line：回線番のモグが選んだ回線（wifi / local / offline）
@@ -266,7 +268,7 @@ export function createApp({
     return true;
   }
 
-  // ---- つながるアプリ（ともじゃん・ゴーストエージェント・みせとも・ころとも）との連結 ----
+  // ---- つながるアプリ（ともじゃん・ゴーストエージェント・みせとも・ころとも・そらとも）との連結 ----
   // /api/link/<名前>-start ・ -ticket/:通行証 ・ -results
   const LINKS = {
     game: { link: gameLink, setId: (u, id) => store.setGameId(u, id), results: (id, body) => store.setGameResults(id, body) },
@@ -275,6 +277,8 @@ export function createApp({
     misetomo: { link: misetomoLink, setId: () => {}, results: null },
     // ころとも（ラジコンの小さなロボット）：ともはねのゲームとして。ゴールした回数と遊んだ回数だけ
     korotomo: { link: korotomoLink, setId: (u, id) => store.setKorotomoId(u, id), results: (id, body) => store.setKorotomoResults(id, body) },
+    // そらとも（人工衛星の運用ゲーム）：ミッション達成の数と遊んだ回数だけ
+    soratomo: { link: soratomoLink, setId: (u, id) => store.setSoratomoId(u, id), results: (id, body) => store.setSoratomoResults(id, body) },
   };
   // アプリのアドレス。このパソコン（localhost）のアドレスのとき、スマホから開いても届くように、いま開いているアドレスに合わせる
   function gameUrlFor(req, link) {
@@ -284,7 +288,7 @@ export function createApp({
     return u.origin;
   }
   async function handleGameLink(req, res, pathname, me) {
-    const m = pathname.match(/^\/api\/link\/(game|ghost|misetomo|korotomo)-(start|ticket|results)(?:\/([\w-]+))?$/);
+    const m = pathname.match(/^\/api\/link\/(game|ghost|misetomo|korotomo|soratomo)-(start|ticket|results)(?:\/([\w-]+))?$/);
     if (!m) return false;
     const [, name, action, ticketId] = m;
     const { link, setId, results } = LINKS[name];
