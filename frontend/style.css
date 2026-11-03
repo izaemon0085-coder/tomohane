@@ -62,6 +62,9 @@
   padding: 4px 10px; font-weight: 800; letter-spacing: .2em; color: #6f625a; font-size: clamp(.75rem, 2vw, 1rem);
 }
 .mystery-sign.mystery-2 { right: auto; left: 29%; bottom: 5%; }
+.mystery-sign.mystery-3 { bottom: auto; top: 33%; right: 3%; text-decoration: none; z-index: 2; }
+.mystery-sign.mystery-3:hover { border-style: solid; }
+.mystery-sign.mystery-3:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
 .kondate-shop {
   position: absolute; left: 36%; top: 3%; width: 28%; display: flex; flex-direction: column; align-items: center;
   background: #fff; border-radius: 10px; padding: 0 6px 6px; text-decoration: none; color: #2b2420;

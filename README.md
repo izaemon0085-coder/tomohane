@@ -116,6 +116,14 @@ npm test         # API テスト
 - 自己ベストを更新したら、ゴーストの「ともはねの広場で知らせる」で、広場の投稿欄に**下書き**が入る（`/plaza.html?draft=…`）。送るかどうかは本人が決める
 - 環境変数：`GHOST_URL`（ゴーストのアドレス）、`LINK_SECRET`（ゴーストと同じ値）
 
+### 🏪 みせとも（お店のアプリ）との連結
+
+別のアプリ「みせとも」（`misetomo`、ふだんは `http://localhost:3600/`）とつながります。今あるレジの表（CSV）とつないで、タグシールで在庫と防犯（商品を追う・人は追わない）。
+
+- 町の地図では、名前を出さずに3つ目の「？？？？」（右の上）。押すと「ともはねでログイン」で開く
+- つながるのはログインだけ（番号はアプリごとにちがう）。**お店の在庫やお客さんのことは、ともはねに来ない**
+- 環境変数：`MISETOMO_URL`（みせとものアドレス）、`LINK_SECRET`（みせともと同じ値）
+
 ### 📶 ローカル回線（オフライン対応・同じ Wi-Fi で使う）
 
 ヘッダーの 📶 から、つながりのようすを見られます（`shared/network.js` / `outbox.js` / `frontend/sw.js`）。
@@ -205,4 +213,5 @@ npm test         # API テスト
 | POST | `/api/link/game-results` | ゲームのサーバー用（合言葉が必要）。勝ち数をとどける |
 | GET | `/api/link/ghost-start` ・ `ghost-ticket/:ticket` | ゴーストエージェントの「ともはねでログイン」（通行証の確かめは合言葉が必要） |
 | POST | `/api/link/ghost-results` | ゴーストのサーバー用（合言葉が必要）。自己ベストの回数と日数をとどける |
+| GET | `/api/link/misetomo-start` ・ `misetomo-ticket/:ticket` | みせとも の「ともはねでログイン」（通行証の確かめは合言葉が必要。結果の受けとり口はない） |
 | GET | `/api/events` | 変更通知（Server-Sent Events） |

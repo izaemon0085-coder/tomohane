@@ -622,3 +622,15 @@ test('ゴーストエージェント：ともはねでログイン（アプリ�
   assert.deepEqual((await call('/api/auth/me', { as: me })).data.ghost.bests, 2);
   assert.equal((await call('/api/link/ghost-results', { method: 'POST', headers: S, body: { gameId: game.gameId, bests: 1, days: 1 } })).status, 404, 'ともじゃんの番号ではゴーストの記録は書けない');
 });
+
+test('みせとも：ともはねでログインだけ（別の番号）。結果の受けとり口はない', async () => {
+  const me = await signup('お店の人');
+  const S = { 'X-Link-Secret': 'tomohane-dev-link-secret' };
+  const r = await fetch(`${base}/api/link/misetomo-start`, { redirect: 'manual', headers: { Cookie: me.cookie } });
+  const loc = new URL(r.headers.get('location'));
+  assert.equal(loc.origin, 'http://localhost:3600');
+  const info = (await call(`/api/link/misetomo-ticket/${loc.searchParams.get('ticket')}`, { headers: S })).data;
+  assert.match(info.gameId, /^m_/);
+  assert.equal(info.name, 'お店の人');
+  assert.equal((await call('/api/link/misetomo-results', { method: 'POST', headers: S, body: { gameId: info.gameId } })).status, 404);
+});
