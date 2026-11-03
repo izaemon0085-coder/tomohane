@@ -27,6 +27,9 @@ const RECOVERY_CODES = 8;
 const LOCK_AFTER_FAILS = 5;
 const LOCK_MS = 5 * 60 * 1000;
 const LOGIN_ID = /^[a-z0-9_]{3,20}$/;
+const GUARDIAN_CODE_MS = 30 * 60 * 1000;
+const MAX_GUARDIANS = 2;
+const MAX_CHILDREN = 10;
 
 async function hashPassword(password) {
   const salt = randomBytes(16);
@@ -125,6 +128,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
   state.sessions ??= [];
   const listeners = new Set();
   const loginFails = new Map(); // ログインID → { count, until }（パスワードの総当たりを防ぐ）
+  const guardianCodes = new Map(); // つなぐコードのハッシュ → { guardianId, expiresAt }（保存しない。30分で消える）
   const clockMs = () => Date.parse(now());
   let saveTimer = null;
 
@@ -300,6 +304,53 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       state.sessions = state.sessions.filter((s) => s.userId !== userId);
       save();
     },
+
+    // ---- 保護者とつなぐ（子ども） ----
+    // おうちの人（大人）が「つなぐコード」を出す → 子どもが自分の画面で入れる → つながる。
+    // コードは30分・1回だけ。はずせるのはおうちの人だけ（子どもが一人ではずせないように）
+    issueGuardianCode(guardianId) {
+      const g = requireUser(guardianId);
+      if (ageGroup(g.birthdate, new Date(clockMs())) !== 'adult') throw new HttpError(403, 'つなぐコードを出せるのは、大人（18歳から）だけです');
+      const kids = state.users.filter((u) => u.guardianIds?.includes(g.id));
+      if (kids.length >= MAX_CHILDREN) throw new HttpError(409, `つなげる子どもは${MAX_CHILDREN}人までです`);
+      for (const [h, v] of guardianCodes) if (v.guardianId === g.id || v.expiresAt <= clockMs()) guardianCodes.delete(h);
+      const code = newRecoveryCode();
+      const expiresAt = clockMs() + GUARDIAN_CODE_MS;
+      guardianCodes.set(hashCode(code), { guardianId: g.id, expiresAt });
+      return { code, expiresAt: new Date(expiresAt).toISOString() };
+    },
+    acceptGuardianCode(childId, code) {
+      const child = requireUser(childId);
+      if (ageGroup(child.birthdate, new Date(clockMs())) !== 'child') throw new HttpError(403, 'つなぐコードを入れられるのは、子ども（12歳まで）だけです');
+      const failKey = `guardian:${child.id}`;
+      const fail = loginFails.get(failKey);
+      if (fail?.until > clockMs()) throw new HttpError(429, 'まちがいが続いたので、5分ほど待ってからもう一度どうぞ');
+      const h = hashCode(code);
+      const entry = guardianCodes.get(h);
+      if (!entry || entry.expiresAt <= clockMs()) {
+        const count = (fail?.count ?? 0) + 1;
+        loginFails.set(failKey, { count, until: count >= LOCK_AFTER_FAILS ? clockMs() + LOCK_MS : 0 });
+        throw new HttpError(401, 'つなぐコードがちがうか、30分すぎています');
+      }
+      if (entry.guardianId === child.id) throw new HttpError(400, '自分とはつなげません');
+      child.guardianIds ??= [];
+      if (child.guardianIds.includes(entry.guardianId)) throw new HttpError(409, 'もうつながっています');
+      if (child.guardianIds.length >= MAX_GUARDIANS) throw new HttpError(409, `おうちの人は${MAX_GUARDIANS}人までです`);
+      guardianCodes.delete(h);
+      loginFails.delete(failKey);
+      child.guardianIds.push(entry.guardianId);
+      save();
+      return requireUser(entry.guardianId);
+    },
+    unlinkChild(guardianId, childId) {
+      const child = requireUser(childId);
+      if (!child.guardianIds?.includes(guardianId)) throw new HttpError(404, 'つながっていません');
+      child.guardianIds = child.guardianIds.filter((id) => id !== guardianId);
+      save();
+      return { ok: true };
+    },
+    childrenOf: (guardianId) => state.users.filter((u) => u.guardianIds?.includes(guardianId)),
+    guardiansOf: (childId) => (userById(childId)?.guardianIds ?? []).map(userById).filter(Boolean),
 
     // ---- ゲームのアプリとの連結 ----
     setGameId(userId, gameId) {

@@ -79,7 +79,29 @@
         <dt>ころとも</dt><dd id="acc-korotomo"></dd>
         <dt>そらとも</dt><dd id="acc-soratomo"></dd>
       </dl>
-      <p class="note-line" id="acc-child" hidden>🐕 シバより：おうちの人と一緒に使ってほしいっす。おうちの人とつなぐ機能は、いま準備中っす。</p>
+      <p class="note-line" id="acc-child" hidden>🐕 シバより：おうちの人と一緒に使ってほしいっす。下の「おうちの人とつなぐ」で、おうちの人のコードを入れてほしいっす。</p>
+
+      <!-- 保護者とつなぐ（大人：コードを出す・子どものようす。子ども：コードを入れる） -->
+      <section id="family" class="family" hidden aria-labelledby="family-title">
+        <h2 id="family-title">おうちの人とつなぐ</h2>
+        <div id="family-adult" hidden>
+          <p class="muted small">子どもの画面で、このコードを入れてもらいます。コードは30分・1回だけ使えます。つながると、子どもの広場の投稿とゲームの数が見えます（手紙・推しページは見えません）。</p>
+          <div class="row wrap">
+            <button type="button" class="btn ghost" id="family-issue">つなぐコードを出す</button>
+            <p class="family-code" id="family-code" aria-live="polite"></p>
+          </div>
+          <ul class="family-list" id="family-children"></ul>
+        </div>
+        <div id="family-child" hidden>
+          <form id="family-join" class="row wrap">
+            <label class="field">おうちの人のコード（例：abcd-2345）
+              <input class="input" name="code" autocomplete="off" autocapitalize="none" required></label>
+            <button class="btn" type="submit">つなぐ</button>
+            <p class="error" role="alert"></p>
+          </form>
+          <p class="muted small" id="family-guardians"></p>
+        </div>
+      </section>
       <div class="row wrap">
         <a class="btn" id="acc-back" href="/">もどる</a>
         <button type="button" class="btn ghost" id="logout">ログアウト</button>

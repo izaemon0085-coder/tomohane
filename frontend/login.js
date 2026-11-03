@@ -1,6 +1,6 @@
 // ログイン・はじめる（登録）・パスワードを忘れた・アカウント
 // ログインのしるしはサーバーのクッキー（JavaScript からは読めない）。ここでは画面の写しだけを更新する
-import { api, refreshMe, rememberMe, logout, headerHtml, escapeHtml, toast } from '/shared/api.js';
+import { api, refreshMe, rememberMe, logout, headerHtml, escapeHtml, toast, timeAgo } from '/shared/api.js';
 
 const $ = (sel) => document.querySelector(sel);
 const AGE = { child: '子ども（12歳まで）', teen: '中高生（13〜17歳）', adult: '大人（18歳から）' };
@@ -48,7 +48,67 @@ function render(me) {
   $('#acc-game').textContent = me.game ? `${me.game.wins}勝（${me.game.plays}回あそんだ）` : 'まだ遊んでいません（町の地図のシバの家から）';
   $('#acc-child').hidden = me.ageGroup !== 'child';
   $('#acc-back').href = nextUrl();
+  renderFamily(me);
 }
+
+// ---- 保護者とつなぐ ----
+async function renderFamily(me) {
+  const isAdult = me.ageGroup === 'adult';
+  const isChild = me.ageGroup === 'child';
+  $('#family').hidden = !isAdult && !isChild;
+  $('#family-adult').hidden = !isAdult;
+  $('#family-child').hidden = !isChild;
+  if (!isAdult && !isChild) return;
+  let data;
+  try { data = await api('/guardian'); } catch { return; }
+  if (isChild) {
+    $('#family-guardians').textContent = data.guardians.length
+      ? `つながっているおうちの人：${data.guardians.map((g) => g.name).join('、')}`
+      : 'まだ、おうちの人とつながっていません。';
+    return;
+  }
+  const count = (label, v, text) => (v ? `${label} ${text(v)}` : null);
+  $('#family-children').innerHTML = data.children.map((c) => {
+    const games = [
+      count('じゃんけん', c.game, (g) => `${g.wins}勝`),
+      count('ゴースト', c.ghost, (g) => `自己ベスト${g.bests}回`),
+      count('ころとも', c.korotomo, (g) => `ゴール${g.goals}回`),
+      count('そらとも', c.soratomo, (g) => `ミッション${g.missions}回`),
+    ].filter(Boolean).join('・') || 'ゲームはまだ';
+    const posts = c.recentPosts.length
+      ? `<ul class="posts">${c.recentPosts.map((p) => `<li>${escapeHtml(p.text)} <span class="muted">（${escapeHtml(timeAgo(p.createdAt))}）</span></li>`).join('')}</ul>`
+      : '<p class="muted small">広場の投稿はまだありません</p>';
+    return `<li><strong>${escapeHtml(c.name)}</strong> <span class="muted small">${escapeHtml(games)}</span>${posts}
+      <button type="button" class="btn ghost" data-unlink="${escapeHtml(c.id)}" data-name="${escapeHtml(c.name)}">つなぐのをやめる</button></li>`;
+  }).join('');
+}
+$('#family-issue').addEventListener('click', async () => {
+  try {
+    const r = await api('/guardian/code', { method: 'POST' });
+    $('#family-code').textContent = r.code;
+  } catch (e) {
+    toast(e.message, 5000);
+  }
+});
+$('#family-children').addEventListener('click', async (e) => {
+  const btn = e.target.closest('[data-unlink]');
+  if (!btn || !confirm(`${btn.dataset.name} さんと、つなぐのをやめますか？`)) return;
+  try {
+    await api(`/guardian/children/${btn.dataset.unlink}`, { method: 'DELETE' });
+    toast('つなぐのをやめました');
+    renderFamily(await refreshMe());
+  } catch (err) {
+    toast(err.message, 5000);
+  }
+});
+$('#family-join').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const r = await submit(e.target, '/guardian/join', ['code']);
+  if (!r) return;
+  e.target.reset();
+  toast(`${r.name} さんとつながりました`, 5000);
+  renderFamily(await refreshMe());
+});
 
 async function submit(form, path, fields) {
   const err = form.querySelector('.error');

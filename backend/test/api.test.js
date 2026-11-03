@@ -660,3 +660,41 @@ test('そらとも：ともはねのゲームとして、ミッション達成�
   assert.equal((await call('/api/link/soratomo-results', { method: 'POST', headers: S, body: { gameId: info.gameId, missions: 1, plays: 2 } })).status, 200);
   assert.equal((await call('/api/auth/me', { as: me })).data.soratomo.missions, 1);
 });
+
+test('保護者とつなぐ：大人がコードを出し、子どもが入れる。はずせるのはおうちの人だけ', async () => {
+  const mom = await signup('おかあさん');
+  const kid = await signup('こども', { birthdate: '2018-04-01' });
+  const teen = await signup('ちゅうがくせい', { birthdate: '2012-01-01' });
+  const other = await signup('ほかの大人');
+
+  // 子どもはコードを出せない。大人はコードを入れられない
+  assert.equal((await call('/api/guardian/code', { method: 'POST', as: kid })).status, 403);
+  const { code } = (await call('/api/guardian/code', { method: 'POST', as: mom })).data;
+  assert.match(code, /^[a-z2-9]{4}-[a-z2-9]{4}$/);
+  assert.equal((await call('/api/guardian/join', { method: 'POST', as: other, body: { code } })).status, 403);
+  assert.equal((await call('/api/guardian/join', { method: 'POST', as: teen, body: { code } })).status, 403);
+  assert.equal((await call('/api/guardian/join', { method: 'POST', as: kid, body: { code: 'zzzz-zzzz' } })).status, 401);
+
+  // 子どもが入れると、つながる。同じコードは2回使えない
+  const joined = await call('/api/guardian/join', { method: 'POST', as: kid, body: { code: code.toUpperCase() } });
+  assert.equal(joined.status, 200);
+  assert.equal(joined.data.name, 'おかあさん');
+  assert.equal((await call('/api/guardian/join', { method: 'POST', as: kid, body: { code } })).status, 401);
+
+  // おうちの人には、子どもの広場の投稿とゲームの数が見える（ほかの大人には見えない）
+  await call('/api/posts', { method: 'POST', as: kid, body: { text: 'きょうはライブのDVDを見た' } });
+  const view = (await call('/api/guardian', { as: mom })).data;
+  assert.equal(view.children.length, 1);
+  assert.equal(view.children[0].name, 'こども');
+  assert.equal(view.children[0].recentPosts[0].text, 'きょうはライブのDVDを見た');
+  assert.equal(view.children[0].birthdate, undefined);
+  assert.equal((await call('/api/guardian', { as: other })).data.children.length, 0);
+  assert.deepEqual((await call('/api/guardian', { as: kid })).data.guardians.map((g) => g.name), ['おかあさん']);
+
+  // 子どもからは、はずせない。おうちの人ははずせる
+  assert.equal((await call(`/api/guardian/children/${mom.id}`, { method: 'DELETE', as: kid })).status, 404);
+  assert.equal((await call(`/api/guardian/children/${kid.id}`, { method: 'DELETE', as: other })).status, 404);
+  assert.equal((await call(`/api/guardian/children/${kid.id}`, { method: 'DELETE', as: mom })).status, 200);
+  assert.equal((await call('/api/guardian', { as: kid })).data.guardians.length, 0);
+  assert.equal((await call('/api/guardian')).status, 401);
+});

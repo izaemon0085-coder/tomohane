@@ -84,6 +84,15 @@ function meView(u) {
   };
 }
 
+// おうちの人が見る、つながった子どものようす（広場の投稿は誰でも見えるもの。手紙・推しページ・パスワードなどは出さない）
+function childView(c, posts, usersById) {
+  return {
+    ...publicUser(c), ageGroup: ageGroup(c.birthdate),
+    game: c.game ?? null, ghost: c.ghost ?? null, korotomo: c.korotomo ?? null, soratomo: c.soratomo ?? null,
+    recentPosts: posts.filter((p) => p.authorId === c.id).slice(0, 5).map((p) => postView(p, usersById)),
+  };
+}
+
 // ログインのしるしは、JavaScript からは読めないクッキーに入れる
 const SESSION_COOKIE = 'tomohane_session';
 function readCookie(req, name) {
@@ -160,6 +169,19 @@ export function createApp({
       const users = store.usersById();
       return store.oshiFriendsPosts(self(me, params[0])).map((p) => postView(p, users));
     }],
+
+    // ---- 保護者とつなぐ（子ども） ----
+    ['GET', /^\/api\/guardian$/, ({ me }) => {
+      const u = needLogin(me);
+      const users = store.usersById();
+      return {
+        guardians: store.guardiansOf(u.id).map(publicUser),
+        children: store.childrenOf(u.id).map((c) => childView(c, store.listPosts(), users)),
+      };
+    }],
+    ['POST', /^\/api\/guardian\/code$/, ({ me }) => [201, store.issueGuardianCode(needLogin(me).id)]],
+    ['POST', /^\/api\/guardian\/join$/, ({ body, me }) => publicUser(store.acceptGuardianCode(needLogin(me).id, body.code))],
+    ['DELETE', /^\/api\/guardian\/children\/([\w-]+)$/, ({ params, me }) => store.unlinkChild(needLogin(me).id, params[0])],
 
     // ---- やりくり献立との連結（最新の献立の「きょうの晩ごはん」と、画面のアドレス） ----
     ['GET', /^\/api\/kondate$/, () => sim.kondateSummary()],
