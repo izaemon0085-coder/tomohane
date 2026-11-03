@@ -634,3 +634,16 @@ test('みせとも：ともはねでログインだけ（別の番号）。結�
   assert.equal(info.name, 'お店の人');
   assert.equal((await call('/api/link/misetomo-results', { method: 'POST', headers: S, body: { gameId: info.gameId } })).status, 404);
 });
+
+test('ころとも：ともはねのゲームとして、ゴールの回数と遊んだ回数だけ受けとる', async () => {
+  const me = await signup('ころともの人');
+  const S = { 'X-Link-Secret': 'tomohane-dev-link-secret' };
+  const r = await fetch(`${base}/api/link/korotomo-start`, { redirect: 'manual', headers: { Cookie: me.cookie } });
+  const loc = new URL(r.headers.get('location'));
+  assert.equal(loc.origin, 'http://localhost:3700');
+  const info = (await call(`/api/link/korotomo-ticket/${loc.searchParams.get('ticket')}`, { headers: S })).data;
+  assert.match(info.gameId, /^k_/);
+  assert.equal((await call('/api/link/korotomo-results', { method: 'POST', headers: S, body: { gameId: info.gameId, goals: 3, plays: 2 } })).status, 400, 'ゴールが遊んだ回数より多いのはおかしい');
+  assert.equal((await call('/api/link/korotomo-results', { method: 'POST', headers: S, body: { gameId: info.gameId, goals: 2, plays: 3 } })).status, 200);
+  assert.deepEqual((await call('/api/auth/me', { as: me })).data.korotomo.goals, 2);
+});

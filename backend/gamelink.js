@@ -1,4 +1,4 @@
-// つながるアプリ（ともじゃん・ゴーストエージェント・みせとも）との連結：「ともはねでログイン」の通行証と、結果の受けとり。
+// つながるアプリ（ともじゃん・ゴーストエージェント・みせとも・ころとも）との連結：「ともはねでログイン」の通行証と、結果の受けとり。
 // アプリに渡すのは、アプリ用の番号（ともはねの ID そのものではない）・表示名・年齢の区分だけ
 // アプリ用の番号はアプリごとにちがう（ともじゃんとゴーストの番号を見比べても、同じ人だと分からない）
 // アプリから受けとるのは、数（勝ち数・自己ベストの回数など）だけ
@@ -7,6 +7,7 @@ import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 export const GAME_URL = (process.env.GAME_URL || 'http://localhost:3300').replace(/\/+$/, '');
 export const GHOST_URL = (process.env.GHOST_URL || 'http://localhost:3500').replace(/\/+$/, '');
 export const MISETOMO_URL = (process.env.MISETOMO_URL || 'http://localhost:3600').replace(/\/+$/, '');
+export const KOROTOMO_URL = (process.env.KOROTOMO_URL || 'http://localhost:3700').replace(/\/+$/, '');
 // ゲームのアプリと ともはね で同じ値にする合言葉（サーバーどうしの確認用）。本番では必ず設定する
 export const LINK_SECRET = process.env.LINK_SECRET || 'tomohane-dev-link-secret';
 const TICKET_MS = 60 * 1000; // 通行証は1分だけ・1回だけ

@@ -8,7 +8,7 @@ import { createSimulation } from './simulation.js';
 import { lanAddresses } from './net.js';
 import { MAX_VIDEO_BYTES, removeVideo, saveVideo, serveVideo } from './letters.js';
 import { createKokotomoClient } from './kokotomo.js';
-import { createGameLink, GHOST_URL, MISETOMO_URL } from './gamelink.js';
+import { createGameLink, GHOST_URL, MISETOMO_URL, KOROTOMO_URL } from './gamelink.js';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 
@@ -79,6 +79,7 @@ function meView(u) {
     ...publicUser(u), loginId: u.loginId, role: u.role ?? 'user', ageGroup: ageGroup(u.birthdate), birthdate: u.birthdate,
     game: u.game ?? null,
     ghost: u.ghost ?? null,
+    korotomo: u.korotomo ?? null,
   };
 }
 
@@ -132,6 +133,7 @@ export function createApp({
   gameLink = createGameLink(),
   ghostLink = createGameLink({ app: 'ghost', gameUrl: GHOST_URL }),
   misetomoLink = createGameLink({ app: 'misetomo', gameUrl: MISETOMO_URL }),
+  korotomoLink = createGameLink({ app: 'korotomo', gameUrl: KOROTOMO_URL }),
 }) {
   const routes = [
     // line：回線番のモグが選んだ回線（wifi / local / offline）
@@ -264,13 +266,15 @@ export function createApp({
     return true;
   }
 
-  // ---- つながるアプリ（ともじゃん・ゴーストエージェント・みせとも）との連結 ----
+  // ---- つながるアプリ（ともじゃん・ゴーストエージェント・みせとも・ころとも）との連結 ----
   // /api/link/<名前>-start ・ -ticket/:通行証 ・ -results
   const LINKS = {
     game: { link: gameLink, setId: (u, id) => store.setGameId(u, id), results: (id, body) => store.setGameResults(id, body) },
     ghost: { link: ghostLink, setId: (u, id) => store.setGhostId(u, id), results: (id, body) => store.setGhostResults(id, body) },
     // みせとも（お店のアプリ）：ログインだけ。お店の在庫やお客さんのことは、ともはねに来ない
     misetomo: { link: misetomoLink, setId: () => {}, results: null },
+    // ころとも（ラジコンの小さなロボット）：ともはねのゲームとして。ゴールした回数と遊んだ回数だけ
+    korotomo: { link: korotomoLink, setId: (u, id) => store.setKorotomoId(u, id), results: (id, body) => store.setKorotomoResults(id, body) },
   };
   // アプリのアドレス。このパソコン（localhost）のアドレスのとき、スマホから開いても届くように、いま開いているアドレスに合わせる
   function gameUrlFor(req, link) {
@@ -280,7 +284,7 @@ export function createApp({
     return u.origin;
   }
   async function handleGameLink(req, res, pathname, me) {
-    const m = pathname.match(/^\/api\/link\/(game|ghost|misetomo)-(start|ticket|results)(?:\/([\w-]+))?$/);
+    const m = pathname.match(/^\/api\/link\/(game|ghost|misetomo|korotomo)-(start|ticket|results)(?:\/([\w-]+))?$/);
     if (!m) return false;
     const [, name, action, ticketId] = m;
     const { link, setId, results } = LINKS[name];

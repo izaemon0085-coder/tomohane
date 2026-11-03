@@ -124,6 +124,14 @@ npm test         # API テスト
 - つながるのはログインだけ（番号はアプリごとにちがう）。**お店の在庫やお客さんのことは、ともはねに来ない**
 - 環境変数：`MISETOMO_URL`（みせとものアドレス）、`LINK_SECRET`（みせともと同じ値）
 
+### 🤖 ころとも（ラジコンの小さなロボット）との連結
+
+別のアプリ「ころとも」（`korotomo`、ふだんは `http://localhost:3700/`）を、**ともはねのゲーム**としてつなぎます。
+
+- 町の地図の、ガレージのとなりの「🤖 ころとも」から開く（「ともはねでログイン」、番号はアプリごとにちがう）
+- 星を3つ集めてゴールするゲーム。ともはねが受けとるのは「ゴールの回数」と「遊んだ回数」だけ（アカウント画面に出る）
+- 環境変数：`KOROTOMO_URL`（ころとものアドレス）、`LINK_SECRET`（ころともと同じ値）
+
 ### 📶 ローカル回線（オフライン対応・同じ Wi-Fi で使う）
 
 ヘッダーの 📶 から、つながりのようすを見られます（`shared/network.js` / `outbox.js` / `frontend/sw.js`）。
@@ -214,4 +222,6 @@ npm test         # API テスト
 | GET | `/api/link/ghost-start` ・ `ghost-ticket/:ticket` | ゴーストエージェントの「ともはねでログイン」（通行証の確かめは合言葉が必要） |
 | POST | `/api/link/ghost-results` | ゴーストのサーバー用（合言葉が必要）。自己ベストの回数と日数をとどける |
 | GET | `/api/link/misetomo-start` ・ `misetomo-ticket/:ticket` | みせとも の「ともはねでログイン」（通行証の確かめは合言葉が必要。結果の受けとり口はない） |
+| GET | `/api/link/korotomo-start` ・ `korotomo-ticket/:ticket` | ころとも の「ともはねでログイン」（通行証の確かめは合言葉が必要） |
+| POST | `/api/link/korotomo-results` | ころとものサーバー用（合言葉が必要）。ゴールの回数と遊んだ回数をとどける |
 | GET | `/api/events` | 変更通知（Server-Sent Events） |
