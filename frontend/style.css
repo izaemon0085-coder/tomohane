@@ -264,3 +264,24 @@ html[data-oshi-color] .oshi-hero { color: var(--accent-text); }
 .family-list { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 8px; }
 .family-list li { background: var(--surface-2); border-radius: 10px; padding: 8px 12px; overflow-wrap: anywhere; }
 .family-list .posts { margin: 4px 0 0; padding-left: 1.2em; font-size: .88rem; }
+
+/* ゲーム一覧 */
+.games-page { display: grid; gap: 14px; }
+.games-page h1 { margin: 0; }
+.games-page .guide { margin: 0; }
+.game-filter { display: flex; flex-wrap: wrap; gap: 6px; }
+.game-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
+.game-card { padding: 14px 16px; display: grid; gap: 6px; align-content: start; overflow-wrap: anywhere; }
+.game-card p { margin: 0; }
+.game-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.game-head h2 { font-size: 1.1rem; margin: 0; }
+.rec-count { white-space: nowrap; font-weight: 700; }
+.game-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.game-tag { font-size: .8rem; background: var(--surface-2); color: var(--text); border: 0; border-radius: 999px; padding: 2px 10px; }
+.tag-btn { cursor: pointer; min-height: 32px; }
+.tag-btn[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); }
+.voices { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; font-size: .88rem; }
+.voices li { background: var(--surface-2); border-radius: 10px; padding: 4px 10px; }
+.oshi-badge { font-size: .75rem; font-weight: 700; color: var(--pink, var(--accent)); }
+.apply-form select.input { min-height: 40px; }
+.mine { padding-left: 1.2em; margin: 8px 0 0; display: grid; gap: 8px; }

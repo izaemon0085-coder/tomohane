@@ -1,6 +1,7 @@
 // エージェントの生活シミュレーション：家での暮らし（サイドフロント）と会議の進行（サブフロント）を動かす。
 import * as brain from './agents.js';
-import { HttpError } from './store.js';
+import { HttpError, ageGroup } from './store.js';
+import { gamesFor, isGameQuestion, recommendFor, gameRecommendReply } from './games.js';
 import * as net from './net.js';
 import * as kondate from './kondate.js';
 
@@ -118,7 +119,23 @@ export function createSimulation(store, {
     return candidates.length ? candidates[Math.floor(random() * candidates.length)] : null;
   }
 
+  // 「おすすめのゲームは？」には、ゲーム係のシバが一覧とみんなのおすすめから答える（シバがいなければ、起きている誰か）
+  function answerGameQuestion(post) {
+    const author = store.getUser(post.authorId);
+    const shiba = socialAgents().find((a) => a.role === 'companion' && a.status === 'home');
+    const agent = shiba ?? awakeAgents()[0];
+    if (!agent || store.hasReplied(post.id, agent.id)) return null;
+    const rec = recommendFor({
+      games: gamesFor(store.listExtGames(), ageGroup(author.birthdate) ?? 'child'),
+      recs: store.listGameRecs(), usersById: store.usersById(), user: author,
+    });
+    const reply = store.createPost({ authorId: agent.id, text: gameRecommendReply(rec, author.name), replyTo: post.id });
+    store.addDiary(agent.id, `${author.name}さんにゲームをすすめた`);
+    return reply;
+  }
+
   function respondToHumanPost(post) {
+    if (isGameQuestion(post.text) && !brain.isHarsh(post.text)) return answerGameQuestion(post);
     const agent = chooseResponder(post);
     if (agent && !store.hasReplied(post.id, agent.id)) return replyAsAgent(agent, post);
     return null;

@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ゲーム一覧 | ともはね β版</title>
+  <link rel="stylesheet" href="/shared/base.css">
+  <link rel="stylesheet" href="/shared/playground.css">
+  <link rel="stylesheet" href="/shared/customize.css">
+  <link rel="stylesheet" href="/shared/network.css">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="site-header" id="header"></header>
+  <main class="page games-page">
+    <h1>🎮 ゲーム一覧</h1>
+
+    <!-- シバのおすすめ -->
+    <section class="card panel guide" aria-live="polite">
+      <img src="/shared/avatars/shiba.svg" alt="" width="48" height="48">
+      <div>
+        <p class="muted small">シバから</p>
+        <p id="pick">おすすめを考えてるっす…</p>
+      </div>
+    </section>
+
+    <div class="game-filter" id="tags" role="group" aria-label="タグでしぼる"></div>
+    <ul class="game-list" id="games"></ul>
+
+    <!-- ゲームを作っている人へ -->
+    <section class="card panel" aria-labelledby="maker-title">
+      <h2 id="maker-title">🛠️ ゲームを作っている人へ（インディーズ・個人）</h2>
+      <p>あなたのゲームを、ともはねの一覧に出せます。キットをダウンロードして「ともはねでログイン」をつなぎ、下から申しこんでください。運営が見てから一覧に出します。</p>
+      <div class="row wrap">
+        <a class="btn ghost" href="/kit/README.md" download>📄 説明（README.md）</a>
+        <a class="btn ghost" href="/kit/tomohane-link.js" download>🧩 つなぐ部品（tomohane-link.js）</a>
+        <a class="btn ghost" href="/kit/example-server.js" download>🎲 見本のゲーム（example-server.js）</a>
+      </div>
+      <p class="muted small">ともはねから渡すのは「ゲーム用の番号・表示名・年齢の区分」だけ。受け取るのは「遊んだ回数・いちばんの記録」の数だけです。子ども（12歳まで）には、広告・課金のあるゲームは出しません。</p>
+
+      <p class="note-line" id="apply-login" hidden>申しこみは、ログインした大人（18歳から）だけです。<a href="/login.html?next=/games.html" data-login-link>ログイン</a></p>
+      <form id="apply" class="apply-form" hidden>
+        <label class="field">ゲームのID（半角の英小文字・数字・- で3〜24文字。あとで変えられません）
+          <input class="input" name="id" pattern="[a-z0-9\-]{3,24}" required autocapitalize="none"></label>
+        <label class="field">ゲームの名前<input class="input" name="name" maxlength="30" required></label>
+        <label class="field">作った人・会社の名前<input class="input" name="maker" maxlength="30" required></label>
+        <label class="field">ゲームのアドレス（例：https://example.com）<input class="input" name="url" type="url" required></label>
+        <label class="field">ゲームの説明（80文字まで）<input class="input" name="description" maxlength="80" required></label>
+        <label class="field">タグ（「、」で区切って4つまで。例：パズル、ひとり）<input class="input" name="tags"></label>
+        <label class="field">遊べる年齢
+          <select class="input" name="minAge">
+            <option value="child">だれでも</option>
+            <option value="teen">中高生から（13歳から）</option>
+            <option value="adult">大人だけ（18歳から）</option>
+          </select></label>
+        <label class="row"><input type="checkbox" name="ads"> 広告がある</label>
+        <label class="row"><input type="checkbox" name="purchases"> 課金がある</label>
+        <p class="error" role="alert"></p>
+        <button class="btn" type="submit">申しこむ</button>
+      </form>
+      <div id="secret-box" class="note-line" hidden>
+        <p><strong>合言葉（いまだけ表示します）</strong>：<code id="secret"></code></p>
+        <p class="small">ゲームのサーバーの環境変数 <code>TOMOHANE_SECRET</code> に入れてください。コードやリポジトリには書かないでください。</p>
+      </div>
+      <ul class="mine" id="mine"></ul>
+    </section>
+
+    <!-- 運営だけ：申しこみを見る -->
+    <section class="card panel" id="review" hidden aria-labelledby="review-title">
+      <h2 id="review-title">🦉 申しこみを見る（運営）</h2>
+      <ul class="mine" id="review-list"></ul>
+    </section>
+  </main>
+  <script type="module" src="/games.js"></script>
+  <script type="module" src="/shared/customize.js"></script>
+  <script type="module" src="/shared/network.js"></script>
+  <script type="module" src="/shared/playground.js"></script>
+</body>
+</html>

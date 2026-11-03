@@ -14,6 +14,7 @@ export const MAX_GOODS = 100;
 export const MAX_NOTE_LENGTH = 100;
 export const MAX_LETTERS_PER_USER = 50;
 const MAX_DIARY = 20;
+export const MAX_REC_LENGTH = 60;
 
 // 手紙の合言葉。サーバーには「ハッシュ」だけを残し、合言葉そのものは作った人のブラウザだけが持つ
 const randomToken = () => randomBytes(18).toString('base64url');
@@ -126,6 +127,8 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
   state.meta ??= {};
   state.letters ??= [];
   state.sessions ??= [];
+  state.extGames ??= []; // インディーズ・個人のゲーム（申しこみ → 運営が見て一覧に出す）
+  state.gameRecs ??= []; // ゲームのおすすめ { gameId, userId, comment, createdAt }
   const listeners = new Set();
   const loginFails = new Map(); // ログインID → { count, until }（パスワードの総当たりを防ぐ）
   const guardianCodes = new Map(); // つなぐコードのハッシュ → { guardianId, expiresAt }（保存しない。30分で消える）
@@ -303,6 +306,65 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
     endAllSessions(userId) {
       state.sessions = state.sessions.filter((s) => s.userId !== userId);
       save();
+    },
+
+    // ---- ゲーム一覧：おすすめ ----
+    listGameRecs: () => state.gameRecs,
+    // おすすめする（一言つき）。同じ人がもう一度すると、一言を書きかえる。comment が null なら取り消す
+    setGameRec(userId, gameId, comment) {
+      const user = requireUser(userId);
+      state.gameRecs = state.gameRecs.filter((r) => !(r.userId === userId && r.gameId === gameId));
+      if (comment === null) {
+        emit('game', { gameId });
+        return null;
+      }
+      const text = typeof comment === 'string' ? comment.trim() : '';
+      if ([...text].length > MAX_REC_LENGTH) throw new HttpError(400, `一言は${MAX_REC_LENGTH}文字以内にしてください`);
+      if (text) rejectBlocked(user, text);
+      const rec = { gameId, userId, comment: text, createdAt: now() };
+      state.gameRecs.push(rec);
+      emit('game', { gameId });
+      return rec;
+    },
+
+    // ---- ゲーム一覧：インディーズ・個人のゲーム ----
+    listExtGames: () => state.extGames,
+    extGame: (id) => state.extGames.find((g) => g.id === id) ?? null,
+    applyExtGame(userId, game) {
+      requireUser(userId);
+      if (state.extGames.some((g) => g.id === game.id)) throw new HttpError(409, 'そのゲームのIDは使われています');
+      if (state.extGames.filter((g) => g.ownerId === userId && g.status === 'pending').length >= 3) {
+        throw new HttpError(429, '見てもらっている申しこみが3つあります。運営が見るまで待ってください');
+      }
+      const entry = { ...game, ownerId: userId, status: 'pending', createdAt: now() };
+      state.extGames.push(entry);
+      emit('game', { gameId: entry.id });
+      return entry;
+    },
+    setExtGameStatus(id, status) {
+      const g = state.extGames.find((x) => x.id === id);
+      if (!g) throw new HttpError(404, 'ゲームが見つかりません');
+      g.status = status;
+      emit('game', { gameId: id });
+      return g;
+    },
+    setExtGameResults(gameSlug, playerId, { plays, best }) {
+      const user = state.users.find((u) => u.extGameIds?.[gameSlug] === playerId);
+      if (!user) throw new HttpError(404, 'ユーザーが見つかりません');
+      const n = (v) => (Number.isInteger(v) && v >= 0 && v <= 1e9 ? v : null);
+      if (n(plays) === null || (best != null && n(best) === null)) throw new HttpError(400, '記録の数が正しくありません');
+      user.extGames ??= {};
+      user.extGames[gameSlug] = { plays, best: best ?? null, updatedAt: now() };
+      emit('user', user);
+      return user.extGames[gameSlug];
+    },
+    setExtGameId(userId, gameSlug, playerId) {
+      const user = requireUser(userId);
+      user.extGameIds ??= {};
+      if (user.extGameIds[gameSlug] !== playerId) {
+        user.extGameIds[gameSlug] = playerId;
+        save();
+      }
     },
 
     // ---- 保護者とつなぐ（子ども） ----

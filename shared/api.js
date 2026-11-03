@@ -127,6 +127,7 @@ export function headerHtml(current) {
       ${link('/', '🗺️ 町', 'map')}
       ${link('/plaza.html', '💬 広場', 'plaza')}
       ${link('/oshi.html', '💖 わたしの推し', 'oshi')}
+      ${link('/games.html', '🎮 ゲーム', 'games')}
       ${link('/letter.html', '✉️ 手紙', 'letter')}
       ${link('/side/', '🏡 家', 'side')}
       ${link('/sub/', '🗣️ 会議室', 'sub')}

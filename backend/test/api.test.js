@@ -698,3 +698,91 @@ test('保護者とつなぐ：大人がコードを出し、子どもが入れ�
   assert.equal((await call('/api/guardian', { as: kid })).data.guardians.length, 0);
   assert.equal((await call('/api/guardian')).status, 401);
 });
+
+test('ゲーム一覧：4つのゲーム・おすすめ（一言つき）・同じ推しの人のおすすめをシバが広場で答える', async () => {
+  const a = await signup('ゲーム好きA');
+  const b = await signup('ゲーム好きB');
+  await call(`/api/users/${a.id}/oshi`, { method: 'PUT', as: a, body: { name: 'ほしぞらユニット' } });
+  await call(`/api/users/${b.id}/oshi`, { method: 'PUT', as: b, body: { name: 'ほしぞらユニット' } });
+
+  const list = (await call('/api/games')).data;
+  assert.deepEqual(list.map((g) => g.id), ['tomojan', 'ghost', 'korotomo', 'soratomo']);
+  assert.ok(!list.some((g) => g.id === 'tomoai'));
+
+  // おすすめはログインが必要。一言は60文字まで
+  assert.equal((await call('/api/games/soratomo/recommend', { method: 'PUT', body: { comment: 'x' } })).status, 401);
+  assert.equal((await call('/api/games/soratomo/recommend', { method: 'PUT', as: a, body: { comment: 'あ'.repeat(61) } })).status, 400);
+  assert.equal((await call('/api/games/soratomo/recommend', { method: 'PUT', as: a, body: { comment: '推しの曲を聞きながら衛星を回すと最高' } })).status, 200);
+  const sora = (await call('/api/games', { as: a })).data.find((g) => g.id === 'soratomo');
+  assert.equal(sora.recCount, 1);
+  assert.deepEqual(sora.myRec, { comment: '推しの曲を聞きながら衛星を回すと最高' });
+  assert.equal(sora.voices[0].oshi, 'ほしぞらユニット');
+
+  // 同じ推しの B さんへのおすすめ
+  const pick = (await call('/api/games/recommend', { as: b })).data;
+  assert.equal(pick.id, 'soratomo');
+  assert.match(pick.reason, /ほしぞらユニット推し/);
+
+  // 広場で「おすすめのゲームある？」→ シバが答える
+  const posted = await call('/api/posts', { method: 'POST', as: b, body: { text: 'なにかおすすめのゲームある？' } });
+  const reply = sim.respondToHumanPost(store.listPosts().find((p) => p.id === posted.data.id));
+  assert.equal(reply.authorId, 'agent-shiba');
+  assert.match(reply.text, /そらとも/);
+  assert.match(reply.text, /ほしぞらユニット推し/);
+
+  // 取り消し
+  await call('/api/games/soratomo/recommend', { method: 'DELETE', as: a });
+  assert.equal((await call('/api/games')).data.find((g) => g.id === 'soratomo').recCount, 0);
+});
+
+test('ゲームを作っている人へ：キットをダウンロード → 申しこみ（合言葉は1回だけ）→ 運営が一覧に出す → ともはねでログインと記録', async () => {
+  for (const f of ['README.md', 'tomohane-link.js', 'example-server.js']) assert.equal((await fetch(`${base}/kit/${f}`)).status, 200, f);
+
+  const maker = await signup('インディーの人');
+  const kid = await signup('ゲームする子', { birthdate: '2017-05-05' });
+  const admin = await signup('運営の人');
+  store.getUser(admin.id).role = 'admin';
+
+  assert.equal((await call('/api/games/apply', { method: 'POST', as: kid, body: {} })).status, 403);
+  const bad = await call('/api/games/apply', { method: 'POST', as: maker, body: { id: 'my-game', name: 'x', maker: 'x', url: 'javascript:alert(1)', description: 'x' } });
+  assert.equal(bad.status, 400);
+  const body = { id: 'pixel-cat', name: 'ピクセルねこ', maker: 'ねこ工房', url: 'http://localhost:4100/path', description: 'ねこを集めるパズル', tags: 'パズル、ひとり', minAge: 'child', ads: true };
+  const applied = await call('/api/games/apply', { method: 'POST', as: maker, body });
+  assert.equal(applied.status, 201);
+  const { secret } = applied.data;
+  assert.match(secret, /^tg_/);
+  assert.equal(applied.data.game.url, 'http://localhost:4100');
+  assert.equal(applied.data.game.secretHash, undefined);
+  assert.equal((await call('/api/games/apply', { method: 'POST', as: maker, body })).status, 409);
+
+  // 運営が見るまでは、一覧にも出ないし、つなげない
+  assert.ok(!(await call('/api/games', { as: maker })).data.some((g) => g.id === 'pixel-cat'));
+  assert.equal((await fetch(`${base}/api/link/x/pixel-cat/start`, { redirect: 'manual', headers: { Cookie: maker.cookie } })).status, 404);
+  assert.equal((await call('/api/games/review', { as: maker })).status, 403);
+  assert.equal((await call('/api/games/review', { as: admin })).data.find((g) => g.id === 'pixel-cat').owner, 'インディーの人');
+  assert.equal((await call('/api/games/pixel-cat/status', { method: 'POST', as: admin, body: { status: 'listed' } })).status, 200);
+
+  // 広告があるので、子どもとログインしていない人には出ない。大人には出る
+  assert.ok((await call('/api/games', { as: maker })).data.some((g) => g.id === 'pixel-cat'));
+  assert.ok(!(await call('/api/games', { as: kid })).data.some((g) => g.id === 'pixel-cat'));
+  assert.ok(!(await call('/api/games')).data.some((g) => g.id === 'pixel-cat'));
+  assert.equal((await fetch(`${base}/api/link/x/pixel-cat/start`, { redirect: 'manual', headers: { Cookie: kid.cookie } })).status, 403);
+
+  // ともはねでログイン（キットの部品を使う）
+  const { createTomohaneLink } = await import('../../kit/tomohane-link.js');
+  const r = await fetch(`${base}/api/link/x/pixel-cat/start`, { redirect: 'manual', headers: { Cookie: maker.cookie } });
+  assert.equal(r.status, 302);
+  const loc = new URL(r.headers.get('location'));
+  assert.equal(loc.origin, 'http://localhost:4100');
+  const wrong = createTomohaneLink({ baseUrl: base, gameId: 'pixel-cat', secret: 'tg_wrong' });
+  await assert.rejects(wrong.redeem(loc.searchParams.get('ticket')), /合言葉/);
+  const kit = createTomohaneLink({ baseUrl: base, gameId: 'pixel-cat', secret });
+  const player = await kit.redeem(loc.searchParams.get('ticket'));
+  assert.equal(player.name, 'インディーの人');
+  assert.equal(player.ageGroup, 'adult');
+  assert.ok(!player.gameId.includes(maker.id));
+  await assert.rejects(kit.redeem(loc.searchParams.get('ticket')), /通行証/);
+  await kit.report(player.gameId, { plays: 3, best: 120 });
+  await assert.rejects(kit.report(player.gameId, { plays: -1 }), /記録/);
+  assert.deepEqual((await call('/api/games', { as: maker })).data.find((g) => g.id === 'pixel-cat').myRecord.plays, 3);
+});

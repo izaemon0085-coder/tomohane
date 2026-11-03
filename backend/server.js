@@ -9,6 +9,9 @@ import { lanAddresses } from './net.js';
 import { MAX_VIDEO_BYTES, removeVideo, saveVideo, serveVideo } from './letters.js';
 import { createKokotomoClient } from './kokotomo.js';
 import { createGameLink, GHOST_URL, MISETOMO_URL, KOROTOMO_URL, SORATOMO_URL } from './gamelink.js';
+import {
+  BUILTIN_GAMES, SLUG, visibleFor, recommendFor, gamesFor, hashSecret, newGameSecret, secretMatches,
+} from './games.js';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 
@@ -18,6 +21,7 @@ const STATIC_MOUNTS = [
   ['/sub/', 'subfront'],     // エージェントたちの会議室
   ['/shared/', 'shared'],    // 共通 CSS / JS
   ['/open/', 'open'],        // 手紙の受け取りページ（QR から開く。登録なしで見られる）
+  ['/kit/', 'kit'],          // ゲームを作っている人へ：ともはねとつなぐキット（ダウンロード）
   ['/', 'frontend'],         // SNS 本体
 ];
 
@@ -33,6 +37,7 @@ const MIME = {
   '.webp': 'image/webp',
   '.woff2': 'font/woff2',
   '.txt': 'text/plain; charset=utf-8',
+  '.md': 'text/markdown; charset=utf-8',
 };
 
 function publicUser(u) {
@@ -93,6 +98,37 @@ function childView(c, posts, usersById) {
   };
 }
 
+// ---- ゲーム一覧 ----
+const AGE_KEYS = ['child', 'teen', 'adult'];
+const cleanStr = (v, max, label) => {
+  const t = typeof v === 'string' ? v.trim() : '';
+  if (!t) throw new HttpError(400, `${label}を入れてください`);
+  if ([...t].length > max) throw new HttpError(400, `${label}は${max}文字以内にしてください`);
+  return t;
+};
+// インディーズ・個人のゲームの申しこみ。アドレスは http(s) だけ
+function cleanGameApply(body) {
+  const id = String(body.id ?? '').trim().toLowerCase();
+  if (!SLUG.test(id)) throw new HttpError(400, 'ゲームのIDは、半角の英小文字・数字・- で3〜24文字にしてください');
+  if (BUILTIN_GAMES.some((g) => g.id === id)) throw new HttpError(409, 'そのゲームのIDは使われています');
+  let u;
+  try { u = new URL(String(body.url ?? '')); } catch { throw new HttpError(400, 'ゲームのアドレスが正しくありません'); }
+  if (!['http:', 'https:'].includes(u.protocol) || u.username || u.password) throw new HttpError(400, 'ゲームのアドレスは http:// か https:// で始めてください');
+  const tags = (Array.isArray(body.tags) ? body.tags : String(body.tags ?? '').split(/[、,\s]+/))
+    .map((t) => String(t).trim()).filter(Boolean).slice(0, 4).map((t) => [...t].slice(0, 10).join(''));
+  return {
+    id,
+    name: cleanStr(body.name, 30, 'ゲームの名前'),
+    maker: cleanStr(body.maker, 30, '作った人・会社の名前'),
+    url: u.origin,
+    description: cleanStr(body.description, 80, 'ゲームの説明'),
+    tags,
+    minAge: AGE_KEYS.includes(body.minAge) ? body.minAge : 'child',
+    ads: body.ads === true,
+    purchases: body.purchases === true,
+  };
+}
+
 // ログインのしるしは、JavaScript からは読めないクッキーに入れる
 const SESSION_COOKIE = 'tomohane_session';
 function readCookie(req, name) {
@@ -130,6 +166,15 @@ async function readJson(req) {
 function needLogin(me) {
   if (!me) throw new HttpError(401, 'ログインしてください');
   return me;
+}
+function needAdmin(me) {
+  if (needLogin(me).role !== 'admin') throw new HttpError(403, '運営（管理者）だけができます');
+  return me;
+}
+// 申しこんだ人・運営が見るゲームの情報（合言葉のハッシュと、申しこんだ人の ID は出さない）
+function extGameView(g) {
+  const { secretHash: _s, ownerId: _o, ...rest } = g;
+  return rest;
 }
 function self(me, userId) {
   if (needLogin(me).id !== userId) throw new HttpError(403, '自分のページだけ見られます');
@@ -182,6 +227,57 @@ export function createApp({
     ['POST', /^\/api\/guardian\/code$/, ({ me }) => [201, store.issueGuardianCode(needLogin(me).id)]],
     ['POST', /^\/api\/guardian\/join$/, ({ body, me }) => publicUser(store.acceptGuardianCode(needLogin(me).id, body.code))],
     ['DELETE', /^\/api\/guardian\/children\/([\w-]+)$/, ({ params, me }) => store.unlinkChild(needLogin(me).id, params[0])],
+
+    // ---- ゲーム一覧（もとからある4つ＋一覧に出たインディーズ・個人のゲーム）・おすすめ ----
+    ['GET', /^\/api\/games$/, ({ me }) => {
+      const users = store.usersById();
+      const recs = store.listGameRecs();
+      return visibleGames(me).map((g) => {
+        const mine = me && recs.find((r) => r.gameId === g.id && r.userId === me.id);
+        const voices = recs.filter((r) => r.gameId === g.id && r.comment).slice(-5).reverse().map((r) => ({
+          name: users[r.userId]?.name ?? '？', oshi: users[r.userId]?.oshi?.name || null, comment: r.comment, at: r.createdAt,
+        }));
+        return {
+          id: g.id, name: g.name, maker: g.maker, description: g.description, tags: g.tags, minAge: g.minAge,
+          ads: g.ads, purchases: g.purchases, builtin: Boolean(g.builtin), play: g.start,
+          recCount: recs.filter((r) => r.gameId === g.id).length, myRec: mine ? { comment: mine.comment } : null, voices,
+          myRecord: me?.extGames?.[g.id] ?? null,
+        };
+      });
+    }],
+    ['GET', /^\/api\/games\/recommend$/, ({ me }) => {
+      const rec = recommendFor({ games: visibleGames(me), recs: store.listGameRecs(), usersById: store.usersById(), user: me });
+      return rec && { id: rec.game.id, name: rec.game.name, play: rec.game.start, reason: rec.reason, comment: rec.comment };
+    }],
+    ['PUT', /^\/api\/games\/([\w-]+)\/recommend$/, ({ params, body, me }) => {
+      const u = needLogin(me);
+      if (!visibleGames(u).some((g) => g.id === params[0])) throw new HttpError(404, 'ゲームが見つかりません');
+      return store.setGameRec(u.id, params[0], body.comment ?? '');
+    }],
+    ['DELETE', /^\/api\/games\/([\w-]+)\/recommend$/, ({ params, me }) => {
+      store.setGameRec(needLogin(me).id, params[0], null);
+      return { ok: true };
+    }],
+
+    // ---- ゲームを作っている人へ：申しこみ（合言葉はこのときだけ見せる）→ 運営が見て一覧に出す ----
+    ['POST', /^\/api\/games\/apply$/, ({ body, me }) => {
+      const u = needLogin(me);
+      if (ageGroup(u.birthdate) !== 'adult') throw new HttpError(403, 'ゲームの申しこみは、大人（18歳から）だけです');
+      const secret = newGameSecret();
+      const game = store.applyExtGame(u.id, { ...cleanGameApply(body), secretHash: hashSecret(secret) });
+      return [201, { game: extGameView(game), secret }];
+    }],
+    ['GET', /^\/api\/games\/mine$/, ({ me }) => store.listExtGames().filter((g) => g.ownerId === needLogin(me).id).map(extGameView)],
+    ['GET', /^\/api\/games\/review$/, ({ me }) => {
+      needAdmin(me);
+      const users = store.usersById();
+      return store.listExtGames().map((g) => ({ ...extGameView(g), owner: users[g.ownerId]?.name ?? '？' }));
+    }],
+    ['POST', /^\/api\/games\/([\w-]+)\/status$/, ({ params, body, me }) => {
+      needAdmin(me);
+      if (!['listed', 'rejected', 'pending'].includes(body.status)) throw new HttpError(400, '状態が正しくありません');
+      return extGameView(store.setExtGameStatus(params[0], body.status));
+    }],
 
     // ---- やりくり献立との連結（最新の献立の「きょうの晩ごはん」と、画面のアドレス） ----
     ['GET', /^\/api\/kondate$/, () => sim.kondateSummary()],
@@ -287,6 +383,54 @@ export function createApp({
     } else {
       throw new HttpError(404, 'API が見つかりません');
     }
+    return true;
+  }
+
+  // 見る人に合わせたゲーム一覧
+  const visibleGames = (me) => gamesFor(store.listExtGames(), me ? ageGroup(me.birthdate) : 'child');
+
+  // ---- インディーズ・個人のゲームとの連結（キットを使う）----
+  // /api/link/x/<ゲームのID>/start ・ /ticket/:通行証 ・ /results
+  // 通行証やアプリ用の番号のしくみは、もとからのゲームと同じ。合言葉はゲームごとにちがう
+  const extLinks = new Map();
+  const extLinkOf = (slug) => {
+    if (!extLinks.has(slug)) extLinks.set(slug, createGameLink({ app: `x-${slug}` }));
+    return extLinks.get(slug);
+  };
+  async function handleExtLink(req, res, pathname, me) {
+    const m = pathname.match(/^\/api\/link\/x\/([a-z0-9-]{3,24})\/(start|ticket|results)(?:\/([\w-]+))?$/);
+    if (!m) return false;
+    const [, slug, action, ticketId] = m;
+    const game = store.extGame(slug);
+    if (!game || game.status !== 'listed') throw new HttpError(404, 'ゲームが見つかりません（運営が見てから使えます）');
+    const link = extLinkOf(slug);
+    if (action === 'start' && req.method === 'GET' && !ticketId) {
+      if (!me) {
+        res.writeHead(302, { Location: `/login.html?next=${encodeURIComponent(pathname)}` });
+        return res.end() || true;
+      }
+      if (!visibleFor(game, ageGroup(me.birthdate))) throw new HttpError(403, 'このゲームは、年齢の区分に合わないので遊べません');
+      const ticket = link.issue(me.id);
+      res.writeHead(302, { Location: `${game.url}/auth/callback?ticket=${ticket}`, 'Cache-Control': 'no-store' });
+      return res.end() || true;
+    }
+    const isTicket = action === 'ticket' && ticketId && req.method === 'GET';
+    const isResults = action === 'results' && !ticketId && req.method === 'POST';
+    if (!isTicket && !isResults) return false;
+    if (!secretMatches(req.headers['x-link-secret'], game.secretHash)) throw new HttpError(403, '合言葉がちがいます');
+    if (isTicket) {
+      const userId = link.redeem(ticketId);
+      const user = userId && store.getUser(userId);
+      if (!user) throw new HttpError(404, '通行証が使えません（1分すぎたか、もう使われています）');
+      const group = ageGroup(user.birthdate);
+      if (!group) throw new HttpError(403, '生年月日の登録が必要です');
+      const playerId = link.gameIdOf(user.id);
+      store.setExtGameId(user.id, slug, playerId);
+      sendJson(res, 200, { gameId: playerId, name: user.name, ageGroup: group });
+      return true;
+    }
+    const body = await readJson(req);
+    sendJson(res, 200, store.setExtGameResults(slug, String(body.gameId ?? ''), body));
     return true;
   }
 
@@ -431,6 +575,7 @@ export function createApp({
         const me = store.sessionUser(readCookie(req, SESSION_COOKIE));
         if (await handleAuth(req, res, pathname, me)) return;
         if (await handleGameLink(req, res, pathname, me)) return;
+        if (await handleExtLink(req, res, pathname, me)) return;
         if (await handleVideo(req, res, pathname)) return;
         for (const [method, pattern, fn] of routes) {
           const m = pathname.match(pattern);
