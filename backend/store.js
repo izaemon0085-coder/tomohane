@@ -301,6 +301,24 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       save();
     },
 
+    // ---- ゲームのアプリとの連結 ----
+    setGameId(userId, gameId) {
+      const user = requireUser(userId);
+      if (user.gameId !== gameId) {
+        user.gameId = gameId;
+        save();
+      }
+    },
+    setGameResults(gameId, { wins, plays }) {
+      const user = state.users.find((u) => u.gameId === gameId);
+      if (!user) throw new HttpError(404, 'ユーザーが見つかりません');
+      const n = (v) => (Number.isInteger(v) && v >= 0 && v <= 1e6 ? v : null);
+      if (n(wins) === null || n(plays) === null || wins > plays) throw new HttpError(400, '勝ち数が正しくありません');
+      user.game = { wins, plays, updatedAt: now() };
+      emit('user', user);
+      return user.game;
+    },
+
     // ---- 推しの情報（わたしの推しページ） ----
     getOshi(userId) {
       const user = requireUser(userId);

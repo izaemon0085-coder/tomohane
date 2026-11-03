@@ -39,6 +39,17 @@
 .map-zzz { position: absolute; top: 0; right: 14%; font-size: .75rem; font-weight: 700; color: #4b3f75; }
 .map-away { margin-top: -26%; font-size: .75rem; font-weight: 700; color: #fff; background: #5b5f6b; padding: 0 6px; border-radius: 6px; }
 .map-label { font-size: clamp(.65rem, 1.6vw, .85rem); font-weight: 700; background: #fff; padding: 1px 8px; border-radius: 999px; white-space: nowrap; }
+.game-spot {
+  position: absolute; left: 70%; top: 54%; z-index: 2; display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap;
+  background: #fff; color: #2b2420; text-decoration: none; font-weight: 800; font-size: clamp(.65rem, 1.6vw, .85rem);
+  padding: 3px 10px; border-radius: 999px; border: 2px solid #e3a77a; box-shadow: 0 0 0 4px rgb(255 214 120 / 55%);
+  animation: spot-glow 1.6s ease-in-out infinite;
+}
+.game-spot .game-say { font-weight: 600; color: #5a4d45; }
+.game-spot.closed { animation: none; box-shadow: none; color: #6f625a; border-style: dashed; font-weight: 600; }
+.game-spot:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+@keyframes spot-glow { 50% { box-shadow: 0 0 0 7px rgb(255 214 120 / 25%); } }
+@media (prefers-reduced-motion: reduce) { .game-spot { animation: none; } }
 .mystery-sign {
   position: absolute; right: 4%; bottom: 6%; background: #fff; border: 2px dashed #c9ad95; border-radius: 10px;
   padding: 4px 10px; font-weight: 800; letter-spacing: .2em; color: #6f625a; font-size: clamp(.75rem, 2vw, 1rem);

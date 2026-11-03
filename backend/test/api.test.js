@@ -572,3 +572,32 @@ test('ログイン：よそのページからの書きこみは受けつけな�
   const ok = await call('/api/posts', { method: 'POST', as: me, body: { text: 'こんにちは' }, headers: { Origin: base } });
   assert.equal(ok.status, 201);
 });
+
+// ---- ゲームのアプリとの連結 ----
+test('ゲーム：ともはねでログイン → 通行証（1回だけ）→ ゲームに渡すのは番号・表示名・年齢の区分だけ', async () => {
+  const noLogin = await fetch(`${base}/api/link/game-start`, { redirect: 'manual' });
+  assert.equal(noLogin.status, 302);
+  assert.match(noLogin.headers.get('location'), /^\/login\.html\?next=/, 'ログインしていなければ、ログインの画面へ');
+
+  const me = await signup('じゃんけんの人');
+  const start = await fetch(`${base}/api/link/game-start`, { redirect: 'manual', headers: { Cookie: me.cookie } });
+  const loc = new URL(start.headers.get('location'));
+  assert.equal(loc.origin, 'http://localhost:3300');
+  assert.equal(loc.pathname, '/auth/callback');
+  const ticket = loc.searchParams.get('ticket');
+
+  assert.equal((await call(`/api/link/game-ticket/${ticket}`, { headers: { 'X-Link-Secret': 'wrong' } })).status, 403, '合言葉がちがう');
+  const ok = await call(`/api/link/game-ticket/${ticket}`, { headers: { 'X-Link-Secret': 'tomohane-dev-link-secret' } });
+  assert.equal(ok.status, 200);
+  assert.deepEqual(Object.keys(ok.data).sort(), ['ageGroup', 'gameId', 'name']);
+  assert.notEqual(ok.data.gameId, me.id, 'ともはねの ID そのものは渡さない');
+  assert.equal(ok.data.ageGroup, 'adult');
+  assert.equal((await call(`/api/link/game-ticket/${ticket}`, { headers: { 'X-Link-Secret': 'tomohane-dev-link-secret' } })).status, 404, '通行証は1回だけ');
+
+  // 勝ち数がとどく
+  const res = await call('/api/link/game-results', { method: 'POST', headers: { 'X-Link-Secret': 'tomohane-dev-link-secret' }, body: { gameId: ok.data.gameId, wins: 3, plays: 5 } });
+  assert.equal(res.status, 200);
+  assert.deepEqual((await call('/api/auth/me', { as: me })).data.game.wins, 3);
+  assert.equal((await call('/api/link/game-results', { method: 'POST', body: { gameId: ok.data.gameId, wins: 99, plays: 99 } })).status, 403, '合言葉がなければ書きかえられない');
+  assert.equal((await call('/api/link/game-results', { method: 'POST', headers: { 'X-Link-Secret': 'tomohane-dev-link-secret' }, body: { gameId: ok.data.gameId, wins: 9, plays: 5 } })).status, 400);
+});
