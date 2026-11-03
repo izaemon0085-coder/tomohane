@@ -39,8 +39,16 @@ export const BETA_COLOR_ONLY = true;
 function readStored() {
   try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch { return {}; }
 }
+// 保存した値は、決まった形のものだけ使う（ほかのスクリプトが書きかえても、画面の HTML に入らないように）
+const isColor = (v) => typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v);
 function load() {
-  const stored = readStored();
+  const raw = readStored();
+  const stored = {
+    ...raw,
+    color: isColor(raw.color) ? raw.color : '',
+    pattern: PATTERNS.some((p) => p.key === raw.pattern) ? raw.pattern : DEFAULTS.pattern,
+    mark: MARKS.includes(raw.mark) ? raw.mark : DEFAULTS.mark,
+  };
   // β版では、前に保存した色と字体以外の設定は使わない（保存はそのまま残すので、正式版で復活する）
   const typeface = TYPEFACES.some((t) => t.key === stored.typeface) ? stored.typeface : DEFAULT_TYPEFACE;
   return BETA_COLOR_ONLY
