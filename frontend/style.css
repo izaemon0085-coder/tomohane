@@ -50,10 +50,12 @@
 .game-spot:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
 @keyframes spot-glow { 50% { box-shadow: 0 0 0 7px rgb(255 214 120 / 25%); } }
 @media (prefers-reduced-motion: reduce) { .game-spot { animation: none; } }
+@media (max-width: 600px) { .game-spot { left: 66%; top: 50%; white-space: nowrap; } .game-spot .game-say { display: none; } }
 .mystery-sign {
   position: absolute; right: 4%; bottom: 6%; background: #fff; border: 2px dashed #c9ad95; border-radius: 10px;
   padding: 4px 10px; font-weight: 800; letter-spacing: .2em; color: #6f625a; font-size: clamp(.75rem, 2vw, 1rem);
 }
+.mystery-sign.mystery-2 { right: auto; left: 29%; bottom: 5%; }
 .kondate-shop {
   position: absolute; left: 36%; top: 3%; width: 28%; display: flex; flex-direction: column; align-items: center;
   background: #fff; border-radius: 10px; padding: 0 6px 6px; text-decoration: none; color: #2b2420;
