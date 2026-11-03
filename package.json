@@ -10,6 +10,6 @@
   "scripts": {
     "start": "node backend/server.js",
     "dev": "node --watch backend/server.js",
-    "test": "node --test backend/test/"
+    "test": "node --test backend/test/*.test.js"
   }
 }
