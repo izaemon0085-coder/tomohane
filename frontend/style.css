@@ -51,6 +51,12 @@
 @keyframes spot-glow { 50% { box-shadow: 0 0 0 7px rgb(255 214 120 / 25%); } }
 @media (prefers-reduced-motion: reduce) { .game-spot { animation: none; } }
 @media (max-width: 600px) { .game-spot { left: 66%; top: 50%; white-space: nowrap; } .game-spot .game-say { display: none; } }
+.ground-spot {
+  position: absolute; left: 61%; top: 20%; z-index: 2; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;
+  background: #fff; color: #2b2420; text-decoration: none; font-weight: 800; font-size: clamp(.65rem, 1.6vw, .85rem);
+  padding: 3px 10px; border-radius: 999px; border: 2px solid #8fbf7a;
+}
+.ground-spot:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
 .mystery-sign {
   position: absolute; right: 4%; bottom: 6%; background: #fff; border: 2px dashed #c9ad95; border-radius: 10px;
   padding: 4px 10px; font-weight: 800; letter-spacing: .2em; color: #6f625a; font-size: clamp(.75rem, 2vw, 1rem);

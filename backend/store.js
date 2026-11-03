@@ -319,6 +319,24 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       return user.game;
     },
 
+    // ゴーストエージェント：自己ベストを更新した回数と、続けた日数だけ（ラップの記録そのものは来ない）
+    setGhostId(userId, ghostId) {
+      const user = requireUser(userId);
+      if (user.ghostId !== ghostId) {
+        user.ghostId = ghostId;
+        save();
+      }
+    },
+    setGhostResults(ghostId, { bests, days }) {
+      const user = state.users.find((u) => u.ghostId === ghostId);
+      if (!user) throw new HttpError(404, 'ユーザーが見つかりません');
+      const n = (v) => (Number.isInteger(v) && v >= 0 && v <= 1e6 ? v : null);
+      if (n(bests) === null || n(days) === null) throw new HttpError(400, '記録の数が正しくありません');
+      user.ghost = { bests, days, updatedAt: now() };
+      emit('user', user);
+      return user.ghost;
+    },
+
     // ---- 推しの情報（わたしの推しページ） ----
     getOshi(userId) {
       const user = requireUser(userId);

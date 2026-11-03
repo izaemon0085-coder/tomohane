@@ -42,6 +42,7 @@ function render(me) {
   $('#acc-login').textContent = me.loginId;
   $('#acc-age').textContent = AGE[me.ageGroup] ?? '―';
   $('#acc-role').textContent = ROLE[me.role] ?? me.role;
+  $('#acc-ghost').textContent = me.ghost ? `自己ベスト更新 ${me.ghost.bests}回・${me.ghost.days}日つづけた` : 'まだ使っていません（町の地図のグラウンドから）';
   $('#acc-game').textContent = me.game ? `${me.game.wins}勝（${me.game.plays}回あそんだ）` : 'まだ遊んでいません（町の地図のシバの家から）';
   $('#acc-child').hidden = me.ageGroup !== 'child';
   $('#acc-back').href = nextUrl();

@@ -222,6 +222,13 @@ log.addEventListener('click', async (e) => {
 });
 
 renderAuth();
+// ゴーストエージェントなどから「広場で知らせる」で来たとき：下書きを入れるだけ。送るかどうかは本人が決める
+const draft = new URLSearchParams(location.search).get('draft');
+if (draft && me) {
+  textarea.value = draft.slice(0, 280);
+  history.replaceState(null, '', location.pathname);
+  textarea.focus();
+}
 loadPosts();
 loadMembers();
 onServerEvents({ post: loadPosts, like: loadPosts, agent: loadMembers });

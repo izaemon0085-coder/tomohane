@@ -8,7 +8,7 @@ import { createSimulation } from './simulation.js';
 import { lanAddresses } from './net.js';
 import { MAX_VIDEO_BYTES, removeVideo, saveVideo, serveVideo } from './letters.js';
 import { createKokotomoClient } from './kokotomo.js';
-import { createGameLink } from './gamelink.js';
+import { createGameLink, GHOST_URL } from './gamelink.js';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 
@@ -78,6 +78,7 @@ function meView(u) {
   return {
     ...publicUser(u), loginId: u.loginId, role: u.role ?? 'user', ageGroup: ageGroup(u.birthdate), birthdate: u.birthdate,
     game: u.game ?? null,
+    ghost: u.ghost ?? null,
   };
 }
 
@@ -129,6 +130,7 @@ export function createApp({
   videoDir = join(ROOT, 'data', 'letters', 'videos'), maxVideoBytes = MAX_VIDEO_BYTES,
   kokotomo = createKokotomoClient(),
   gameLink = createGameLink(),
+  ghostLink = createGameLink({ app: 'ghost', gameUrl: GHOST_URL }),
 }) {
   const routes = [
     // line：回線番のモグが選んだ回線（wifi / local / offline）
@@ -261,43 +263,52 @@ export function createApp({
     return true;
   }
 
-  // ---- ゲームのアプリとの連結 ----
-  // ゲームのアドレス。このパソコン（localhost）のアドレスのとき、スマホから開いても届くように、いま開いているアドレスに合わせる
-  function gameUrlFor(req) {
-    const u = new URL(gameLink.gameUrl);
+  // ---- つながるアプリ（ともじゃん・ゴーストエージェント）との連結 ----
+  // /api/link/<名前>-start ・ -ticket/:通行証 ・ -results
+  const LINKS = {
+    game: { link: gameLink, setId: (u, id) => store.setGameId(u, id), results: (id, body) => store.setGameResults(id, body) },
+    ghost: { link: ghostLink, setId: (u, id) => store.setGhostId(u, id), results: (id, body) => store.setGhostResults(id, body) },
+  };
+  // アプリのアドレス。このパソコン（localhost）のアドレスのとき、スマホから開いても届くように、いま開いているアドレスに合わせる
+  function gameUrlFor(req, link) {
+    const u = new URL(link.gameUrl);
     const host = String(req.headers.host || '').split(':')[0];
     if (['localhost', '127.0.0.1'].includes(u.hostname) && host && !['localhost', '127.0.0.1'].includes(host)) u.hostname = host;
     return u.origin;
   }
   async function handleGameLink(req, res, pathname, me) {
-    // ゲームの「ともはねでログイン」から来る。ログインしていなければ、ログインしてからもどってくる
-    if (pathname === '/api/link/game-start' && req.method === 'GET') {
+    const m = pathname.match(/^\/api\/link\/(game|ghost)-(start|ticket|results)(?:\/([\w-]+))?$/);
+    if (!m) return false;
+    const [, name, action, ticketId] = m;
+    const { link, setId, results } = LINKS[name];
+    // アプリの「ともはねでログイン」から来る。ログインしていなければ、ログインしてからもどってくる
+    if (action === 'start' && req.method === 'GET' && !ticketId) {
       if (!me) {
-        res.writeHead(302, { Location: `/login.html?next=${encodeURIComponent('/api/link/game-start')}` });
+        res.writeHead(302, { Location: `/login.html?next=${encodeURIComponent(pathname)}` });
         return res.end() || true;
       }
-      const ticket = gameLink.issue(me.id);
-      res.writeHead(302, { Location: `${gameUrlFor(req)}/auth/callback?ticket=${ticket}`, 'Cache-Control': 'no-store' });
+      const ticket = link.issue(me.id);
+      res.writeHead(302, { Location: `${gameUrlFor(req, link)}/auth/callback?ticket=${ticket}`, 'Cache-Control': 'no-store' });
       return res.end() || true;
     }
-    // ここから下は、ゲームのサーバーからだけ（合言葉で確かめる）
-    const ticketMatch = pathname.match(/^\/api\/link\/game-ticket\/([\w-]+)$/);
-    const isResults = pathname === '/api/link/game-results' && req.method === 'POST';
-    if (!(ticketMatch && req.method === 'GET') && !isResults) return false;
-    if (!gameLink.checkSecret(req.headers['x-link-secret'])) throw new HttpError(403, '合言葉がちがいます');
-    if (ticketMatch) {
-      const userId = gameLink.redeem(ticketMatch[1]);
+    // ここから下は、アプリのサーバーからだけ（合言葉で確かめる）
+    const isTicket = action === 'ticket' && ticketId && req.method === 'GET';
+    const isResults = action === 'results' && !ticketId && req.method === 'POST';
+    if (!isTicket && !isResults) return false;
+    if (!link.checkSecret(req.headers['x-link-secret'])) throw new HttpError(403, '合言葉がちがいます');
+    if (isTicket) {
+      const userId = link.redeem(ticketId);
       const user = userId && store.getUser(userId);
       if (!user) throw new HttpError(404, '通行証が使えません（1分すぎたか、もう使われています）');
       const group = ageGroup(user.birthdate);
       if (!group) throw new HttpError(403, '生年月日の登録が必要です');
-      const gameId = gameLink.gameIdOf(user.id);
-      store.setGameId(user.id, gameId);
-      sendJson(res, 200, { gameId, name: user.name, ageGroup: group });
+      const appId = link.gameIdOf(user.id);
+      setId(user.id, appId);
+      sendJson(res, 200, { gameId: appId, name: user.name, ageGroup: group });
       return true;
     }
     const body = await readJson(req);
-    sendJson(res, 200, store.setGameResults(String(body.gameId ?? ''), body));
+    sendJson(res, 200, results(String(body.gameId ?? ''), body));
     return true;
   }
 

@@ -601,3 +601,24 @@ test('ゲーム：ともはねでログイン → 通行証（1回だけ）→ �
   assert.equal((await call('/api/link/game-results', { method: 'POST', body: { gameId: ok.data.gameId, wins: 99, plays: 99 } })).status, 403, '合言葉がなければ書きかえられない');
   assert.equal((await call('/api/link/game-results', { method: 'POST', headers: { 'X-Link-Secret': 'tomohane-dev-link-secret' }, body: { gameId: ok.data.gameId, wins: 9, plays: 5 } })).status, 400);
 });
+
+test('ゴーストエージェント：ともはねでログイン（アプリごとに別の番号）→ 自己ベストの回数だけ受けとる', async () => {
+  const me = await signup('ゴーストの人');
+  const S = { 'X-Link-Secret': 'tomohane-dev-link-secret' };
+  const ticketOf = async (name) => {
+    const r = await fetch(`${base}/api/link/${name}-start`, { redirect: 'manual', headers: { Cookie: me.cookie } });
+    return new URL(r.headers.get('location'));
+  };
+  const loc = await ticketOf('ghost');
+  assert.equal(loc.origin, 'http://localhost:3500');
+  const ghost = (await call(`/api/link/ghost-ticket/${loc.searchParams.get('ticket')}`, { headers: S })).data;
+  const game = (await call(`/api/link/game-ticket/${(await ticketOf('game')).searchParams.get('ticket')}`, { headers: S })).data;
+  assert.notEqual(ghost.gameId, game.gameId, 'ともじゃんとゴーストで番号がちがう（見比べても同じ人と分からない）');
+  assert.equal(ghost.name, 'ゴーストの人');
+
+  assert.equal((await call('/api/link/ghost-results', { method: 'POST', body: { gameId: ghost.gameId, bests: 2, days: 3 } })).status, 403, '合言葉なしはだめ');
+  assert.equal((await call('/api/link/ghost-results', { method: 'POST', headers: S, body: { gameId: ghost.gameId, bests: -1, days: 3 } })).status, 400);
+  assert.equal((await call('/api/link/ghost-results', { method: 'POST', headers: S, body: { gameId: ghost.gameId, bests: 2, days: 3 } })).status, 200);
+  assert.deepEqual((await call('/api/auth/me', { as: me })).data.ghost.bests, 2);
+  assert.equal((await call('/api/link/ghost-results', { method: 'POST', headers: S, body: { gameId: game.gameId, bests: 1, days: 1 } })).status, 404, 'ともじゃんの番号ではゴーストの記録は書けない');
+});
