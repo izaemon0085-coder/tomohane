@@ -20,6 +20,7 @@ export const MAX_REC_LENGTH = 60;
 export const MAX_BLOCK_REASON = 100;
 export const MAX_BLOCKS = 500;
 export const BLOCK_KINDS = ['mute', 'block'];
+export const MAX_FAREWELL = 50;
 
 // 手紙の合言葉。サーバーには「ハッシュ」だけを残し、合言葉そのものは作った人のブラウザだけが持つ
 const randomToken = () => randomBytes(18).toString('base64url');
@@ -143,6 +144,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
   state.newsVotes ??= []; // 新聞のアンケート { newsId（アンケートの id）, userId, choice, comment, createdAt }
   state.blocks ??= []; // ミュート・ブロック { userId（した人）, targetId（された人）, kind（'mute' | 'block'）, reason（キャラだけが読む）, createdAt }
   state.reports ??= []; // 通報 { id, postId, reporterId, authorId, reason, level, status, createdAt, apology }
+  state.farewells ??= []; // 投稿を消した人から、返信した人へのひとこと { id, toId, fromId, text, at }
   state.reportSeen ??= []; // 通報された本人が、お知らせを読んだしるし { postId, authorId, at }
   const listeners = new Set();
   const loginFails = new Map(); // ログインID → { count, until }（パスワードの総当たりを防ぐ）
@@ -658,6 +660,40 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       return { ok: true };
     },
     blocksOf: (userId) => state.blocks.filter((b) => b.userId === userId),
+    // ---- 投稿を消す ----
+    // 消した投稿は残さない（あとで倉庫にも入れない）。ついていた返信は、元の投稿と一緒に見えなくする
+    // （書いた人は自分の返信を見られる）。返信した人には、消した人がえらんだひとことが届く
+    deletePost(postId, userId, farewell = '') {
+      const post = requirePost(postId);
+      const user = requireUser(userId);
+      if (post.authorId !== user.id || user.kind !== 'human') throw new HttpError(403, '自分の投稿だけ消せます');
+      const replies = [];
+      const walk = (id) => {
+        for (const p of state.posts) if (p.replyTo === id && !replies.includes(p)) { replies.push(p); walk(p.id); }
+      };
+      walk(post.id);
+      const to = [...new Set(replies.map((p) => p.authorId))]
+        .filter((id) => id !== user.id && userById(id)?.kind === 'human');
+      let text = '';
+      if (to.length) {
+        text = cleanText(farewell, MAX_FAREWELL, '返信した人へのひとこと');
+        rejectBlocked(user, text);
+      }
+      for (const p of replies) p.orphaned = true;
+      state.posts.splice(state.posts.indexOf(post), 1);
+      for (const id of to) state.farewells.push({ id: newId('f'), toId: id, fromId: user.id, text, at: now() });
+      emit('post', { id: post.id });
+      return { ok: true, told: to.length };
+    },
+    farewellsFor: (userId) => state.farewells.filter((f) => f.toId === userId),
+    dismissFarewell(userId, id) {
+      const i = state.farewells.findIndex((f) => f.id === id && f.toId === userId);
+      if (i === -1) throw new HttpError(404, 'お知らせが見つかりません');
+      state.farewells.splice(i, 1);
+      save();
+      return { ok: true };
+    },
+
     // ---- 通報 ----
     // 通報した人はだれにも出さない。重いもの（hold）は運営が見るまでほかの人に見えなくする。
     // 止めるかどうかは運営（人）が決める
@@ -754,6 +790,8 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
     canSee(post, viewerId) {
       // 通報で止まっている投稿は、書いた本人にだけ見える。通報した人には、その投稿はもう出さない
       if (post.hidden && post.authorId !== viewerId) return false;
+      // 元の投稿が消された返信は、書いた本人にだけ見える
+      if (post.orphaned && post.authorId !== viewerId) return false;
       if (viewerId && state.reports.some((r) => r.postId === post.id && r.reporterId === viewerId)) return false;
       if (viewerId && post.authorId !== viewerId) {
         if (state.blocks.some((b) => b.userId === viewerId && b.targetId === post.authorId)) return false;

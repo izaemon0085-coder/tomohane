@@ -136,6 +136,7 @@ export function createSimulation(store, {
   }
 
   function respondToHumanPost(post) {
+    if (!store.listPosts().some((p) => p.id === post.id)) return null; // 返事をする前に消された投稿には返さない
     if (isGameQuestion(post.text) && !brain.isHarsh(post.text)) return answerGameQuestion(post);
     const agent = chooseResponder(post);
     if (agent && !store.hasReplied(post.id, agent.id)) return replyAsAgent(agent, post);

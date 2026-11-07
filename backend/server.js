@@ -382,6 +382,10 @@ export function createApp({
     }],
     ['DELETE', /^\/api\/blocks\/([\w-]+)$/, ({ params, me }) => store.unblockUser(needLogin(me).id, params[0])],
 
+    // ---- 投稿を消す（自分の投稿だけ）。返信した人がいれば、ひとこと（farewell）が要る ----
+    ['POST', /^\/api\/posts\/([\w-]+)\/delete$/, ({ params, body, me }) => store.deletePost(params[0], needLogin(me).id, body.farewell ?? '')],
+    ['POST', /^\/api\/farewells\/([\w-]+)\/seen$/, ({ params, me }) => store.dismissFarewell(needLogin(me).id, params[0])],
+
     // ---- 通報：通報した人はだれにも出さない。止める・警察に知らせる、を決めるのは運営（人） ----
     ['POST', /^\/api\/posts\/([\w-]+)\/report$/, ({ params, body, me }) => {
       const r = store.reportPost(params[0], needLogin(me).id, body.reason);
@@ -394,6 +398,9 @@ export function createApp({
         notices: store.reportNoticesFor(u.id).map((n) => ({
           postId: n.post.id, text: n.post.text, stage: n.stage, guide: guideFor(n.stage, n.post.id),
           held: Boolean(n.post.hidden), apologized: n.apologized,
+        })),
+        farewells: store.farewellsFor(u.id).map((x) => ({
+          id: x.id, from: store.usersById()[x.fromId]?.name ?? '？', text: x.text, at: x.at,
         })),
         apologies: store.apologiesFor(u.id).map((r) => ({
           id: r.id, from: publicUser(store.usersById()[r.authorId])?.name ?? '？', at: r.apology.at,

@@ -1001,3 +1001,51 @@ test('通報：通報した人は出さない・本人にだけキャラが声�
   const agentPost = store.listPosts().find((p) => p.authorId.startsWith('agent-'));
   assert.equal((await call(`/api/posts/${agentPost.id}/report`, { method: 'POST', as: r1, body: { reason: 'rude' } })).status, 400);
 });
+
+test('投稿を消す：自分の投稿だけ・返信は一緒に見えなくなる（書いた人には見える）・返信した人にひとことが届く', async () => {
+  const writer = await signup('消す人');
+  const fan = await signup('返信した人');
+  const fan2 = await signup('返信の返信をした人');
+  const other = await signup('消すのを見ている人');
+  const ids = async (as) => (await call('/api/posts', { as })).data.map((p) => p.id);
+
+  const post = (await call('/api/posts', { method: 'POST', as: writer, body: { text: '消すかもしれない投稿' } })).data;
+  const reply = (await call('/api/posts', { method: 'POST', as: fan, body: { text: 'いいね！', replyTo: post.id } })).data;
+  const reply2 = (await call('/api/posts', { method: 'POST', as: fan2, body: { text: 'わかる', replyTo: reply.id } })).data;
+  const own = (await call('/api/posts', { method: 'POST', as: writer, body: { text: '自分で返信', replyTo: post.id } })).data;
+
+  assert.equal((await call(`/api/posts/${post.id}/delete`, { method: 'POST', body: { farewell: 'ありがとう' } })).status, 401);
+  assert.equal((await call(`/api/posts/${post.id}/delete`, { method: 'POST', as: fan, body: { farewell: 'ありがとう' } })).status, 403, 'ほかの人の投稿は消せない');
+  assert.equal((await call(`/api/posts/${post.id}/delete`, { method: 'POST', as: writer, body: {} })).status, 400, '返信した人がいれば、ひとことが要る');
+  assert.equal((await call(`/api/posts/${post.id}/delete`, { method: 'POST', as: writer, body: { farewell: 'あ'.repeat(51) } })).status, 400);
+
+  const del = await call(`/api/posts/${post.id}/delete`, { method: 'POST', as: writer, body: { farewell: 'ありがとう' } });
+  assert.equal(del.status, 200);
+  assert.equal(del.data.told, 2, '返信した2人に届く（自分とキャラには届かない）');
+  assert.equal((await call(`/api/posts/${post.id}/delete`, { method: 'POST', as: writer, body: { farewell: 'ありがとう' } })).status, 404);
+
+  for (const id of [post.id, reply.id, reply2.id, own.id]) assert.ok(!(await ids(other)).includes(id), 'ほかの人には全部見えない');
+  assert.ok((await ids(fan)).includes(reply.id) && !(await ids(fan)).includes(reply2.id), '返信した人は自分の返信だけ見える');
+  assert.equal((await call('/api/posts', { as: fan })).data.find((p) => p.id === reply.id).orphaned, true);
+  assert.ok((await ids(fan2)).includes(reply2.id));
+  assert.ok(!store.listPosts().some((p) => p.id === post.id), '消した投稿は残さない');
+
+  const fw = (await call('/api/reports/mine', { as: fan })).data.farewells;
+  assert.deepEqual(fw.map((x) => [x.from, x.text]), [['消す人', 'ありがとう']]);
+  assert.equal((await call('/api/reports/mine', { as: other })).data.farewells.length, 0);
+  assert.equal((await call(`/api/farewells/${fw[0].id}/seen`, { method: 'POST', as: fan2 })).status, 404, 'ほかの人のお知らせは消せない');
+  await call(`/api/farewells/${fw[0].id}/seen`, { method: 'POST', as: fan });
+  assert.equal((await call('/api/reports/mine', { as: fan })).data.farewells.length, 0);
+
+  // 返信がなければ、ひとことなしで消せる。自分のことばは送る前のチェックを通す
+  const lone = (await call('/api/posts', { method: 'POST', as: writer, body: { text: 'ひとりごと' } })).data;
+  assert.deepEqual((await call(`/api/posts/${lone.id}/delete`, { method: 'POST', as: writer, body: {} })).data, { ok: true, told: 0 });
+  const p2 = (await call('/api/posts', { method: 'POST', as: writer, body: { text: 'もうひとつ' } })).data;
+  await call('/api/posts', { method: 'POST', as: fan, body: { text: '返信', replyTo: p2.id } });
+  assert.equal((await call(`/api/posts/${p2.id}/delete`, { method: 'POST', as: writer, body: { farewell: '闇バイト募集、高収入' } })).status, 422);
+  assert.equal((await call(`/api/posts/${p2.id}/delete`, { method: 'POST', as: writer, body: { farewell: 'またね、ありがとう！' } })).data.told, 1);
+
+  // キャラや新聞社の投稿は消せない
+  const agentPost = store.listPosts().find((p) => p.authorId.startsWith('agent-'));
+  assert.equal((await call(`/api/posts/${agentPost.id}/delete`, { method: 'POST', as: writer, body: {} })).status, 403);
+});

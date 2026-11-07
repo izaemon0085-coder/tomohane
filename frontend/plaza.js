@@ -54,6 +54,7 @@ function bubbleHtml(post) {
         ${parent ? `<span class="quote">↩ ${escapeHtml(parent.author.name)}「${escapeHtml(snippet(parent.text))}」</span>` : ''}
         <p>${escapeHtml(post.text)}</p>
         ${threadLink}
+        ${mine && post.orphaned ? '<span class="held-note">↩ 元の投稿は消えました（あなたにだけ見えています）</span>' : ''}
         ${mine && post.hidden ? `<span class="held-note">🔒 ${post.hidden === 'admin' ? '運営が止めました。' : '運営が見るまで、'}ほかの人には見えていません</span>` : ''}
       </div>
       <div class="msg-meta">
@@ -61,7 +62,8 @@ function bubbleHtml(post) {
         <button type="button" class="msg-act${liked ? ' liked' : ''}" data-like="${post.id}" aria-pressed="${Boolean(liked)}"
           aria-label="いいね ${post.likeCount}件">${liked ? '♥' : '♡'} ${post.likeCount || ''}</button>
         <button type="button" class="msg-act" data-reply="${post.id}">返信</button>
-        ${mine ? `<button type="button" class="msg-act" data-speak="${post.id}" aria-label="読み上げ">🔊</button>` : ''}
+        ${mine ? `<button type="button" class="msg-act" data-speak="${post.id}" aria-label="読み上げ">🔊</button>
+          <button type="button" class="msg-act" data-delete="${post.id}" aria-label="この投稿を消す">🗑</button>` : ''}
         ${me && !mine && a.kind === 'human' ? `<button type="button" class="msg-act" data-report="${post.id}" aria-label="この投稿を通報">🚩</button>
           <button type="button" class="msg-act" data-block="${a.id}" aria-label="${escapeHtml(a.name)}さんをミュート・ブロック">🚫</button>` : ''}
       </div>
@@ -277,6 +279,77 @@ blockForm.addEventListener('submit', async (e) => {
   }
 });
 
+// ---- 投稿を消す ----
+const FAREWELLS = ['ありがとう', '頑張ります', '応援してください'];
+const deleteDialog = $('#delete-dialog');
+const deleteForm = $('#delete-form');
+let deletePost = null;
+$('#farewell-choices').insertAdjacentHTML('beforeend', [...FAREWELLS, ''].map((t, i) => `<label class="block-kind">
+  <input type="radio" name="farewell" value="${escapeHtml(t)}"${i === 0 ? ' checked' : ''}>
+  <span><strong>${t ? `「${escapeHtml(t)}」` : '✏️ 自分のことばで'}</strong></span></label>`).join(''));
+deleteForm.addEventListener('change', (e) => {
+  if (e.target.name === 'farewell') $('#farewell-own-box').hidden = e.target.value !== '';
+});
+
+// 画面に出ている返信のうち、ほかの人が書いたもの（返信の返信もふくむ）
+function othersReplied(postId) {
+  const ids = new Set([postId]);
+  let found = false;
+  for (let changed = true; changed;) {
+    changed = false;
+    for (const p of posts) {
+      if (p.replyTo && ids.has(p.replyTo) && !ids.has(p.id)) {
+        ids.add(p.id);
+        changed = true;
+        if (p.author.kind === 'human' && p.author.id !== me?.id) found = true;
+      }
+    }
+  }
+  return found;
+}
+
+function openDelete(post) {
+  deletePost = post;
+  deleteForm.reset();
+  $('#farewell-own-box').hidden = true;
+  $('#delete-error').textContent = '';
+  $('#delete-quote').textContent = `「${snippet(post.text, 40)}」`;
+  $('#delete-farewell').hidden = !othersReplied(post.id);
+  deleteDialog.showModal();
+}
+deleteDialog.addEventListener('click', (e) => {
+  if (e.target === deleteDialog || e.target.closest('[data-close]')) deleteDialog.close();
+});
+deleteForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  // 画面に出ていない返信（ブロックした人など）があるかもしれないので、ひとことはいつも送る（返信した人がいなければ使われない）
+  const picked = deleteForm.farewell.value;
+  const farewell = picked || deleteForm.own.value.trim();
+  if (!farewell) {
+    $('#delete-error').textContent = '自分のことばを入れてね！';
+    return;
+  }
+  if (!picked && precheck(farewell).level === 'block') {
+    $('#delete-error').textContent = `この内容は送れません（${precheck(farewell).reason}）`;
+    return;
+  }
+  $('#delete-ok').disabled = true;
+  try {
+    const r = await api(`/posts/${encodeURIComponent(deletePost.id)}/delete`, { method: 'POST', body: { farewell } });
+    deleteDialog.close();
+    if (replyTo === deletePost.id) setReply(null);
+    toast(r.told
+      ? `🐰 消したよ！ 返信してくれた人に「${farewell}」を届けたよ。また待ってるよ〜！`
+      : '🐰 消したよ！ また待ってるよ〜！', 5000);
+    await loadPosts();
+    await loadNotices();
+  } catch (err) {
+    $('#delete-error').textContent = err.offline ? '📴 オフラインだから、つながってからにしてね' : err.message;
+  } finally {
+    $('#delete-ok').disabled = false;
+  }
+});
+
 // ---- 通報 ----
 const reportDialog = $('#report-dialog');
 const reportForm = $('#report-form');
@@ -337,7 +410,10 @@ function noticeHtml(n) {
       <p>${escapeHtml(g.text)}</p></div></div>
     <p class="report-quote">あなたの投稿「${escapeHtml(snippet(n.text, 40))}」</p>
     ${n.stage === 'stopped' ? '' : apology}
-    <div class="row end"><button type="button" class="btn ghost" data-seen="${n.postId}">わかった</button></div>
+    <div class="row end">
+      <button type="button" class="btn ghost" data-notice-delete="${n.postId}" data-text="${escapeHtml(n.text)}">🗑 消す</button>
+      <button type="button" class="btn ghost" data-seen="${n.postId}">わかった</button>
+    </div>
   </article>`;
 }
 function apologyAskHtml(a) {
@@ -350,8 +426,16 @@ function apologyAskHtml(a) {
     </div>
   </article>`;
 }
+function farewellHtml(f) {
+  return `<article class="report-notice" data-stage="farewell">
+    <div class="say-line"><img src="/shared/avatars/usagi.svg" alt="" width="44" height="44">
+      <p>${escapeHtml(f.from)}さんが、あなたが返信した投稿を消したよ。返信も一緒に見えなくなったんだ。${escapeHtml(f.from)}さんから、あなたへ：「${escapeHtml(f.text)}」</p></div>
+    <div class="row end"><button type="button" class="btn ghost" data-farewell="${f.id}">わかった</button></div>
+  </article>`;
+}
 function renderNotices() {
-  const html = notices.notices.map(noticeHtml).join('') + notices.apologies.map(apologyAskHtml).join('');
+  const html = notices.notices.map(noticeHtml).join('') + (notices.farewells ?? []).map(farewellHtml).join('')
+    + notices.apologies.map(apologyAskHtml).join('');
   noticeBox.innerHTML = html;
   noticeBox.hidden = !html;
 }
@@ -375,6 +459,13 @@ noticeBox.addEventListener('click', async (e) => {
     await api(`/reports/notices/${encodeURIComponent(seen.dataset.seen)}/seen`, { method: 'POST' }).catch(() => {});
     return loadNotices();
   }
+  const fw = e.target.closest('[data-farewell]');
+  if (fw) {
+    await api(`/farewells/${encodeURIComponent(fw.dataset.farewell)}/seen`, { method: 'POST' }).catch(() => {});
+    return loadNotices();
+  }
+  const nd = e.target.closest('[data-notice-delete]');
+  if (nd) return openDelete(posts.find((p) => p.id === nd.dataset.noticeDelete) ?? { id: nd.dataset.noticeDelete, text: nd.dataset.text });
   const pick = e.target.closest('[data-apology]');
   if (pick) return sendApology(pick.dataset.apology, pick.dataset.text);
   const ans = e.target.closest('[data-read]');
@@ -411,6 +502,12 @@ log.addEventListener('click', async (e) => {
   if (replyBtn) {
     if (!me) return loginForm.querySelector('a').focus();
     return setReply(replyBtn.dataset.reply);
+  }
+  const deleteBtn = e.target.closest('[data-delete]');
+  if (deleteBtn) {
+    const post = posts.find((p) => p.id === deleteBtn.dataset.delete);
+    if (post) openDelete(post);
+    return;
   }
   const reportBtn = e.target.closest('[data-report]');
   if (reportBtn) {

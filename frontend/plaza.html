@@ -85,6 +85,27 @@
       </form>
     </dialog>
 
+    <!-- 投稿を消す：ウサギが明るく見送る。返信した人には、えらんだひとことが届く -->
+    <dialog id="delete-dialog" class="card oshi-dialog" aria-labelledby="delete-title">
+      <form id="delete-form" method="dialog">
+        <h2 id="delete-title">🗑 この投稿を消す</h2>
+        <div class="say-line"><img src="/shared/avatars/usagi.svg" alt="" width="44" height="44">
+          <p id="delete-say">消しちゃう？ だいじょうぶ、また書きたくなったら、いつでも待ってるよ！</p></div>
+        <p class="report-quote" id="delete-quote"></p>
+        <div id="delete-farewell" hidden>
+          <p class="small"><strong>返信してくれた人がいるよ。</strong>返信も一緒に見えなくなるから、ひとこと届けよう！</p>
+          <fieldset class="block-kinds" id="farewell-choices"><legend class="sr-only">返信してくれた人へのひとこと</legend></fieldset>
+          <label class="field" id="farewell-own-box" hidden>自分のことば（50文字まで）
+            <input class="input" name="own" maxlength="50"></label>
+        </div>
+        <p class="error" id="delete-error" role="alert"></p>
+        <div class="row end">
+          <button type="button" class="btn ghost" data-close>やめる</button>
+          <button type="submit" class="btn" id="delete-ok">消す</button>
+        </div>
+      </form>
+    </dialog>
+
     <!-- 通報：通報した人の名前は、だれにも出さない -->
     <dialog id="report-dialog" class="card oshi-dialog" aria-labelledby="report-title">
       <form id="report-form" method="dialog">
