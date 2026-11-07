@@ -112,8 +112,8 @@ test('入力チェック', async () => {
 
 test('サイドフロント：エージェントの家とノック', async () => {
   const { data: agents } = await call('/api/agents');
-  assert.equal(agents.length, 6);
-  assert.deepEqual(agents.map((a) => a.name), ['ヤマネコ', 'ウサギ', 'フクロウ', 'シバ', 'クルマ', 'モグ']);
+  assert.equal(agents.length, 8);
+  assert.deepEqual(agents.map((a) => a.name), ['ヤマネコ', 'ウサギ', 'フクロウ', 'シバ', 'クルマ', 'モグ', 'タヌキ', 'ペンギン']);
   const id = agents[0].id;
   store.updateAgent(id, { status: 'sleeping' });
   const { data } = await call(`/api/agents/${id}/knock`, { method: 'POST' });
@@ -190,7 +190,8 @@ test('保存データに新しいキャラが自動で引っ越してくる', as
   const state = { users: old.listAgents().slice(0, 2), posts: [], meetings: [] };
   writeFileSync(file, JSON.stringify(state));
   const loaded = createStore({ file });
-  assert.equal(loaded.listAgents().length, 6);
+  assert.equal(loaded.listAgents().length, 8);
+  assert.deepEqual(loaded.listTables().map((t) => t.id), ['free'], 'カフェのフリーテーブルも用意される');
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -1052,4 +1053,44 @@ test('投稿を消す：自分の投稿だけ・返信は一緒に見えなく�
   // キャラや新聞社の投稿は消せない
   const agentPost = store.listPosts().find((p) => p.authorId.startsWith('agent-'));
   assert.equal((await call(`/api/posts/${agentPost.id}/delete`, { method: 'POST', as: writer, body: {} })).status, 403);
+});
+
+test('カフェ：フリーテーブル・広場とは分ける・返信は同じテーブル・はじめての人にはタヌキがあいさつ・カフェの2人は広場に出ない', async () => {
+  const guest = await signup('カフェのお客さん');
+  const tables = (await call('/api/cafe/tables')).data;
+  assert.deepEqual(tables.map((t) => [t.id, t.name]), [['free', 'フリーテーブル']]);
+  assert.equal((await call('/api/posts?table=nothing')).status, 404);
+  assert.equal((await call('/api/posts', { method: 'POST', as: guest, body: { text: 'x', table: 'nothing' } })).status, 404);
+
+  const p = (await call('/api/posts', { method: 'POST', as: guest, body: { text: 'はじめてカフェに来ました', table: 'free' } })).data;
+  assert.equal(p.table, 'free');
+  const cafe = (await call('/api/posts?table=free')).data.map((x) => x.id);
+  const plaza = (await call('/api/posts')).data.map((x) => x.id);
+  assert.ok(cafe.includes(p.id) && !plaza.includes(p.id), 'カフェの投稿は広場に出ない');
+
+  // はじめての人：マスターのタヌキがあいさつ（返事も同じテーブル）
+  const hello = sim.respondToHumanPost(store.getPost(p.id));
+  assert.equal(hello.authorId, 'agent-tanuki');
+  assert.match(hello.text, /ゆっくりしていきなよ/);
+  assert.equal(hello.table, 'free');
+
+  // 人の返信も同じテーブル（table を送らなくても）
+  const r = (await call('/api/posts', { method: 'POST', as: guest, body: { text: 'ありがとう！', replyTo: hello.id } })).data;
+  assert.equal(r.table, 'free');
+  // 2回目からは、起きているカフェの2人のどちらか
+  const again = (await call('/api/posts', { method: 'POST', as: guest, body: { text: '推しの新曲がよかった', table: 'free' } })).data;
+  const second = sim.respondToHumanPost(store.getPost(again.id));
+  assert.ok(!second || ['agent-tanuki', 'agent-penguin'].includes(second.authorId));
+  // トゲのある言葉には、カフェでもフクロウ
+  const harsh = (await call('/api/posts', { method: 'POST', as: guest, body: { text: 'うざい', table: 'free' } })).data;
+  assert.equal(sim.respondToHumanPost(store.getPost(harsh.id))?.authorId, 'agent-fukurou');
+
+  // カフェの2人は広場・会議に出ない。持ち場は cafe
+  const agents = (await call('/api/agents')).data;
+  assert.deepEqual(agents.filter((a) => a.place === 'cafe').map((a) => a.name), ['タヌキ', 'ペンギン']);
+  assert.equal((await call('/api/posts')).data.some((x) => ['agent-tanuki', 'agent-penguin'].includes(x.authorId)), false);
+  assert.equal((await call('/api/cafe/tables')).data[0].postCount >= 4, true);
+
+  const res = await fetch(`${base}/cafe.html`);
+  assert.match(await res.text(), /カフェ/);
 });

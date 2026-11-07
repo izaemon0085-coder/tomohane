@@ -45,8 +45,8 @@ export function createSimulation(store, {
         store.updateAgent(agent.id, { activity, mood: brain.randomMood(agent, random) });
         store.addDiary(agent.id, activity.replace(/ている$/, 'た'));
       } else {
-        store.updateAgent(agent.id, { status: 'sleeping', activity: 'エンジンを止めて休んでいる' });
-        store.addDiary(agent.id, 'エンジンを止めた');
+        store.updateAgent(agent.id, { status: 'sleeping', activity: brain.restingActivity(agent) });
+        store.addDiary(agent.id, agent.role === 'car' ? 'エンジンを止めた' : 'ひと休みした');
       }
       return;
     }
@@ -57,7 +57,7 @@ export function createSimulation(store, {
       store.addDiary(agent.id, `タイムラインに投稿した：「${post.text.slice(0, 20)}…」`);
     } else if (roll < 0.5) {
       const target = store.listPosts().slice(0, 20)
-        .find((p) => store.getUser(p.authorId).kind === 'human' && !store.hasReplied(p.id, agent.id));
+        .find((p) => !p.table && store.getUser(p.authorId).kind === 'human' && !store.hasReplied(p.id, agent.id)); // カフェはカフェの2人にまかせる
       if (target) replyAsAgent(agent, target);
     } else if (roll < 0.7) {
       const target = store.listPosts().slice(0, 10)
@@ -135,8 +135,33 @@ export function createSimulation(store, {
     return reply;
   }
 
+  // カフェの投稿：トゲのある言葉はいつもどおりフクロウ。ほかはカフェの2人（はじめての人にはマスターのタヌキ）
+  function respondInCafe(post) {
+    const author = store.getUser(post.authorId);
+    if (brain.isHarsh(post.text)) {
+      const agent = chooseResponder(post);
+      return agent && !store.hasReplied(post.id, agent.id) ? replyAsAgent(agent, post) : null;
+    }
+    const cafe = store.listAgents().filter(brain.isCafeAgent);
+    const isFirstVisit = store.listPosts().every((p) => p.authorId !== post.authorId || !p.table || p.id === post.id);
+    const awake = cafe.filter((a) => a.status === 'home');
+    const agent = isFirstVisit
+      ? cafe.find((a) => a.role === 'master') // マスターは、はじめてのお客さんには起きてあいさつする
+      : awake[Math.floor(random() * awake.length)];
+    if (!agent || store.hasReplied(post.id, agent.id)) return null;
+    const table = store.getTable(post.table);
+    const reply = store.createPost({
+      authorId: agent.id,
+      text: brain.cafeReply(agent, post, author.name, table.name, random, { isFirstVisit }),
+      replyTo: post.id,
+    });
+    store.addDiary(agent.id, `カフェで${author.name}さんに声をかけた`);
+    return reply;
+  }
+
   function respondToHumanPost(post) {
     if (!store.listPosts().some((p) => p.id === post.id)) return null; // 返事をする前に消された投稿には返さない
+    if (post.table) return respondInCafe(post);
     if (isGameQuestion(post.text) && !brain.isHarsh(post.text)) return answerGameQuestion(post);
     const agent = chooseResponder(post);
     if (agent && !store.hasReplied(post.id, agent.id)) return replyAsAgent(agent, post);

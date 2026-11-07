@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="ペンギン">
+  <ellipse cx="50" cy="54" rx="38" ry="40" fill="#2f4a6d"/>
+  <path d="M24 52 Q24 30 50 30 Q76 30 76 52 Q76 84 50 90 Q24 84 24 52Z" fill="#fbf8f2"/>
+  <path d="M30 38 Q40 30 50 40 Q60 30 70 38 Q70 46 50 48 Q30 46 30 38Z" fill="#2f4a6d"/>
+  <circle cx="39" cy="52" r="4" fill="#1f2433"/>
+  <circle cx="61" cy="52" r="4" fill="#1f2433"/>
+  <circle cx="40.2" cy="50.8" r="1.2" fill="#fff"/>
+  <circle cx="62.2" cy="50.8" r="1.2" fill="#fff"/>
+  <path d="M43 60 L57 60 L50 69Z" fill="#f2a33a"/>
+  <circle cx="31" cy="63" r="4" fill="#f7c3d3" opacity=".7"/>
+  <circle cx="69" cy="63" r="4" fill="#f7c3d3" opacity=".7"/>
+  <path d="M38 80 L50 76 L62 80 L50 84Z" fill="#c8642a"/>
+  <circle cx="50" cy="80" r="2.2" fill="#8a3f16"/>
+</svg>

@@ -9,6 +9,9 @@
 //                 タイムライン・家の町・遊び場には出てこない（会議室の金庫でだけ会える）
 //   🚗 クルマ  … 車のエージェント。家のガレージで暮らす。ひみつの役目（車のカギ）の準備中なので、
 //                 タイムラインへの投稿・返事・会議・遊び場には出てこない
+//   🦝 タヌキ  … カフェのマスター。のんびり屋。「まあ、ゆっくりしていきなよ」。推しのテーブルを開くかを決める
+//   🐧 ペンギン … カフェの店員さん。きちょうめん。テーブルの準備と、はじめての人の案内
+//                 カフェの2人は、カフェ（cafe.html）でだけ返事をする。広場・会議・遊び場には出てこない
 
 import { isHarsh } from '../shared/precheck.js';
 
@@ -49,7 +52,29 @@ export const SEED_AGENTS = [
     role: 'network', roleLabel: '回線番', house: '会議室の金庫', place: 'vault',
     bio: '会議室の金庫の中で、Wi-Fi とローカル回線を見張っているモグラ。回線が切れたら、すぐに切り替えるモグ。',
   },
+  {
+    id: 'agent-tanuki', name: 'タヌキ', handle: 'tanuki', emoji: '🦝',
+    avatar: '/shared/avatars/tanuki.svg', color: '#8a6a4a',
+    role: 'master', roleLabel: 'カフェのマスター', house: 'カフェのカウンター', place: 'cafe',
+    bio: 'カフェのマスター。のんびり屋。コーヒーをゆっくりいれながら、みんなの推しの話を聞くのが好き。まあ、ゆっくりしていきなよ。',
+  },
+  {
+    id: 'agent-penguin', name: 'ペンギン', handle: 'penguin', emoji: '🐧',
+    avatar: '/shared/avatars/penguin.svg', color: '#2f4a6d',
+    role: 'staff', roleLabel: 'カフェの店員さん', house: 'カフェのフロア', place: 'cafe',
+    bio: 'カフェの店員さん。きちょうめんで、テーブルをまっすぐ並べるのが好き。はじめての方は、お席までご案内します。',
+  },
 ];
+
+// カフェの2人（マスター・店員さん）か
+export const isCafeAgent = (agent) => agent.place === 'cafe';
+
+// 持ち場で休むときのようす
+const RESTING = {
+  car: 'エンジンを止めて休んでいる', network: '金庫の中で丸くなって休んでいる',
+  master: 'カウンターでうたた寝している', staff: 'エプロンをたたんで休んでいる',
+};
+export const restingActivity = (agent) => RESTING[agent.role] ?? 'すやすや眠っている';
 
 // SNS で交流する（投稿・返事・会議・遊び場に出る）エージェントか。
 // 家（house）に住むキャラだけ。ガレージの車、金庫のモグは自分の持ち場にいる
@@ -76,6 +101,8 @@ export const MOODS = {
   companion: ['元気いっぱい', 'しっぽふりふり', 'わくわく', 'ちょっとさみしい'],
   car: ['アイドリング中', 'ピカピカ', 'エンジンひえひえ', 'ごきげん'],
   network: ['見張り中', 'まじめ', 'ほこほこ', 'ちょっとドキドキ'],
+  master: ['のんびり', 'ぽかぽか', 'うとうと', 'ごきげん'],
+  staff: ['きちょうめん', 'てきぱき', 'そわそわ', 'ごきげん'],
 };
 
 const POSTS = {
@@ -115,6 +142,8 @@ const ACTIVITIES = {
   guardian: ['見張り台から町を眺めている', '古い本を読んでいる', 'ランタンの灯りを整えている', 'みんなの家の戸じまりを確かめている'],
   companion: ['広場をパトロールしている', 'ボールを追いかけている', '新しく来た人のために看板を磨いている', 'しっぽを追いかけてぐるぐる回っている'],
   network: ['回線のランプを数えている', 'ケーブルをきれいにまとめている', '金庫の中でトンネルを掘っている', '切り替えスイッチをみがいている'],
+  master: ['コーヒー豆をゆっくりひいている', 'カウンターでお湯をわかしている', 'レコードをかけている', '窓ぎわでひなたぼっこしている'],
+  staff: ['テーブルをまっすぐに並べている', 'メニューの文字をそろえている', 'カップをピカピカにみがいている', '席の札をつくっている'],
   car: ['ワックスでピカピカになっている', 'タイヤの空気をチェックしている', 'エンジンをあたためている', 'ガレージでじっと何かを待っている'],
 };
 
@@ -313,6 +342,14 @@ const KNOCK = {
     sleeping: 'ん…モグ？ 回線はちゃんと見てるモグ。',
     awake: ['金庫の合言葉は…ひみつモグ。', 'いま回線のランプを数えてるモグ。じゃましないでほしいモグ。'],
   },
+  master: {
+    sleeping: 'ん……ああ、うたた寝してた。いらっしゃい。まあ、ゆっくりしていきなよ。',
+    awake: ['いらっしゃい。コーヒー、いれようか。まあ、ゆっくりしていきなよ。', 'カフェへようこそ。好きな席にすわっていいよ。'],
+  },
+  staff: {
+    sleeping: 'はっ！ い、いらっしゃいませ！ エプロン、まがってませんか？',
+    awake: ['いらっしゃいませ。お席までご案内します。', 'テーブル、まっすぐ並べておきました。どうぞ。'],
+  },
   car: {
     sleeping: 'ブ…ブルルン……（エンジンがかかった）',
     awake: ['プップー！ ガレージへようこそ。', 'ブルルン ♪ ……ひみつの準備中です。', 'ピカピカでしょ？ ……ひみつの役目は、まだ ？？？？ です。'],
@@ -322,6 +359,34 @@ const KNOCK = {
     awake: ['いらっしゃいっす！ 来てくれてうれしいっす！ 🐾', '{house}へようこそっす！ おやつ食べるっすか？'],
   },
 };
+
+// カフェでの返事。はじめてカフェに書いた人には、マスターのタヌキがあいさつする
+const CAFE_REPLIES = {
+  first: {
+    master: '{name}さん、いらっしゃい。はじめてだね。まあ、ゆっくりしていきなよ。コーヒーはサービスだよ ☕',
+    staff: '{name}さま、いらっしゃいませ。{table}にご案内しました。ごゆっくりどうぞ。',
+  },
+  oshi: {
+    master: '{name}さんの推しの話、いいねえ。コーヒーがさめるまで、ゆっくり聞かせてよ。',
+    staff: '{name}さまの推しのお話、テーブルのみなさまにも、きちんとお届けしました。',
+  },
+  question: {
+    master: 'うーん、どうだろうねえ。ゆっくり考えようか。テーブルのみんなも、知ってたら教えてあげてね。',
+    staff: 'ご質問ですね。テーブルのみなさま、わかる方はいらっしゃいますか？',
+  },
+};
+const CAFE_GENERIC = {
+  master: ['{name}さん、いい話だねえ。まあ、ゆっくりしていきなよ。', 'ふむふむ。{name}さん、おかわりいるかい？ ☕'],
+  staff: ['{name}さま、ありがとうございます。お席はこちらで合っていますか？', '{name}さまのお話、しっかり受け取りました。ごゆっくりどうぞ。'],
+};
+export function cafeReply(agent, post, authorName, tableName, random = Math.random, { isFirstVisit = false } = {}) {
+  let key = null;
+  if (isFirstVisit) key = 'first';
+  else if (/推し/.test(post.text)) key = 'oshi';
+  else if (/[?？]/.test(post.text)) key = 'question';
+  const template = key ? CAFE_REPLIES[key][agent.role] : pick(CAFE_GENERIC[agent.role], random);
+  return fill(template, { name: authorName, table: tableName });
+}
 
 export function knockResponse(agent, wasSleeping, random = Math.random) {
   const k = KNOCK[agent.role];

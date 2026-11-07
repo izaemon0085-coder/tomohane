@@ -144,6 +144,11 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
   state.newsVotes ??= []; // 新聞のアンケート { newsId（アンケートの id）, userId, choice, comment, createdAt }
   state.blocks ??= []; // ミュート・ブロック { userId（した人）, targetId（された人）, kind（'mute' | 'block'）, reason（キャラだけが読む）, createdAt }
   state.reports ??= []; // 通報 { id, postId, reporterId, authorId, reason, level, status, createdAt, apology }
+  // カフェのテーブル。いまはフリーテーブルだけ（ジャンル・推しのテーブルはあとで足す）
+  state.tables ??= [];
+  if (!state.tables.some((t) => t.id === 'free')) {
+    state.tables.unshift({ id: 'free', kind: 'free', name: 'フリーテーブル', emoji: '☕', note: 'なんでも話せる席', createdAt: now() });
+  }
   state.farewells ??= []; // 投稿を消した人から、返信した人へのひとこと { id, toId, fromId, text, at }
   state.reportSeen ??= []; // 通報された本人が、お知らせを読んだしるし { postId, authorId, at }
   const listeners = new Set();
@@ -599,13 +604,23 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
     // ---- posts (フロントエンド：SNS) ----
     listPosts: () => [...state.posts].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     getPost: requirePost,
+    // ---- カフェのテーブル ----
+    listTables: () => [...state.tables],
+    getTable(id) {
+      const t = state.tables.find((x) => x.id === id);
+      if (!t) throw new HttpError(404, 'テーブルが見つかりません');
+      return t;
+    },
     // thread：新聞の号ごとのスレッドのはじまり（newsIssueId はその号）。人間の投稿では使わない
-    createPost({ authorId, text, replyTo = null, thread = false, newsIssueId = null }) {
+    // table：カフェのテーブル（なければ広場）。返信は、元の投稿と同じ場所になる
+    createPost({ authorId, text, replyTo = null, thread = false, newsIssueId = null, table = null }) {
       const author = requireUser(authorId);
       const clean = cleanText(text, MAX_POST_LENGTH, '投稿');
       rejectBlocked(author, clean);
-      if (replyTo) requirePost(replyTo);
+      const parent = replyTo ? requirePost(replyTo) : null;
+      const where = parent ? parent.table ?? null : table ? this.getTable(table).id : null;
       const post = { id: newId('p'), authorId, text: clean, replyTo: replyTo || null, likes: [], createdAt: now() };
+      if (where) post.table = where;
       if (thread && author.kind === 'official') Object.assign(post, { thread: true, newsIssueId });
       state.posts.push(post);
       emit('post', post);
