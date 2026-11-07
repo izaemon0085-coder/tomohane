@@ -416,3 +416,6 @@ html[data-oshi-color] .oshi-hero { color: var(--accent-text); }
 .cafe-count { font-size: .72rem; font-weight: 700; padding: 0 6px; border-radius: 999px; background: color-mix(in srgb, currentColor 15%, transparent); }
 .cafe-guide { margin: 0 0 8px; font-size: .9rem; }
 .cafe-guide img { flex: none; border-radius: 50%; background: var(--surface-2); }
+.cafe-request { margin: 0 0 8px; }
+.cafe-request summary { cursor: pointer; width: fit-content; font-size: .88rem; }
+.cafe-request form { margin-top: 6px; }

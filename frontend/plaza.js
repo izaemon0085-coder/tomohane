@@ -550,6 +550,20 @@ async function loadTables() {
   if (cur) $('#cafe-guide-text').textContent = `いらっしゃいませ。こちら「${cur.name}」です。${cur.note ? `${cur.note}。` : ''}ごゆっくりどうぞ。`;
 }
 if (cafeMode) {
+  $('#cafe-request').hidden = !me;
+  $('#cafe-request-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const text = e.target.text.value.trim();
+    if (!text) return;
+    try {
+      await api('/cafe/requests', { method: 'POST', body: { text } });
+      e.target.reset();
+      $('#cafe-request').open = false;
+      toast(`🐧 「${text}」のリクエスト、うけたまわりました。マスターと運営に、きちんとお伝えします`, 5000);
+    } catch (err) {
+      toast(err.offline ? '📴 オフラインなので、つながってからお願いします' : err.message, 5000);
+    }
+  });
   $('#cafe-tables').addEventListener('click', (e) => {
     const btn = e.target.closest('[data-table]');
     if (!btn || btn.dataset.table === table) return;
@@ -582,7 +596,7 @@ if (draft && me) {
 loadPosts();
 loadNotices();
 if (!threadId) loadMembers();
-onServerEvents({ post: () => { loadPosts(); if (cafeMode) loadTables(); }, like: loadPosts, agent: loadMembers });
+onServerEvents({ post: () => { loadPosts(); if (cafeMode) loadTables(); }, like: loadPosts, agent: loadMembers, table: () => { if (cafeMode) loadTables(); } });
 window.addEventListener('outbox-change', render);
 window.addEventListener('outbox-sent', loadPosts);
 flushOutbox();

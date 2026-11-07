@@ -396,6 +396,24 @@ export function createApp({
       id: t.id, kind: t.kind, name: t.name, emoji: t.emoji, note: t.note ?? '',
       postCount: store.listPosts().filter((p) => p.table === t.id && !p.hidden && !p.orphaned).length,
     }))],
+    // ユーザーの声：ほしいジャンルのリクエスト（ペンギンが受け取る）→ 運営が見て、テーブルを足す
+    ['POST', /^\/api\/cafe\/requests$/, ({ body, me }) => {
+      store.requestTable(needLogin(me).id, body.text);
+      return [201, { ok: true }];
+    }],
+    ['GET', /^\/api\/cafe\/requests$/, ({ me }) => {
+      needAdmin(me);
+      return store.listTableRequests().map((r) => ({ id: r.id, text: r.text, at: r.createdAt })); // だれが出したかは出さない
+    }],
+    ['DELETE', /^\/api\/cafe\/requests\/([\w-]+)$/, ({ params, me }) => {
+      needAdmin(me);
+      return store.dismissTableRequest(params[0]);
+    }],
+    ['POST', /^\/api\/cafe\/tables$/, ({ body, me }) => {
+      needAdmin(me);
+      const t = store.addGenreTable({ name: body.name, emoji: body.emoji });
+      return [201, { id: t.id, kind: t.kind, name: t.name, emoji: t.emoji, note: t.note }];
+    }],
 
     // ---- 投稿を消す（自分の投稿だけ）。返信した人がいれば、ひとこと（farewell）が要る ----
     ['POST', /^\/api\/posts\/([\w-]+)\/delete$/, ({ params, body, me }) => store.deletePost(params[0], needLogin(me).id, body.farewell ?? '')],

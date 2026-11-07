@@ -26,6 +26,16 @@
       <nav class="cafe-tables" id="cafe-tables" aria-label="テーブルをえらぶ"></nav>
       <div class="say-line cafe-guide" id="cafe-guide"><img src="/shared/avatars/penguin.svg" alt="" width="36" height="36">
         <p id="cafe-guide-text">いらっしゃいませ。お席までご案内します。</p></div>
+      <!-- ユーザーの声：ほしいジャンルのテーブル（ペンギンが受け取り、運営が見て足す） -->
+      <details class="cafe-request" id="cafe-request" hidden>
+        <summary class="link-btn">＋ ほしいジャンルをリクエスト</summary>
+        <form class="row" id="cafe-request-form">
+          <label class="sr-only" for="cafe-request-text">ほしいジャンル</label>
+          <input class="input" id="cafe-request-text" name="text" maxlength="30" placeholder="例：舞台・ミュージカル（30文字まで）" required>
+          <button class="btn" type="submit">おねがいする</button>
+        </form>
+        <p class="muted small">だれがリクエストしたかは、運営にも出しません。運営が見て、テーブルを足します。</p>
+      </details>
 
       <!-- 自分へのお知らせ：通報された投稿へのキャラの声（本人だけ）・届いたあやまり -->
       <section id="report-notices" class="report-notices" hidden aria-label="あなたへのお知らせ"></section>

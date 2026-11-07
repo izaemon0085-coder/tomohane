@@ -8,6 +8,7 @@ import { DEFAULT_TYPEFACE, TYPEFACE_KEYS } from '../shared/typefaces.js';
 import { precheck } from '../shared/precheck.js';
 import { MAX_VOTE_COMMENT, OFFICIAL_ACCOUNTS } from '../shared/news.js';
 import { findReason, stageOf, MAX_APOLOGY } from '../shared/report.js';
+import { FREE_TABLE, GENRE_TABLES, MAX_TABLE_NAME, MAX_TABLE_REQUEST, MAX_OPEN_REQUESTS } from '../shared/cafe.js';
 
 export const MAX_POST_LENGTH = 280;
 export const MAX_NAME_LENGTH = 20;
@@ -144,11 +145,12 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
   state.newsVotes ??= []; // 新聞のアンケート { newsId（アンケートの id）, userId, choice, comment, createdAt }
   state.blocks ??= []; // ミュート・ブロック { userId（した人）, targetId（された人）, kind（'mute' | 'block'）, reason（キャラだけが読む）, createdAt }
   state.reports ??= []; // 通報 { id, postId, reporterId, authorId, reason, level, status, createdAt, apology }
-  // カフェのテーブル。いまはフリーテーブルだけ（ジャンル・推しのテーブルはあとで足す）
+  // カフェのテーブル：フリーテーブル＋ジャンル（はじめの6つ）。前の保存データにも足りない分を足す
   state.tables ??= [];
-  if (!state.tables.some((t) => t.id === 'free')) {
-    state.tables.unshift({ id: 'free', kind: 'free', name: 'フリーテーブル', emoji: '☕', note: 'なんでも話せる席', createdAt: now() });
+  for (const t of [FREE_TABLE, ...GENRE_TABLES]) {
+    if (!state.tables.some((x) => x.id === t.id)) state.tables.push({ ...t, createdAt: now() });
   }
+  state.tableRequests ??= []; // ジャンルのリクエスト { id, userId, text, createdAt }（運営が見て、テーブルを足す）
   state.farewells ??= []; // 投稿を消した人から、返信した人へのひとこと { id, toId, fromId, text, at }
   state.reportSeen ??= []; // 通報された本人が、お知らせを読んだしるし { postId, authorId, at }
   const listeners = new Set();
@@ -610,6 +612,38 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       const t = state.tables.find((x) => x.id === id);
       if (!t) throw new HttpError(404, 'テーブルが見つかりません');
       return t;
+    },
+    // ユーザーの声：「こんなジャンルのテーブルがほしい」
+    requestTable(userId, text) {
+      const user = requireUser(userId);
+      if (user.kind !== 'human') throw new HttpError(400, 'リクエストできるのは人間のユーザーだけです');
+      const clean = cleanText(text, MAX_TABLE_REQUEST, 'ほしいジャンル');
+      rejectBlocked(user, clean);
+      if (state.tableRequests.filter((r) => r.userId === userId).length >= MAX_OPEN_REQUESTS) {
+        throw new HttpError(429, `リクエストは${MAX_OPEN_REQUESTS}つまでです。運営が見るまで、少し待ってください`);
+      }
+      const req = { id: newId('tr'), userId, text: clean, createdAt: now() };
+      state.tableRequests.push(req);
+      save();
+      return req;
+    },
+    listTableRequests: () => [...state.tableRequests],
+    dismissTableRequest(id) {
+      const i = state.tableRequests.findIndex((r) => r.id === id);
+      if (i === -1) throw new HttpError(404, 'リクエストが見つかりません');
+      state.tableRequests.splice(i, 1);
+      save();
+      return { ok: true };
+    },
+    // 運営がジャンルのテーブルを足す
+    addGenreTable({ name, emoji }) {
+      const clean = cleanText(name, MAX_TABLE_NAME, 'テーブルの名前');
+      if (state.tables.some((t) => t.name === clean)) throw new HttpError(409, 'その名前のテーブルはもうあります');
+      const icon = typeof emoji === 'string' && emoji.trim() ? [...emoji.trim()].slice(0, 2).join('') : '🌟';
+      const table = { id: newId('t'), kind: 'genre', name: clean, emoji: icon, note: `${clean}の話をする席`, createdAt: now() };
+      state.tables.push(table);
+      emit('table', table);
+      return table;
     },
     // thread：新聞の号ごとのスレッドのはじまり（newsIssueId はその号）。人間の投稿では使わない
     // table：カフェのテーブル（なければ広場）。返信は、元の投稿と同じ場所になる

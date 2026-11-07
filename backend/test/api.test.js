@@ -191,7 +191,7 @@ test('保存データに新しいキャラが自動で引っ越してくる', as
   writeFileSync(file, JSON.stringify(state));
   const loaded = createStore({ file });
   assert.equal(loaded.listAgents().length, 8);
-  assert.deepEqual(loaded.listTables().map((t) => t.id), ['free'], 'カフェのフリーテーブルも用意される');
+  assert.deepEqual(loaded.listTables().map((t) => t.id), ['free', 'idol', 'anime', 'game', 'vtuber', 'sports', 'other'], 'カフェのテーブルも用意される');
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -1058,7 +1058,7 @@ test('投稿を消す：自分の投稿だけ・返信は一緒に見えなく�
 test('カフェ：フリーテーブル・広場とは分ける・返信は同じテーブル・はじめての人にはタヌキがあいさつ・カフェの2人は広場に出ない', async () => {
   const guest = await signup('カフェのお客さん');
   const tables = (await call('/api/cafe/tables')).data;
-  assert.deepEqual(tables.map((t) => [t.id, t.name]), [['free', 'フリーテーブル']]);
+  assert.deepEqual(tables.map((t) => t.id), ['free', 'idol', 'anime', 'game', 'vtuber', 'sports', 'other']);
   assert.equal((await call('/api/posts?table=nothing')).status, 404);
   assert.equal((await call('/api/posts', { method: 'POST', as: guest, body: { text: 'x', table: 'nothing' } })).status, 404);
 
@@ -1093,4 +1093,34 @@ test('カフェ：フリーテーブル・広場とは分ける・返信は同�
 
   const res = await fetch(`${base}/cafe.html`);
   assert.match(await res.text(), /カフェ/);
+});
+
+test('カフェ：ジャンルのテーブル・ジャンルのリクエスト（ユーザーの声）→ 運営がテーブルを足す', async () => {
+  const admin = [...people.values()][0];
+  const fan = await signup('ジャンルをリクエストする人');
+  const idolPost = (await call('/api/posts', { method: 'POST', as: fan, body: { text: '推しのアイドルの新曲！', table: 'idol' } })).data;
+  assert.equal(idolPost.table, 'idol');
+  assert.ok(!(await call('/api/posts?table=free')).data.some((p) => p.id === idolPost.id), 'ほかのテーブルには出ない');
+  assert.ok((await call('/api/posts?table=idol')).data.some((p) => p.id === idolPost.id));
+
+  // リクエスト：ログインが要る・30文字まで・1人3つまで・だれが出したかは運営にも出さない
+  assert.equal((await call('/api/cafe/requests', { method: 'POST', body: { text: '舞台' } })).status, 401);
+  assert.equal((await call('/api/cafe/requests', { method: 'POST', as: fan, body: { text: 'あ'.repeat(31) } })).status, 400);
+  for (const t of ['舞台・ミュージカル', 'バンド', '本・小説']) {
+    assert.equal((await call('/api/cafe/requests', { method: 'POST', as: fan, body: { text: t } })).status, 201);
+  }
+  assert.equal((await call('/api/cafe/requests', { method: 'POST', as: fan, body: { text: '4つ目' } })).status, 429);
+  assert.equal((await call('/api/cafe/requests', { as: fan })).status, 403, '一覧は運営だけ');
+  const reqs = (await call('/api/cafe/requests', { as: admin })).data;
+  assert.deepEqual(reqs.map((r) => r.text), ['舞台・ミュージカル', 'バンド', '本・小説']);
+  assert.equal(JSON.stringify(reqs).includes('ジャンルをリクエストする人'), false);
+
+  // 運営がテーブルを足す → カフェに出る。リクエストは片づける
+  assert.equal((await call('/api/cafe/tables', { method: 'POST', as: fan, body: { name: '舞台' } })).status, 403);
+  const added = await call('/api/cafe/tables', { method: 'POST', as: admin, body: { name: '舞台・ミュージカル', emoji: '🎭' } });
+  assert.equal(added.status, 201);
+  assert.equal((await call('/api/cafe/tables', { method: 'POST', as: admin, body: { name: '舞台・ミュージカル' } })).status, 409);
+  assert.ok((await call('/api/cafe/tables')).data.some((t) => t.name === '舞台・ミュージカル' && t.emoji === '🎭'));
+  await call(`/api/cafe/requests/${reqs[0].id}`, { method: 'DELETE', as: admin });
+  assert.equal((await call('/api/cafe/requests', { as: admin })).data.length, 2);
 });
