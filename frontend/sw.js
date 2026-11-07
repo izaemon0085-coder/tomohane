@@ -3,10 +3,10 @@
 // ・つながっているときは、いつも最新をサーバーから取る（ネットワーク優先）
 // ・つながらないときは、保存しておいたものを見せる（前に見た投稿が見られる）
 // ※ Service Worker は「安全な接続」（localhost か https）のときだけ動く
-const CACHE = 'tomohane-v14';
+const CACHE = 'tomohane-v17';
 
 const SHELL = [
-  '/', '/style.css', '/map.js', '/plaza.html', '/plaza.js', '/oshi.html', '/oshi.js',
+  '/', '/style.css', '/map.js', '/plaza.html', '/plaza.js', '/cafe.html', '/oshi.html', '/oshi.js',
   '/letter.html', '/letter.js', '/shared/qrcode.js', '/login.html', '/login.js', '/welcome.html', '/welcome.js', '/shared/welcome-guide.js', '/news.html', '/news.js', '/shared/news.js', '/games.html', '/games.js',
   '/side/', '/side/style.css', '/side/app.js',
   '/sub/', '/sub/style.css', '/sub/app.js',
@@ -14,9 +14,9 @@ const SHELL = [
   '/shared/playground.js', '/shared/playground.css',
   '/shared/customize.js', '/shared/customize.css', '/shared/kisekae-opinions.js',
   '/shared/outbox.js', '/shared/network.js', '/shared/network.css',
-  '/shared/typefaces.js', '/shared/fonts.css', '/shared/precheck.js', '/shared/report.js', '/shared/soon.js',
+  '/shared/typefaces.js', '/shared/fonts.css', '/shared/precheck.js', '/shared/report.js', '/shared/soon.js', '/shared/cafe.js',
   '/shared/avatars/yamaneko.svg', '/shared/avatars/usagi.svg', '/shared/avatars/fukurou.svg',
-  '/shared/avatars/shiba.svg', '/shared/avatars/kuruma.svg', '/shared/avatars/mogu.svg', '/shared/avatars/enma-fukurou.svg', '/shared/avatars/shinbunsha.svg',
+  '/shared/avatars/shiba.svg', '/shared/avatars/kuruma.svg', '/shared/avatars/mogu.svg', '/shared/avatars/enma-fukurou.svg', '/shared/avatars/shinbunsha.svg', '/shared/avatars/tanuki.svg', '/shared/avatars/penguin.svg',
 ];
 
 // 保存しておく API（読むだけのもの）。リアルタイム通知・死活確認は保存しない

@@ -159,6 +159,7 @@ export function headerHtml(current) {
     <nav class="nav" aria-label="メイン">
       ${link('/', '🗺️ 町', 'map')}
       ${link('/plaza.html', '💬 広場', 'plaza')}
+      ${link('/cafe.html', '☕ カフェ', 'cafe')}
       ${link('/oshi.html', '💖 わたしの推し', 'oshi')}
       ${link('/games.html', '🎮 ゲーム', 'games')}
       ${link('/letter.html', '✉️ 手紙', 'letter')}

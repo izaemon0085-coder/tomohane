@@ -19,12 +19,16 @@ let me = await refreshMe();
 let replyTo = null;
 // ?thread=投稿のID：ともはね新聞のスレッドを開いているとき
 const threadId = new URLSearchParams(location.search).get('thread');
+// カフェ（cafe.html）：テーブルごとのタイムライン。?table=ID でテーブルをえらぶ（なければフリーテーブル）
+const cafeMode = document.body.hasAttribute('data-cafe');
+let table = cafeMode ? (new URLSearchParams(location.search).get('table') || 'free') : null;
+let tables = [];
 let posts = [];
 let agentsById = {};
 let checkedText = null; // キャラたちが声をかけたあと「このまま送る」を選んだ文面
 
 function renderAuth() {
-  header.innerHTML = headerHtml('plaza');
+  header.innerHTML = headerHtml(cafeMode ? 'cafe' : 'plaza');
   loginForm.hidden = Boolean(me);
   composer.hidden = !me;
 }
@@ -41,7 +45,7 @@ function bubbleHtml(post) {
   const liked = me && post.likes.includes(me.id);
   const parent = post.replyTo && posts.find((p) => p.id === post.replyTo);
   const name = a.kind === 'agent'
-    ? `<a href="/side/#${a.id}">${escapeHtml(a.name)}</a>`
+    ? `<a href="${a.place === 'cafe' ? '/cafe.html' : `/side/#${a.id}`}">${escapeHtml(a.name)}</a>`
     : a.kind === 'official' ? `<a href="/news.html">${escapeHtml(a.name)}</a> <span class="official-badge">公式</span>` : escapeHtml(a.name);
   // 広場の一覧では、スレッドのはじまりに「スレッドを開く」を出す（スレッドの中の返信は一覧に出さない）
   const threadLink = post.thread && !threadId
@@ -74,7 +78,7 @@ function bubbleHtml(post) {
 // ローカル回線：オフラインでためた「送信待ち」の自分の発言
 function pendingHtml() {
   if (!me) return '';
-  return getOutbox().filter((x) => x.authorId === me.id).map((x) => `<li class="msg mine pending">
+  return getOutbox().filter((x) => x.authorId === me.id && (x.table ?? null) === table).map((x) => `<li class="msg mine pending">
     <div class="msg-body">
       <div class="bubble"><p>${escapeHtml(x.text)}</p></div>
       <div class="msg-meta"><span class="pending-badge">📮 送信待ち</span></div>
@@ -94,7 +98,9 @@ function render() {
 
 async function loadPosts() {
   try {
-    if (threadId) {
+    if (cafeMode) {
+      posts = (await api(`/posts?table=${encodeURIComponent(table)}`)).slice(0, 100);
+    } else if (threadId) {
       const t = await api(`/threads/${encodeURIComponent(threadId)}`);
       posts = [...t.posts].reverse(); // 画面は新しい順の配列を古い順に並べなおして出す
     } else {
@@ -116,9 +122,10 @@ async function loadMembers() {
   try {
     const all = await api('/agents');
     agentsById = Object.fromEntries(all.map((a) => [a.id, a]));
-    const agents = all.filter((a) => (a.place ?? 'house') === 'house');
-    const here = agents.filter((a) => a.status === 'home').map((a) => a.name);
-    $('#chat-members').textContent = here.length ? `${here.join('・')} がいます` : 'キャラたちはお出かけ中です';
+    const agents = all.filter((a) => (a.place ?? 'house') === (cafeMode ? 'cafe' : 'house'));
+    const here = agents.filter((a) => a.status === 'home')
+      .map((a) => (cafeMode && a.roleLabel ? `${a.roleLabel.replace(/^カフェの/, '')}の${a.name}` : a.name));
+    $('#chat-members').textContent = here.length ? `${here.join('・')} がいます` : (cafeMode ? 'マスターも店員さんも、ひと休み中です' : 'キャラたちはお出かけ中です');
   } catch { /* noop */ }
 }
 
@@ -202,7 +209,7 @@ composer.addEventListener('submit', async (e) => {
   btn.disabled = true;
   try {
     // スレッドを開いているときは、返信を選んでいなくてもスレッドに書く
-    const result = await sendPost({ authorId: me.id, text: textarea.value.trim(), replyTo: replyTo ?? (threadId || null) }); // authorId は送信待ちの表示用。サーバーはログインしている本人として扱う
+    const result = await sendPost({ authorId: me.id, text: textarea.value.trim(), replyTo: replyTo ?? (threadId || null), ...(cafeMode && !replyTo ? { table } : {}) }); // authorId は送信待ちの表示用。サーバーはログインしている本人として扱う
     textarea.value = '';
     setReply(null);
     if (result.queued) {
@@ -533,6 +540,66 @@ log.addEventListener('click', async (e) => {
   }
 });
 
+// ---- カフェのテーブル ----
+async function loadTables() {
+  try { tables = await api('/cafe/tables'); } catch { return; }
+  if (!tables.some((t) => t.id === table)) table = tables[0]?.id ?? 'free';
+  const cur = tables.find((t) => t.id === table);
+  const btn = (t, pressed) => `<button type="button" class="cafe-table" data-table="${escapeHtml(t.id)}"
+    aria-pressed="${pressed}">${escapeHtml(t.emoji)} ${escapeHtml(t.name)}<span class="cafe-count">${t.postCount}</span></button>`;
+  // 上の段：フリーとジャンル。下の段：いま選んでいるジャンルの、推しのテーブル（タヌキが開いたもの）
+  const genre = cur?.kind === 'oshi' ? cur.parent : cur?.id;
+  $('#cafe-tables').innerHTML = tables.filter((t) => t.kind !== 'oshi').map((t) => btn(t, t.id === genre)).join('');
+  const oshiTables = tables.filter((t) => t.kind === 'oshi' && t.parent === genre);
+  $('#cafe-oshi-tables').hidden = !oshiTables.length;
+  $('#cafe-oshi-tables').innerHTML = oshiTables.map((t) => btn(t, t.id === table)).join('');
+  $('#cafe-close').hidden = !(me?.role === 'admin' && cur?.kind === 'oshi');
+  if (cur) $('#cafe-guide-text').textContent = `いらっしゃいませ。こちら「${cur.name}」です。${cur.note ? `${cur.note}。` : ''}ごゆっくりどうぞ。`;
+}
+if (cafeMode) {
+  $('#cafe-request').hidden = !me;
+  $('#cafe-request-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const text = e.target.text.value.trim();
+    if (!text) return;
+    try {
+      await api('/cafe/requests', { method: 'POST', body: { text } });
+      e.target.reset();
+      $('#cafe-request').open = false;
+      toast(`🐧 「${text}」のリクエスト、うけたまわりました。マスターと運営に、きちんとお伝えします`, 5000);
+    } catch (err) {
+      toast(err.offline ? '📴 オフラインなので、つながってからお願いします' : err.message, 5000);
+    }
+  });
+  $('#cafe-close').addEventListener('click', async () => {
+    const cur = tables.find((t) => t.id === table);
+    if (!cur || !confirm(`「${cur.name}」のテーブルを閉じますか？ タヌキは開け直しません`)) return;
+    try {
+      await api(`/cafe/tables/${encodeURIComponent(cur.id)}`, { method: 'DELETE' });
+      toast(`「${cur.name}」のテーブルを閉じました`);
+      table = cur.parent ?? 'free';
+      history.replaceState(null, '', `?table=${encodeURIComponent(table)}`);
+      render.done = false;
+      loadTables();
+      loadPosts();
+    } catch (err) {
+      toast(err.message, 5000);
+    }
+  });
+  $('main').addEventListener('click', (e) => {
+    if (!e.target.closest('.cafe-tables')) return;
+    const btn = e.target.closest('[data-table]');
+    if (!btn || btn.dataset.table === table) return;
+    table = btn.dataset.table;
+    history.replaceState(null, '', `?table=${encodeURIComponent(table)}`);
+    setReply(null);
+    render.done = false;
+    loadTables();
+    loadPosts();
+  });
+  loadTables();
+}
+
 renderAuth();
 if (threadId) {
   $('#chat-title').textContent = '📰 ともはね新聞のスレッド';
@@ -552,7 +619,7 @@ if (draft && me) {
 loadPosts();
 loadNotices();
 if (!threadId) loadMembers();
-onServerEvents({ post: loadPosts, like: loadPosts, agent: loadMembers });
+onServerEvents({ post: () => { loadPosts(); if (cafeMode) loadTables(); }, like: loadPosts, agent: loadMembers, table: () => { if (cafeMode) loadTables(); } });
 window.addEventListener('outbox-change', render);
 window.addEventListener('outbox-sent', loadPosts);
 flushOutbox();

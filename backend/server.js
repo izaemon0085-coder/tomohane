@@ -45,7 +45,10 @@ const MIME = {
 function publicUser(u) {
   if (!u) return null;
   const { id, kind, name, handle, emoji, avatar, color, roleLabel } = u;
-  return { id, kind, name, handle, emoji, avatar: avatar ?? null, color: color ?? null, roleLabel: roleLabel ?? null };
+  return {
+    id, kind, name, handle, emoji, avatar: avatar ?? null, color: color ?? null, roleLabel: roleLabel ?? null,
+    ...(kind === 'agent' ? { place: u.place ?? 'house' } : {}), // キャラの持ち場（家・カフェなど）。名前のリンク先を決めるのに使う
+  };
 }
 
 function postView(post, usersById) {
@@ -216,7 +219,11 @@ export function createApp({
 
     // ---- 推しの情報（わたしの推しページ）：本人だけが見られる・変えられる ----
     ['GET', /^\/api\/users\/([\w-]+)\/oshi$/, ({ params, me }) => store.getOshi(self(me, params[0]))],
-    ['PUT', /^\/api\/users\/([\w-]+)\/oshi$/, ({ params, body, me }) => store.updateOshi(self(me, params[0]), body)],
+    ['PUT', /^\/api\/users\/([\w-]+)\/oshi$/, ({ params, body, me }) => {
+      const oshi = store.updateOshi(self(me, params[0]), body);
+      sim.openOshiTables?.(); // 同じ推しの人がそろったら、マスターのタヌキがカフェにテーブルを開く
+      return oshi;
+    }],
     ['POST', /^\/api\/users\/([\w-]+)\/oshi\/goods$/, ({ params, body, me }) => [201, store.addGoods(self(me, params[0]), body.name)]],
     ['DELETE', /^\/api\/users\/([\w-]+)\/oshi\/goods\/([\w-]+)$/, ({ params, me }) => store.removeGoods(self(me, params[0]), params[1])],
     ['GET', /^\/api\/users\/([\w-]+)\/oshi\/friends$/, ({ params, me }) => {
@@ -347,9 +354,13 @@ export function createApp({
     // ---- posts（フロントエンド） ----
     // threadId：新聞のスレッドの中の投稿なら、そのはじまりの投稿。はじまりの投稿には replyCount（スレッドの返信の数）
     // ブロックした人の投稿などは、その人の画面には出さない（store.canSee）
-    ['GET', /^\/api\/posts$/, ({ me }) => {
+    // ?table=ID でカフェのそのテーブルだけ。つけなければ広場（カフェの投稿は入れない）
+    ['GET', /^\/api\/posts$/, ({ me, query }) => {
       const users = store.usersById();
-      const posts = store.listPosts().filter((p) => store.canSee(p, me?.id ?? null));
+      const table = query.get('table');
+      if (table) store.getTable(table);
+      const posts = store.listPosts()
+        .filter((p) => (table ? p.table === table : !p.table) && store.canSee(p, me?.id ?? null));
       const replyCount = {};
       const views = posts.map((p) => {
         const root = store.threadRootOf(p);
@@ -369,7 +380,7 @@ export function createApp({
       return { root: { ...postView(root, users), threadId: root.id, replyCount: posts.length - 1 }, posts: posts.map((p) => ({ ...postView(p, users), threadId: root.id })) };
     }],
     ['POST', /^\/api\/posts$/, ({ body, me }) => {
-      const post = store.createPost({ authorId: needLogin(me).id, text: body.text, replyTo: body.replyTo });
+      const post = store.createPost({ authorId: needLogin(me).id, text: body.text, replyTo: body.replyTo, table: body.table || null });
       sim.onHumanPost(post);
       return [201, postView(post, store.usersById())];
     }],
@@ -383,6 +394,36 @@ export function createApp({
       return { user: publicUser(store.usersById()[b.targetId]), kind: b.kind ?? 'block', createdAt: b.createdAt, hasReason: Boolean(b.reason) };
     }],
     ['DELETE', /^\/api\/blocks\/([\w-]+)$/, ({ params, me }) => store.unblockUser(needLogin(me).id, params[0])],
+
+    // ---- カフェのテーブル（決まった並び）と、それぞれの投稿の数 ----
+    ['GET', /^\/api\/cafe\/tables$/, () => store.listTables().map((t) => ({
+      id: t.id, kind: t.kind, name: t.name, emoji: t.emoji, note: t.note ?? '', parent: t.parent ?? null,
+      postCount: store.listPosts().filter((p) => p.table === t.id && !p.hidden && !p.orphaned).length,
+    }))],
+    // ユーザーの声：ほしいジャンルのリクエスト（ペンギンが受け取る）→ 運営が見て、テーブルを足す
+    ['POST', /^\/api\/cafe\/requests$/, ({ body, me }) => {
+      store.requestTable(needLogin(me).id, body.text);
+      return [201, { ok: true }];
+    }],
+    ['GET', /^\/api\/cafe\/requests$/, ({ me }) => {
+      needAdmin(me);
+      return store.listTableRequests().map((r) => ({ id: r.id, text: r.text, at: r.createdAt })); // だれが出したかは出さない
+    }],
+    ['DELETE', /^\/api\/cafe\/requests\/([\w-]+)$/, ({ params, me }) => {
+      needAdmin(me);
+      return store.dismissTableRequest(params[0]);
+    }],
+    // 運営だけ：推しのテーブルを閉じる（タヌキは開け直さない）
+    ['DELETE', /^\/api\/cafe\/tables\/([\w-]+)$/, ({ params, me }) => {
+      needAdmin(me);
+      store.closeTable(params[0]);
+      return { ok: true };
+    }],
+    ['POST', /^\/api\/cafe\/tables$/, ({ body, me }) => {
+      needAdmin(me);
+      const t = store.addGenreTable({ name: body.name, emoji: body.emoji });
+      return [201, { id: t.id, kind: t.kind, name: t.name, emoji: t.emoji, note: t.note }];
+    }],
 
     // ---- 投稿を消す（自分の投稿だけ）。返信した人がいれば、ひとこと（farewell）が要る ----
     ['POST', /^\/api\/posts\/([\w-]+)\/delete$/, ({ params, body, me }) => store.deletePost(params[0], needLogin(me).id, body.farewell ?? '')],

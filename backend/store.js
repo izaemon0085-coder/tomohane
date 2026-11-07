@@ -8,6 +8,9 @@ import { DEFAULT_TYPEFACE, TYPEFACE_KEYS } from '../shared/typefaces.js';
 import { precheck } from '../shared/precheck.js';
 import { MAX_VOTE_COMMENT, OFFICIAL_ACCOUNTS } from '../shared/news.js';
 import { findReason, stageOf, MAX_APOLOGY } from '../shared/report.js';
+import {
+  FREE_TABLE, GENRE_TABLES, GENRE_IDS, MAX_TABLE_NAME, MAX_TABLE_REQUEST, MAX_OPEN_REQUESTS, normalizeOshi,
+} from '../shared/cafe.js';
 
 export const MAX_POST_LENGTH = 280;
 export const MAX_NAME_LENGTH = 20;
@@ -144,6 +147,12 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
   state.newsVotes ??= []; // 新聞のアンケート { newsId（アンケートの id）, userId, choice, comment, createdAt }
   state.blocks ??= []; // ミュート・ブロック { userId（した人）, targetId（された人）, kind（'mute' | 'block'）, reason（キャラだけが読む）, createdAt }
   state.reports ??= []; // 通報 { id, postId, reporterId, authorId, reason, level, status, createdAt, apology }
+  // カフェのテーブル：フリーテーブル＋ジャンル（はじめの6つ）。前の保存データにも足りない分を足す
+  state.tables ??= [];
+  for (const t of [FREE_TABLE, ...GENRE_TABLES]) {
+    if (!state.tables.some((x) => x.id === t.id)) state.tables.push({ ...t, createdAt: now() });
+  }
+  state.tableRequests ??= []; // ジャンルのリクエスト { id, userId, text, createdAt }（運営が見て、テーブルを足す）
   state.farewells ??= []; // 投稿を消した人から、返信した人へのひとこと { id, toId, fromId, text, at }
   state.reportSeen ??= []; // 通報された本人が、お知らせを読んだしるし { postId, authorId, at }
   const listeners = new Set();
@@ -523,9 +532,10 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
     getOshi(userId) {
       const user = requireUser(userId);
       if (user.kind !== 'human') throw new HttpError(400, '推しを登録できるのは人間のユーザーだけです');
-      return user.oshi ?? { name: '', liveDate: '', liveVenue: '', birthday: '', goods: [] };
+      return user.oshi ?? { name: '', genre: '', liveDate: '', liveVenue: '', birthday: '', goods: [] };
     },
-    updateOshi(userId, { name = '', liveDate = '', liveVenue = '', birthday = '' }) {
+    // genre：推しのジャンル（カフェの推しのテーブルをどのジャンルに置くかに使う）
+    updateOshi(userId, { name = '', genre = '', liveDate = '', liveVenue = '', birthday = '' }) {
       const user = requireUser(userId);
       if (user.kind !== 'human') throw new HttpError(400, '推しを登録できるのは人間のユーザーだけです');
       const optText = (v, max, label) => (v === '' || v == null ? '' : cleanText(v, max, label));
@@ -539,6 +549,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       const prev = user.oshi ?? { goods: [] };
       user.oshi = {
         name: optText(name, MAX_NAME_LENGTH, '推しの名前'),
+        genre: GENRE_IDS.includes(genre) ? genre : '',
         liveDate: optDate(liveDate, 'ライブ'),
         liveVenue: optText(liveVenue, 30, '会場の名前'),
         birthday: optDate(birthday, '誕生日'),
@@ -569,7 +580,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       const name = this.getOshi(userId).name;
       if (!name) return [];
       const friends = new Set(state.users
-        .filter((u) => u.kind === 'human' && u.id !== userId && u.oshi?.name === name)
+        .filter((u) => u.kind === 'human' && u.id !== userId && u.oshi?.name && normalizeOshi(u.oshi.name) === normalizeOshi(name))
         .map((u) => u.id));
       return [...state.posts]
         .filter((p) => friends.has(p.authorId))
@@ -599,13 +610,90 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
     // ---- posts (フロントエンド：SNS) ----
     listPosts: () => [...state.posts].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     getPost: requirePost,
+    // ---- カフェのテーブル ----
+    listTables: () => state.tables.filter((t) => !t.closed),
+    // ---- 推しのテーブル（マスターのタヌキが開く。運営は閉じられる） ----
+    // 同じ推し（ペンギンが名前をそろえたもの）の人間の数と、いちばん多いジャンル・いちばん多い書き方
+    oshiGroups() {
+      const groups = new Map();
+      for (const u of state.users) {
+        if (u.kind !== 'human' || !u.oshi?.name) continue;
+        const key = normalizeOshi(u.oshi.name);
+        if (!key) continue;
+        if (!groups.has(key)) groups.set(key, { key, people: 0, names: new Map(), genres: new Map() });
+        const g = groups.get(key);
+        g.people += 1;
+        g.names.set(u.oshi.name, (g.names.get(u.oshi.name) ?? 0) + 1);
+        if (u.oshi.genre) g.genres.set(u.oshi.genre, (g.genres.get(u.oshi.genre) ?? 0) + 1);
+      }
+      const top = (m, fallback) => [...m].sort((a, b) => b[1] - a[1])[0]?.[0] ?? fallback;
+      return [...groups.values()].map((g) => ({ key: g.key, people: g.people, name: top(g.names, g.key), genre: top(g.genres, 'other') }));
+    },
+    // 開いていても閉じていても、その推しのテーブル（閉じたものは、タヌキが勝手に開け直さない）
+    oshiTableByKey: (key) => state.tables.find((t) => t.kind === 'oshi' && t.oshiKey === key) ?? null,
+    openOshiTable({ key, name, genre }) {
+      if (this.oshiTableByKey(key)) throw new HttpError(409, 'その推しのテーブルはもうあります');
+      const parent = GENRE_IDS.includes(genre) ? genre : 'other';
+      const label = [...name].slice(0, MAX_TABLE_NAME).join('');
+      const table = { id: newId('t'), kind: 'oshi', name: `${label}推し`, emoji: '💖', note: `${label}推しの人が集まる席`, parent, oshiKey: key, createdAt: now() };
+      state.tables.push(table);
+      emit('table', table);
+      return table;
+    },
+    closeTable(id) {
+      const t = this.getTable(id);
+      if (t.kind !== 'oshi') throw new HttpError(400, '閉じられるのは推しのテーブルだけです');
+      t.closed = true;
+      emit('table', t);
+      return t;
+    },
+    getTable(id) {
+      const t = state.tables.find((x) => x.id === id && !x.closed);
+      if (!t) throw new HttpError(404, 'テーブルが見つかりません');
+      return t;
+    },
+    // ユーザーの声：「こんなジャンルのテーブルがほしい」
+    requestTable(userId, text) {
+      const user = requireUser(userId);
+      if (user.kind !== 'human') throw new HttpError(400, 'リクエストできるのは人間のユーザーだけです');
+      const clean = cleanText(text, MAX_TABLE_REQUEST, 'ほしいジャンル');
+      rejectBlocked(user, clean);
+      if (state.tableRequests.filter((r) => r.userId === userId).length >= MAX_OPEN_REQUESTS) {
+        throw new HttpError(429, `リクエストは${MAX_OPEN_REQUESTS}つまでです。運営が見るまで、少し待ってください`);
+      }
+      const req = { id: newId('tr'), userId, text: clean, createdAt: now() };
+      state.tableRequests.push(req);
+      save();
+      return req;
+    },
+    listTableRequests: () => [...state.tableRequests],
+    dismissTableRequest(id) {
+      const i = state.tableRequests.findIndex((r) => r.id === id);
+      if (i === -1) throw new HttpError(404, 'リクエストが見つかりません');
+      state.tableRequests.splice(i, 1);
+      save();
+      return { ok: true };
+    },
+    // 運営がジャンルのテーブルを足す
+    addGenreTable({ name, emoji }) {
+      const clean = cleanText(name, MAX_TABLE_NAME, 'テーブルの名前');
+      if (state.tables.some((t) => t.name === clean)) throw new HttpError(409, 'その名前のテーブルはもうあります');
+      const icon = typeof emoji === 'string' && emoji.trim() ? [...emoji.trim()].slice(0, 2).join('') : '🌟';
+      const table = { id: newId('t'), kind: 'genre', name: clean, emoji: icon, note: `${clean}の話をする席`, createdAt: now() };
+      state.tables.push(table);
+      emit('table', table);
+      return table;
+    },
     // thread：新聞の号ごとのスレッドのはじまり（newsIssueId はその号）。人間の投稿では使わない
-    createPost({ authorId, text, replyTo = null, thread = false, newsIssueId = null }) {
+    // table：カフェのテーブル（なければ広場）。返信は、元の投稿と同じ場所になる
+    createPost({ authorId, text, replyTo = null, thread = false, newsIssueId = null, table = null }) {
       const author = requireUser(authorId);
       const clean = cleanText(text, MAX_POST_LENGTH, '投稿');
       rejectBlocked(author, clean);
-      if (replyTo) requirePost(replyTo);
+      const parent = replyTo ? requirePost(replyTo) : null;
+      const where = parent ? parent.table ?? null : table ? this.getTable(table).id : null;
       const post = { id: newId('p'), authorId, text: clean, replyTo: replyTo || null, likes: [], createdAt: now() };
+      if (where) post.table = where;
       if (thread && author.kind === 'official') Object.assign(post, { thread: true, newsIssueId });
       state.posts.push(post);
       emit('post', post);

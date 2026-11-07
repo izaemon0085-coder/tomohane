@@ -1,5 +1,6 @@
 // わたしの推しページ（推しダッシュボード）：推しの名前・ライブまで・誕生日まで・グッズの記録・同じ推しの仲間
 import { api, refreshMe, escapeHtml, timeAgo, headerHtml, toast } from '/shared/api.js';
+import { GENRE_TABLES } from '/shared/cafe.js';
 
 const $ = (sel) => document.querySelector(sel);
 const dialog = $('#edit-dialog');
@@ -166,8 +167,9 @@ async function load() {
 }
 
 
+$('#genre-select').insertAdjacentHTML('beforeend', GENRE_TABLES.map((g) => `<option value="${g.id}">${g.emoji} ${g.name}</option>`).join(''));
 $('#edit-btn').addEventListener('click', () => {
-  for (const key of ['name', 'liveDate', 'liveVenue', 'birthday']) form.elements[key].value = oshi?.[key] ?? '';
+  for (const key of ['name', 'genre', 'liveDate', 'liveVenue', 'birthday']) form.elements[key].value = oshi?.[key] ?? '';
   $('#edit-error').textContent = '';
   dialog.showModal();
 });
@@ -176,7 +178,7 @@ dialog.addEventListener('click', (e) => {
 });
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
-  const body = Object.fromEntries(['name', 'liveDate', 'liveVenue', 'birthday'].map((k) => [k, form.elements[k].value.trim()]));
+  const body = Object.fromEntries(['name', 'genre', 'liveDate', 'liveVenue', 'birthday'].map((k) => [k, form.elements[k].value.trim()]));
   try {
     const goods = oshi.goods;
     oshi = { ...(await api(`/users/${me.id}/oshi`, { method: 'PUT', body })), goods };

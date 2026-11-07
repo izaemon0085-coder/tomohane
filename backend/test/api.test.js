@@ -112,8 +112,8 @@ test('入力チェック', async () => {
 
 test('サイドフロント：エージェントの家とノック', async () => {
   const { data: agents } = await call('/api/agents');
-  assert.equal(agents.length, 6);
-  assert.deepEqual(agents.map((a) => a.name), ['ヤマネコ', 'ウサギ', 'フクロウ', 'シバ', 'クルマ', 'モグ']);
+  assert.equal(agents.length, 8);
+  assert.deepEqual(agents.map((a) => a.name), ['ヤマネコ', 'ウサギ', 'フクロウ', 'シバ', 'クルマ', 'モグ', 'タヌキ', 'ペンギン']);
   const id = agents[0].id;
   store.updateAgent(id, { status: 'sleeping' });
   const { data } = await call(`/api/agents/${id}/knock`, { method: 'POST' });
@@ -190,7 +190,8 @@ test('保存データに新しいキャラが自動で引っ越してくる', as
   const state = { users: old.listAgents().slice(0, 2), posts: [], meetings: [] };
   writeFileSync(file, JSON.stringify(state));
   const loaded = createStore({ file });
-  assert.equal(loaded.listAgents().length, 6);
+  assert.equal(loaded.listAgents().length, 8);
+  assert.deepEqual(loaded.listTables().map((t) => t.id), ['free', 'idol', 'anime', 'game', 'vtuber', 'sports', 'other'], 'カフェのテーブルも用意される');
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -1052,4 +1053,116 @@ test('投稿を消す：自分の投稿だけ・返信は一緒に見えなく�
   // キャラや新聞社の投稿は消せない
   const agentPost = store.listPosts().find((p) => p.authorId.startsWith('agent-'));
   assert.equal((await call(`/api/posts/${agentPost.id}/delete`, { method: 'POST', as: writer, body: {} })).status, 403);
+});
+
+test('カフェ：フリーテーブル・広場とは分ける・返信は同じテーブル・はじめての人にはタヌキがあいさつ・カフェの2人は広場に出ない', async () => {
+  const guest = await signup('カフェのお客さん');
+  const tables = (await call('/api/cafe/tables')).data;
+  assert.deepEqual(tables.map((t) => t.id), ['free', 'idol', 'anime', 'game', 'vtuber', 'sports', 'other']);
+  assert.equal((await call('/api/posts?table=nothing')).status, 404);
+  assert.equal((await call('/api/posts', { method: 'POST', as: guest, body: { text: 'x', table: 'nothing' } })).status, 404);
+
+  const p = (await call('/api/posts', { method: 'POST', as: guest, body: { text: 'はじめてカフェに来ました', table: 'free' } })).data;
+  assert.equal(p.table, 'free');
+  const cafe = (await call('/api/posts?table=free')).data.map((x) => x.id);
+  const plaza = (await call('/api/posts')).data.map((x) => x.id);
+  assert.ok(cafe.includes(p.id) && !plaza.includes(p.id), 'カフェの投稿は広場に出ない');
+
+  // はじめての人：マスターのタヌキがあいさつ（返事も同じテーブル）
+  const hello = sim.respondToHumanPost(store.getPost(p.id));
+  assert.equal(hello.authorId, 'agent-tanuki');
+  assert.match(hello.text, /ゆっくりしていきなよ/);
+  assert.equal(hello.table, 'free');
+
+  // 人の返信も同じテーブル（table を送らなくても）
+  const r = (await call('/api/posts', { method: 'POST', as: guest, body: { text: 'ありがとう！', replyTo: hello.id } })).data;
+  assert.equal(r.table, 'free');
+  // 2回目からは、起きているカフェの2人のどちらか
+  const again = (await call('/api/posts', { method: 'POST', as: guest, body: { text: '推しの新曲がよかった', table: 'free' } })).data;
+  const second = sim.respondToHumanPost(store.getPost(again.id));
+  assert.ok(!second || ['agent-tanuki', 'agent-penguin'].includes(second.authorId));
+  // トゲのある言葉には、カフェでもフクロウ
+  const harsh = (await call('/api/posts', { method: 'POST', as: guest, body: { text: 'うざい', table: 'free' } })).data;
+  assert.equal(sim.respondToHumanPost(store.getPost(harsh.id))?.authorId, 'agent-fukurou');
+
+  // カフェの2人は広場・会議に出ない。持ち場は cafe
+  const agents = (await call('/api/agents')).data;
+  assert.deepEqual(agents.filter((a) => a.place === 'cafe').map((a) => a.name), ['タヌキ', 'ペンギン']);
+  assert.equal((await call('/api/posts')).data.some((x) => ['agent-tanuki', 'agent-penguin'].includes(x.authorId)), false);
+  assert.equal((await call('/api/cafe/tables')).data[0].postCount >= 4, true);
+
+  const res = await fetch(`${base}/cafe.html`);
+  assert.match(await res.text(), /カフェ/);
+});
+
+test('カフェ：ジャンルのテーブル・ジャンルのリクエスト（ユーザーの声）→ 運営がテーブルを足す', async () => {
+  const admin = [...people.values()][0];
+  const fan = await signup('ジャンルをリクエストする人');
+  const idolPost = (await call('/api/posts', { method: 'POST', as: fan, body: { text: '推しのアイドルの新曲！', table: 'idol' } })).data;
+  assert.equal(idolPost.table, 'idol');
+  assert.ok(!(await call('/api/posts?table=free')).data.some((p) => p.id === idolPost.id), 'ほかのテーブルには出ない');
+  assert.ok((await call('/api/posts?table=idol')).data.some((p) => p.id === idolPost.id));
+
+  // リクエスト：ログインが要る・30文字まで・1人3つまで・だれが出したかは運営にも出さない
+  assert.equal((await call('/api/cafe/requests', { method: 'POST', body: { text: '舞台' } })).status, 401);
+  assert.equal((await call('/api/cafe/requests', { method: 'POST', as: fan, body: { text: 'あ'.repeat(31) } })).status, 400);
+  for (const t of ['舞台・ミュージカル', 'バンド', '本・小説']) {
+    assert.equal((await call('/api/cafe/requests', { method: 'POST', as: fan, body: { text: t } })).status, 201);
+  }
+  assert.equal((await call('/api/cafe/requests', { method: 'POST', as: fan, body: { text: '4つ目' } })).status, 429);
+  assert.equal((await call('/api/cafe/requests', { as: fan })).status, 403, '一覧は運営だけ');
+  const reqs = (await call('/api/cafe/requests', { as: admin })).data;
+  assert.deepEqual(reqs.map((r) => r.text), ['舞台・ミュージカル', 'バンド', '本・小説']);
+  assert.equal(JSON.stringify(reqs).includes('ジャンルをリクエストする人'), false);
+
+  // 運営がテーブルを足す → カフェに出る。リクエストは片づける
+  assert.equal((await call('/api/cafe/tables', { method: 'POST', as: fan, body: { name: '舞台' } })).status, 403);
+  const added = await call('/api/cafe/tables', { method: 'POST', as: admin, body: { name: '舞台・ミュージカル', emoji: '🎭' } });
+  assert.equal(added.status, 201);
+  assert.equal((await call('/api/cafe/tables', { method: 'POST', as: admin, body: { name: '舞台・ミュージカル' } })).status, 409);
+  assert.ok((await call('/api/cafe/tables')).data.some((t) => t.name === '舞台・ミュージカル' && t.emoji === '🎭'));
+  await call(`/api/cafe/requests/${reqs[0].id}`, { method: 'DELETE', as: admin });
+  assert.equal((await call('/api/cafe/requests', { as: admin })).data.length, 2);
+});
+
+test('カフェ：同じ推しの人が3人そろうと、タヌキが推しのテーブルを開く（似た書き方はペンギンがそろえる）・運営は閉じられる', async () => {
+  const admin = [...people.values()][0];
+  const set = async (name, oshi, genre) => {
+    const u = await signup(name);
+    assert.equal((await call(`/api/users/${u.id}/oshi`, { method: 'PUT', as: u, body: { name: oshi, genre } })).status, 200);
+    return u;
+  };
+  const before = (await call('/api/cafe/tables')).data.length;
+  await set('ほしぞら推し1', 'ルミナス リボン', 'idol');
+  await set('ほしぞら推し2', 'るみなすリボン', 'idol');
+  assert.equal((await call('/api/cafe/tables')).data.length, before, '2人ではまだ開かない');
+  const third = await set('ほしぞら推し3', 'ﾙﾐﾅｽリボン', 'anime');
+
+  const tables = (await call('/api/cafe/tables')).data;
+  const t = tables.find((x) => x.kind === 'oshi' && /ルミナス|るみなす|ﾙﾐﾅｽ/.test(x.name));
+  assert.ok(t, '3人そろうと開く');
+  assert.equal(t.parent, 'idol', 'いちばん多いジャンルに置く');
+  assert.match(t.name, /推し$/);
+  const idol = (await call('/api/posts?table=idol')).data;
+  assert.ok(idol.some((p) => p.authorId === 'agent-tanuki' && /開けといたよ/.test(p.text)), 'タヌキがジャンルの席で知らせる');
+  assert.ok(idol.some((p) => p.authorId === 'agent-penguin' && /そろえてあります/.test(p.text)), 'ペンギンが似た書き方をそろえたと知らせる');
+
+  // 同じ推しの仲間（わたしの推しページ）も、似た書き方をまとめて見つける
+  const posted = (await call('/api/posts', { method: 'POST', as: third, body: { text: '新曲よかった！', table: t.id } })).data;
+  assert.equal(posted.table, t.id);
+  const first = people.get('ほしぞら推し1');
+  assert.ok((await call(`/api/users/${first.id}/oshi/friends`, { as: first })).data.some((p) => p.id === posted.id));
+
+  // もう一度保存しても、2つ目は開かない
+  await call(`/api/users/${third.id}/oshi`, { method: 'PUT', as: third, body: { name: 'ルミナスリボン', genre: 'idol' } });
+  assert.equal((await call('/api/cafe/tables')).data.filter((x) => x.kind === 'oshi' && x.name.startsWith('ルミナス')).length, 1);
+
+  // 運営が閉じる → 一覧から消え、書けない。タヌキは開け直さない
+  assert.equal((await call(`/api/cafe/tables/${t.id}`, { method: 'DELETE', as: third })).status, 403);
+  assert.equal((await call('/api/cafe/tables/free', { method: 'DELETE', as: admin })).status, 400, 'ジャンル・フリーは閉じられない');
+  assert.equal((await call(`/api/cafe/tables/${t.id}`, { method: 'DELETE', as: admin })).status, 200);
+  assert.ok(!(await call('/api/cafe/tables')).data.some((x) => x.id === t.id));
+  assert.equal((await call('/api/posts', { method: 'POST', as: third, body: { text: 'まだいる？', table: t.id } })).status, 404);
+  await set('ほしぞら推し4', 'ルミナスリボン', 'idol');
+  assert.equal(sim.openOshiTables().length, 0);
 });

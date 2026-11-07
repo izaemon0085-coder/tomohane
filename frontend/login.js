@@ -49,7 +49,48 @@ function render(me) {
   renderFamily(me);
   renderBlocks();
   renderReportAdmin(me);
+  renderCafeAdmin(me);
 }
+
+// ---- 運営だけ：カフェのリクエスト ----
+async function renderCafeAdmin(me) {
+  $('#cafe-admin').hidden = me.role !== 'admin';
+  if (me.role !== 'admin') return;
+  let list;
+  try { list = await api('/cafe/requests'); } catch { return; }
+  $('#cafe-admin-list').innerHTML = list.length ? list.map((r) => `<li>「${escapeHtml(r.text)}」
+    <span class="muted small">（${escapeHtml(timeAgo(r.at))}）</span>
+    <div class="row wrap">
+      <button type="button" class="btn ghost" data-use="${escapeHtml(r.text)}">名前に入れる</button>
+      <button type="button" class="btn ghost" data-done="${escapeHtml(r.id)}">片づける</button>
+    </div></li>`).join('') : '<li class="muted small">リクエストはありません</li>';
+}
+$('#cafe-admin-list').addEventListener('click', async (e) => {
+  const use = e.target.closest('[data-use]');
+  if (use) {
+    $('#cafe-add-form').elements.name.value = [...use.dataset.use].slice(0, 12).join('');
+    return $('#cafe-add-form').elements.name.focus();
+  }
+  const done = e.target.closest('[data-done]');
+  if (!done) return;
+  try {
+    await api(`/cafe/requests/${encodeURIComponent(done.dataset.done)}`, { method: 'DELETE' });
+    renderCafeAdmin(await refreshMe());
+  } catch (err) {
+    toast(err.message, 5000);
+  }
+});
+$('#cafe-add-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = e.target.elements;
+  try {
+    const t = await api('/cafe/tables', { method: 'POST', body: { name: f.name.value.trim(), emoji: f.emoji.value.trim() } });
+    e.target.reset();
+    toast(`☕ 「${t.emoji} ${t.name}」のテーブルを足しました`);
+  } catch (err) {
+    toast(err.message, 5000);
+  }
+});
 
 // ---- 運営だけ：通報の一覧 ----
 const STAGE_NAME = { gentle: 'やさしく声かけ', police: '👮 お巡りさん', lawyer: '⚖ 弁護士', enma: '👹 エンマ大王もどき' };

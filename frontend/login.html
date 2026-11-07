@@ -114,6 +114,17 @@
         <p class="muted small">通報した人の名前は出していません。止めるかどうかは運営が決めます。警察に知らせるかどうかも運営が決めます（このアプリからは送りません）。</p>
         <ul class="family-list report-admin" id="report-admin-list"></ul>
       </section>
+      <!-- 運営（管理者）だけ：カフェのジャンルのリクエスト → テーブルを足す -->
+      <section class="family" id="cafe-admin" hidden aria-labelledby="cafe-admin-title">
+        <h2 id="cafe-admin-title">☕ カフェのリクエスト（運営だけ）</h2>
+        <p class="muted small">ユーザーからの「ほしいジャンル」です。だれが出したかは出していません。</p>
+        <ul class="family-list" id="cafe-admin-list"></ul>
+        <form class="row wrap" id="cafe-add-form">
+          <label class="field">絵文字<input class="input" name="emoji" maxlength="4" placeholder="🎭" style="width:5em"></label>
+          <label class="field">テーブルの名前（12文字まで）<input class="input" name="name" maxlength="12" required></label>
+          <button class="btn" type="submit">テーブルを足す</button>
+        </form>
+      </section>
       <div class="row wrap">
         <a class="btn" id="acc-back" href="/">もどる</a>
         <a class="btn ghost" href="/welcome.html?next=/login.html">🪶 ともはね の案内をもう一度見る</a>
