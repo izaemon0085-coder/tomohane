@@ -4,6 +4,7 @@
 // ・ともあい（お金のゲーム）は公開しないので、ここには入れない
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { GAME_URL, GHOST_URL, KOROTOMO_URL, SORATOMO_URL } from './gamelink.js';
+import { isComingSoon } from '../shared/soon.js';
 
 // もとからあるゲーム（start は ともはね の入り口）
 export const BUILTIN_GAMES = [
@@ -23,7 +24,7 @@ export const BUILTIN_GAMES = [
     id: 'soratomo', name: 'そらとも', maker: 'ともはね', url: SORATOMO_URL, start: '/api/link/soratomo-start',
     description: '小さな人工衛星を運用する。友だちと協力できる', tags: ['宇宙', '協力'], minAge: 'child', ads: false, purchases: false,
   },
-];
+].map((g) => ({ ...g, soon: isComingSoon(g.id) })); // soon：アップデート予定（一覧には出すが、遊べない・おすすめしない）
 
 const AGE_ORDER = { child: 0, teen: 1, adult: 2 };
 export const ageAllows = (minAge, group) => AGE_ORDER[group ?? 'adult'] >= AGE_ORDER[minAge ?? 'child'];
@@ -47,7 +48,8 @@ export function isGameQuestion(text) {
 
 // その人へのおすすめを1つ選ぶ。同じ推しの人のおすすめ → みんなのおすすめ → 一覧のはじめ の順
 // games は、呼ぶ側で年齢の区分に合わせてしぼってから渡す
-export function recommendFor({ games, recs, usersById, user }) {
+export function recommendFor({ games: all, recs, usersById, user }) {
+  const games = all.filter((g) => !g.soon); // アップデート予定のゲームはおすすめしない
   if (!games.length) return null;
   const count = (gameId, filter = () => true) => recs.filter((r) => r.gameId === gameId && filter(r)).length;
   const oshi = user?.oshi?.name?.trim();

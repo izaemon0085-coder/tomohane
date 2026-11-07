@@ -7,6 +7,7 @@ import { createStore, HttpError, ageGroup, SESSION_DAYS } from './store.js';
 import { createSimulation } from './simulation.js';
 import { publishedIssues, findPoll, pollTalk } from '../shared/news.js';
 import { lanAddresses } from './net.js';
+import { REPORT_REASONS, STAGES, findReason, stageOf } from '../shared/report.js';
 import { MAX_VIDEO_BYTES, removeVideo, saveVideo, serveVideo } from './letters.js';
 import { createKokotomoClient } from './kokotomo.js';
 import { createGameLink, GHOST_URL, MISETOMO_URL, KOROTOMO_URL, SORATOMO_URL } from './gamelink.js';
@@ -53,6 +54,13 @@ function postView(post, usersById) {
     author: publicUser(usersById[post.authorId]),
     likeCount: post.likes.length,
   };
+}
+
+// 通報された本人に声をかけるキャラ。やさしい段階は、投稿ごとにシバかウサギ
+function guideFor(stage, postId) {
+  if (stage !== 'gentle') return STAGES[stage];
+  const n = [...String(postId)].reduce((sum, c) => sum + c.charCodeAt(0), 0);
+  return STAGES.gentle[n % STAGES.gentle.length];
 }
 
 function meetingView(meeting, usersById) {
@@ -213,7 +221,9 @@ export function createApp({
     ['DELETE', /^\/api\/users\/([\w-]+)\/oshi\/goods\/([\w-]+)$/, ({ params, me }) => store.removeGoods(self(me, params[0]), params[1])],
     ['GET', /^\/api\/users\/([\w-]+)\/oshi\/friends$/, ({ params, me }) => {
       const users = store.usersById();
-      return store.oshiFriendsPosts(self(me, params[0])).map((p) => postView(p, users));
+      const blocked = new Set(store.blocksOf(self(me, params[0])).map((b) => b.targetId));
+      return store.oshiFriendsPosts(me.id, 5 + blocked.size).filter((p) => !blocked.has(p.authorId) && store.canSee(p, me.id))
+        .slice(0, 5).map((p) => postView(p, users));
     }],
 
     // ---- 保護者とつなぐ（子ども） ----
@@ -240,7 +250,7 @@ export function createApp({
         }));
         return {
           id: g.id, name: g.name, maker: g.maker, description: g.description, tags: g.tags, minAge: g.minAge,
-          ads: g.ads, purchases: g.purchases, builtin: Boolean(g.builtin), play: g.start,
+          ads: g.ads, purchases: g.purchases, builtin: Boolean(g.builtin), play: g.soon ? null : g.start, soon: Boolean(g.soon),
           recCount: recs.filter((r) => r.gameId === g.id).length, myRec: mine ? { comment: mine.comment } : null, voices,
           myRecord: me?.extGames?.[g.id] ?? null,
         };
@@ -252,7 +262,9 @@ export function createApp({
     }],
     ['PUT', /^\/api\/games\/([\w-]+)\/recommend$/, ({ params, body, me }) => {
       const u = needLogin(me);
-      if (!visibleGames(u).some((g) => g.id === params[0])) throw new HttpError(404, 'ゲームが見つかりません');
+      const game = visibleGames(u).find((g) => g.id === params[0]);
+      if (!game) throw new HttpError(404, 'ゲームが見つかりません');
+      if (game.soon) throw new HttpError(409, 'アップデート予定のゲームは、まだおすすめできません');
       return store.setGameRec(u.id, params[0], body.comment ?? '');
     }],
     ['DELETE', /^\/api\/games\/([\w-]+)\/recommend$/, ({ params, me }) => {
@@ -334,9 +346,10 @@ export function createApp({
 
     // ---- posts（フロントエンド） ----
     // threadId：新聞のスレッドの中の投稿なら、そのはじまりの投稿。はじまりの投稿には replyCount（スレッドの返信の数）
-    ['GET', /^\/api\/posts$/, () => {
+    // ブロックした人の投稿などは、その人の画面には出さない（store.canSee）
+    ['GET', /^\/api\/posts$/, ({ me }) => {
       const users = store.usersById();
-      const posts = store.listPosts();
+      const posts = store.listPosts().filter((p) => store.canSee(p, me?.id ?? null));
       const replyCount = {};
       const views = posts.map((p) => {
         const root = store.threadRootOf(p);
@@ -346,12 +359,12 @@ export function createApp({
       return views.map((v) => (v.thread ? { ...v, replyCount: replyCount[v.id] ?? 0 } : v));
     }],
     // 新聞のスレッドをまるごと（はじまり＋返信、古い順）
-    ['GET', /^\/api\/threads\/([\w-]+)$/, ({ params }) => {
+    ['GET', /^\/api\/threads\/([\w-]+)$/, ({ params, me }) => {
       const root = store.getPost(params[0]);
       if (!root.thread) throw new HttpError(404, 'スレッドが見つかりません');
       const users = store.usersById();
       // 同じ時刻の投稿は、先に書かれたほうを上に（listPosts は新しい順で、同じ時刻は書いた順のまま）
-      const posts = store.listPosts().map((p, i) => [p, i]).filter(([p]) => store.threadRootOf(p)?.id === root.id)
+      const posts = store.listPosts().map((p, i) => [p, i]).filter(([p]) => store.threadRootOf(p)?.id === root.id && store.canSee(p, me?.id ?? null))
         .sort(([a, i], [b, j]) => a.createdAt.localeCompare(b.createdAt) || i - j).map(([p]) => p);
       return { root: { ...postView(root, users), threadId: root.id, replyCount: posts.length - 1 }, posts: posts.map((p) => ({ ...postView(p, users), threadId: root.id })) };
     }],
@@ -360,6 +373,73 @@ export function createApp({
       sim.onHumanPost(post);
       return [201, postView(post, store.usersById())];
     }],
+    // ---- ミュート・ブロック（kind で本人が選ぶ）：相手には知らせない。理由はキャラだけが読むので、ここでも返さない ----
+    ['GET', /^\/api\/blocks$/, ({ me }) => {
+      const users = store.usersById();
+      return store.blocksOf(needLogin(me).id).map((b) => ({ user: publicUser(users[b.targetId]), kind: b.kind ?? 'block', createdAt: b.createdAt, hasReason: Boolean(b.reason) }));
+    }],
+    ['PUT', /^\/api\/blocks\/([\w-]+)$/, ({ params, body, me }) => {
+      const b = store.blockUser(needLogin(me).id, params[0], body.reason ?? '', body.kind ?? 'block', { keepReason: body.keepReason === true });
+      return { user: publicUser(store.usersById()[b.targetId]), kind: b.kind ?? 'block', createdAt: b.createdAt, hasReason: Boolean(b.reason) };
+    }],
+    ['DELETE', /^\/api\/blocks\/([\w-]+)$/, ({ params, me }) => store.unblockUser(needLogin(me).id, params[0])],
+
+    // ---- 投稿を消す（自分の投稿だけ）。返信した人がいれば、ひとこと（farewell）が要る ----
+    ['POST', /^\/api\/posts\/([\w-]+)\/delete$/, ({ params, body, me }) => store.deletePost(params[0], needLogin(me).id, body.farewell ?? '')],
+    ['POST', /^\/api\/farewells\/([\w-]+)\/seen$/, ({ params, me }) => store.dismissFarewell(needLogin(me).id, params[0])],
+
+    // ---- 通報：通報した人はだれにも出さない。止める・警察に知らせる、を決めるのは運営（人） ----
+    ['POST', /^\/api\/posts\/([\w-]+)\/report$/, ({ params, body, me }) => {
+      const r = store.reportPost(params[0], needLogin(me).id, body.reason);
+      return [201, { ok: true, level: r.level, held: Boolean(findReason(r.reason)?.hold) }];
+    }],
+    // 自分へのお知らせ：通報された投稿へのキャラの声（本人だけ）と、届いたあやまり（読むかは本人が決める）
+    ['GET', /^\/api\/reports\/mine$/, ({ me }) => {
+      const u = needLogin(me);
+      return {
+        notices: store.reportNoticesFor(u.id).map((n) => ({
+          postId: n.post.id, text: n.post.text, stage: n.stage, guide: guideFor(n.stage, n.post.id),
+          held: Boolean(n.post.hidden), apologized: n.apologized,
+        })),
+        farewells: store.farewellsFor(u.id).map((x) => ({
+          id: x.id, from: store.usersById()[x.fromId]?.name ?? '？', text: x.text, at: x.at,
+        })),
+        apologies: store.apologiesFor(u.id).map((r) => ({
+          id: r.id, from: publicUser(store.usersById()[r.authorId])?.name ?? '？', at: r.apology.at,
+        })),
+      };
+    }],
+    ['POST', /^\/api\/reports\/notices\/([\w-]+)\/seen$/, ({ params, me }) => store.markReportNoticeSeen(needLogin(me).id, params[0])],
+    ['POST', /^\/api\/posts\/([\w-]+)\/apology$/, ({ params, body, me }) => store.apologize(needLogin(me).id, params[0], body.text)],
+    ['POST', /^\/api\/reports\/([\w-]+)\/apology$/, ({ params, body, me }) => store.answerApology(needLogin(me).id, params[0], body.read === true)],
+    // 運営だけ：通報の一覧（通報した人の名前は出さず、人数だけ）と、止める・出す
+    ['GET', /^\/api\/reports$/, ({ me }) => {
+      needAdmin(me);
+      const users = store.usersById();
+      const byPost = new Map();
+      for (const r of store.listReports()) {
+        if (!byPost.has(r.postId)) byPost.set(r.postId, []);
+        byPost.get(r.postId).push(r);
+      }
+      return [...byPost].map(([postId, rs]) => {
+        let post = null;
+        try { post = store.getPost(postId); } catch { /* 消えた投稿 */ }
+        const reasons = Object.fromEntries(REPORT_REASONS.map((x) => [x.id, rs.filter((r) => r.reason === x.id).length]).filter(([, n]) => n));
+        return {
+          postId, text: post?.text ?? '（消えた投稿）', author: users[rs[0].authorId]?.name ?? '？',
+          reporters: new Set(rs.map((r) => r.reporterId)).size, reasons,
+          stage: stageOf(rs.map((r) => r.reason), new Set(rs.map((r) => r.reporterId)).size),
+          hidden: post?.hidden ?? null, status: rs.some((r) => r.status === 'open') ? 'open' : rs[0].status,
+          latest: rs.reduce((m, r) => (r.createdAt > m ? r.createdAt : m), ''),
+        };
+      }).sort((a, b) => (b.status === 'open') - (a.status === 'open') || b.latest.localeCompare(a.latest));
+    }],
+    ['POST', /^\/api\/reports\/([\w-]+)\/decision$/, ({ params, body, me }) => {
+      needAdmin(me);
+      const post = store.decideReport(params[0], body.action);
+      return { postId: post.id, hidden: post.hidden ?? null };
+    }],
+
     ['POST', /^\/api\/posts\/([\w-]+)\/like$/, ({ params, me }) =>
       postView(store.toggleLike(params[0], needLogin(me).id), store.usersById())],
 

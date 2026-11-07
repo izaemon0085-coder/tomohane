@@ -1,5 +1,6 @@
 // ゲーム一覧：遊ぶ・おすすめする（一言つき）・シバのおすすめ・ゲームを作っている人の申しこみ・運営の確認
 import { api, refreshMe, headerHtml, escapeHtml, toast, onServerEvents } from '/shared/api.js';
+import { SOON_LABEL } from '/shared/soon.js';
 
 const $ = (s) => document.querySelector(s);
 const AGE = { child: 'だれでも', teen: '13歳から', adult: '18歳から' };
@@ -11,6 +12,7 @@ let tag = null;
 function gameHtml(g) {
   const voices = g.voices.map((v) => `<li>${v.oshi ? `<span class="oshi-badge">${escapeHtml(v.oshi)}推し</span> ` : ''}${escapeHtml(v.name)}さん「${escapeHtml(v.comment)}」</li>`).join('');
   const marks = [
+    g.soon ? `<strong>${SOON_LABEL}</strong>` : null,
     g.builtin ? 'ともはね' : `🛠️ ${escapeHtml(g.maker)}`,
     AGE[g.minAge],
     g.ads ? '広告あり' : null,
@@ -26,8 +28,8 @@ function gameHtml(g) {
     ${g.myRecord ? `<p class="muted small">あなたの記録：${g.myRecord.plays}回あそんだ${g.myRecord.best != null ? `・いちばん ${g.myRecord.best}` : ''}</p>` : ''}
     ${voices ? `<ul class="voices">${voices}</ul>` : ''}
     <div class="row wrap">
-      <a class="btn" href="${escapeHtml(g.play)}">▶ 遊ぶ</a>
-      ${me ? `<button type="button" class="btn ghost" data-rec="${escapeHtml(g.id)}">${g.myRec ? '💖 おすすめ中（一言を変える）' : '🤍 おすすめする'}</button>` : ''}
+      ${g.soon ? `<span class="btn ghost" aria-disabled="true">${SOON_LABEL}（まだ遊べません）</span>` : `<a class="btn" href="${escapeHtml(g.play)}">▶ 遊ぶ</a>`}
+      ${me && !g.soon ? `<button type="button" class="btn ghost" data-rec="${escapeHtml(g.id)}">${g.myRec ? '💖 おすすめ中（一言を変える）' : '🤍 おすすめする'}</button>` : ''}
       ${g.myRec ? `<button type="button" class="btn ghost" data-unrec="${escapeHtml(g.id)}">取り消す</button>` : ''}
     </div>
     <form class="rec-form" data-form="${escapeHtml(g.id)}" hidden>

@@ -5,6 +5,7 @@ import {
 import { speak } from '/shared/speech.js';
 import { sendPost, getOutbox, flushOutbox } from '/shared/outbox.js';
 import { precheck } from '/shared/precheck.js';
+import { REPORT_REASONS, APOLOGY_CHOICES, MAX_APOLOGY } from '/shared/report.js';
 
 const $ = (sel) => document.querySelector(sel);
 const header = $('#header');
@@ -53,13 +54,18 @@ function bubbleHtml(post) {
         ${parent ? `<span class="quote">↩ ${escapeHtml(parent.author.name)}「${escapeHtml(snippet(parent.text))}」</span>` : ''}
         <p>${escapeHtml(post.text)}</p>
         ${threadLink}
+        ${mine && post.orphaned ? '<span class="held-note">↩ 元の投稿は消えました（あなたにだけ見えています）</span>' : ''}
+        ${mine && post.hidden ? `<span class="held-note">🔒 ${post.hidden === 'admin' ? '運営が止めました。' : '運営が見るまで、'}ほかの人には見えていません</span>` : ''}
       </div>
       <div class="msg-meta">
         <time datetime="${post.createdAt}">${timeAgo(post.createdAt)}</time>
         <button type="button" class="msg-act${liked ? ' liked' : ''}" data-like="${post.id}" aria-pressed="${Boolean(liked)}"
           aria-label="いいね ${post.likeCount}件">${liked ? '♥' : '♡'} ${post.likeCount || ''}</button>
         <button type="button" class="msg-act" data-reply="${post.id}">返信</button>
-        ${mine ? `<button type="button" class="msg-act" data-speak="${post.id}" aria-label="読み上げ">🔊</button>` : ''}
+        ${mine ? `<button type="button" class="msg-act" data-speak="${post.id}" aria-label="読み上げ">🔊</button>
+          <button type="button" class="msg-act" data-delete="${post.id}" aria-label="この投稿を消す">🗑</button>` : ''}
+        ${me && !mine && a.kind === 'human' ? `<button type="button" class="msg-act" data-report="${post.id}" aria-label="この投稿を通報">🚩</button>
+          <button type="button" class="msg-act" data-block="${a.id}" aria-label="${escapeHtml(a.name)}さんをミュート・ブロック">🚫</button>` : ''}
       </div>
     </div>
   </li>`;
@@ -215,6 +221,276 @@ composer.addEventListener('submit', async (e) => {
 
 $('#cancel-reply').addEventListener('click', () => setReply(null));
 
+// ---- ミュート・ブロック（どちらにするかは本人が選ぶ） ----
+// ブロックで理由を書かずに押したときだけ、シバがさびしそうに1回だけ聞く（押しまちがい・携帯が変わった・家族がさわった、のため）
+const blockDialog = $('#block-dialog');
+const blockForm = $('#block-form');
+const KIND_NAME = { mute: 'ミュート', block: 'ブロック' };
+let blockTarget = null;
+let blockAsked = false;
+
+const chosenKind = () => blockForm.kind.value || 'block';
+
+function setBlockStep(asking) {
+  blockAsked = asking;
+  const kind = KIND_NAME[chosenKind()];
+  $('#block-reason-box').hidden = asking;
+  $('#block-say').textContent = asking
+    ? '……まちがえてないっすか？　押しまちがいや、おうちの人がさわっちゃったこともあるっす。'
+    : `${blockTarget.name}さんをどうするっすか？　どっちも相手には知らせないから、安心してほしいっす。`;
+  $('#block-cancel').textContent = asking ? 'まちがえた' : 'やめる';
+  $('#block-ok').textContent = `${kind}する`;
+}
+
+function openBlock(author) {
+  blockTarget = author;
+  blockForm.reset();
+  $('#block-error').textContent = '';
+  $('#block-title').textContent = `${author.name}さんをミュート・ブロック`;
+  setBlockStep(false);
+  blockDialog.showModal();
+}
+
+blockDialog.addEventListener('click', (e) => {
+  if (e.target === blockDialog || e.target.closest('[data-close]')) blockDialog.close();
+});
+blockForm.addEventListener('change', (e) => { if (e.target.name === 'kind') setBlockStep(false); });
+
+blockForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const reason = blockForm.reason.value.trim();
+  const kind = chosenKind();
+  if (kind === 'block' && !reason && !blockAsked) {
+    setBlockStep(true);
+    $('#block-ok').focus();
+    return;
+  }
+  $('#block-ok').disabled = true;
+  try {
+    await api(`/blocks/${encodeURIComponent(blockTarget.id)}`, { method: 'PUT', body: { reason, kind } });
+    blockDialog.close();
+    toast(`🐕 ${blockTarget.name}さんを${KIND_NAME[kind]}したっす。外したくなったら、アカウントのページからいつでもできるっす`);
+    if (replyTo && posts.find((p) => p.id === replyTo)?.author.id === blockTarget.id) setReply(null);
+    await loadPosts();
+  } catch (err) {
+    $('#block-error').textContent = err.offline ? '📴 オフラインなので、つながってからにしてほしいっす' : err.message;
+  } finally {
+    $('#block-ok').disabled = false;
+  }
+});
+
+// ---- 投稿を消す ----
+const FAREWELLS = ['ありがとう', '頑張ります', '応援してください'];
+const deleteDialog = $('#delete-dialog');
+const deleteForm = $('#delete-form');
+let deletePost = null;
+$('#farewell-choices').insertAdjacentHTML('beforeend', [...FAREWELLS, ''].map((t, i) => `<label class="block-kind">
+  <input type="radio" name="farewell" value="${escapeHtml(t)}"${i === 0 ? ' checked' : ''}>
+  <span><strong>${t ? `「${escapeHtml(t)}」` : '✏️ 自分のことばで'}</strong></span></label>`).join(''));
+deleteForm.addEventListener('change', (e) => {
+  if (e.target.name === 'farewell') $('#farewell-own-box').hidden = e.target.value !== '';
+});
+
+// 画面に出ている返信のうち、ほかの人が書いたもの（返信の返信もふくむ）
+function othersReplied(postId) {
+  const ids = new Set([postId]);
+  let found = false;
+  for (let changed = true; changed;) {
+    changed = false;
+    for (const p of posts) {
+      if (p.replyTo && ids.has(p.replyTo) && !ids.has(p.id)) {
+        ids.add(p.id);
+        changed = true;
+        if (p.author.kind === 'human' && p.author.id !== me?.id) found = true;
+      }
+    }
+  }
+  return found;
+}
+
+function openDelete(post) {
+  deletePost = post;
+  deleteForm.reset();
+  $('#farewell-own-box').hidden = true;
+  $('#delete-error').textContent = '';
+  $('#delete-quote').textContent = `「${snippet(post.text, 40)}」`;
+  $('#delete-farewell').hidden = !othersReplied(post.id);
+  deleteDialog.showModal();
+}
+deleteDialog.addEventListener('click', (e) => {
+  if (e.target === deleteDialog || e.target.closest('[data-close]')) deleteDialog.close();
+});
+deleteForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  // 画面に出ていない返信（ブロックした人など）があるかもしれないので、ひとことはいつも送る（返信した人がいなければ使われない）
+  const picked = deleteForm.farewell.value;
+  const farewell = picked || deleteForm.own.value.trim();
+  if (!farewell) {
+    $('#delete-error').textContent = '自分のことばを入れてね！';
+    return;
+  }
+  if (!picked && precheck(farewell).level === 'block') {
+    $('#delete-error').textContent = `この内容は送れません（${precheck(farewell).reason}）`;
+    return;
+  }
+  $('#delete-ok').disabled = true;
+  try {
+    const r = await api(`/posts/${encodeURIComponent(deletePost.id)}/delete`, { method: 'POST', body: { farewell } });
+    deleteDialog.close();
+    if (replyTo === deletePost.id) setReply(null);
+    toast(r.told
+      ? `🐰 消したよ！ 返信してくれた人に「${farewell}」を届けたよ。また待ってるよ〜！`
+      : '🐰 消したよ！ また待ってるよ〜！', 5000);
+    await loadPosts();
+    await loadNotices();
+  } catch (err) {
+    $('#delete-error').textContent = err.offline ? '📴 オフラインだから、つながってからにしてね' : err.message;
+  } finally {
+    $('#delete-ok').disabled = false;
+  }
+});
+
+// ---- 通報 ----
+const reportDialog = $('#report-dialog');
+const reportForm = $('#report-form');
+let reportPost = null;
+$('#report-reasons').insertAdjacentHTML('beforeend', REPORT_REASONS.map((r) => `<label class="block-kind">
+  <input type="radio" name="reason" value="${r.id}" required>
+  <span><strong>${escapeHtml(r.label)}</strong><span class="muted small">${r.level === 'heavy' ? '重い' : '軽い'}</span></span></label>`).join(''));
+
+function openReport(post) {
+  reportPost = post;
+  reportForm.reset();
+  $('#report-error').textContent = '';
+  $('#report-quote').textContent = `${post.author.name}「${snippet(post.text, 40)}」`;
+  reportDialog.showModal();
+}
+reportDialog.addEventListener('click', (e) => {
+  if (e.target === reportDialog || e.target.closest('[data-close]')) reportDialog.close();
+});
+reportForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const reason = reportForm.reason.value;
+  if (!reason) return;
+  $('#report-ok').disabled = true;
+  try {
+    const r = await api(`/posts/${encodeURIComponent(reportPost.id)}/report`, { method: 'POST', body: { reason } });
+    reportDialog.close();
+    toast(r.level === 'heavy'
+      ? '🐕 通報したっす。運営が見るっす。こわいときは、おうちの人や近くの大人にも話してほしいっす'
+      : '🐕 通報したっす。教えてくれてありがとうっす。その投稿は、もう出さないっす', 6000);
+    await loadPosts();
+  } catch (err) {
+    $('#report-error').textContent = err.offline ? '📴 オフラインなので、つながってからにしてほしいっす' : err.message;
+  } finally {
+    $('#report-ok').disabled = false;
+  }
+});
+
+// ---- 自分へのお知らせ（通報された投稿へのキャラの声・届いたあやまり） ----
+const noticeBox = $('#report-notices');
+let notices = { notices: [], apologies: [] };
+
+function noticeHtml(n) {
+  const g = n.guide;
+  const apology = n.apologized
+    ? '<p class="muted small">あやまりは届けたっす。</p>'
+    : `<details class="apology"><summary class="link-btn">あやまる</summary>
+        <div class="apology-choices">${APOLOGY_CHOICES.map((c) => `<button type="button" class="btn ghost" data-apology="${n.postId}" data-text="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join('')}</div>
+        <form class="row" data-apology-form="${n.postId}">
+          <label class="sr-only" for="apology-${n.postId}">自分のことば</label>
+          <input class="input" id="apology-${n.postId}" name="text" maxlength="${MAX_APOLOGY}" placeholder="自分のことばで（${MAX_APOLOGY}文字まで）">
+          <button class="btn" type="submit">届ける</button>
+        </form>
+        <p class="muted small">あやまりは、通報した人が「読む」をえらんだときだけ届きます。だれが通報したかは、わかりません。</p>
+      </details>`;
+  return `<article class="report-notice" data-stage="${n.stage}">
+    <div class="say-line"><img src="${g.avatar}" alt="" width="44" height="44">
+      <div><p class="precheck-who">${escapeHtml(g.name)}${g.note ? `<span class="precheck-kind">${escapeHtml(g.note)}</span>` : ''}</p>
+      <p>${escapeHtml(g.text)}</p></div></div>
+    <p class="report-quote">あなたの投稿「${escapeHtml(snippet(n.text, 40))}」</p>
+    ${n.stage === 'stopped' ? '' : apology}
+    <div class="row end">
+      <button type="button" class="btn ghost" data-notice-delete="${n.postId}" data-text="${escapeHtml(n.text)}">🗑 消す</button>
+      <button type="button" class="btn ghost" data-seen="${n.postId}">わかった</button>
+    </div>
+  </article>`;
+}
+function apologyAskHtml(a) {
+  return `<article class="report-notice" data-stage="apology">
+    <div class="say-line"><img src="/shared/avatars/shiba.svg" alt="" width="44" height="44">
+      <p>${escapeHtml(a.from)}さんから、あやまりが届いているっす。読むっすか？ 読まなくても大丈夫っす。</p></div>
+    <div class="row end" data-apology-ask="${a.id}">
+      <button type="button" class="btn ghost" data-read="0">読まない</button>
+      <button type="button" class="btn" data-read="1">読む</button>
+    </div>
+  </article>`;
+}
+function farewellHtml(f) {
+  return `<article class="report-notice" data-stage="farewell">
+    <div class="say-line"><img src="/shared/avatars/usagi.svg" alt="" width="44" height="44">
+      <p>${escapeHtml(f.from)}さんが、あなたが返信した投稿を消したよ。返信も一緒に見えなくなったんだ。${escapeHtml(f.from)}さんから、あなたへ：「${escapeHtml(f.text)}」</p></div>
+    <div class="row end"><button type="button" class="btn ghost" data-farewell="${f.id}">わかった</button></div>
+  </article>`;
+}
+function renderNotices() {
+  const html = notices.notices.map(noticeHtml).join('') + (notices.farewells ?? []).map(farewellHtml).join('')
+    + notices.apologies.map(apologyAskHtml).join('');
+  noticeBox.innerHTML = html;
+  noticeBox.hidden = !html;
+}
+async function loadNotices() {
+  if (!me) return;
+  try { notices = await api('/reports/mine'); } catch { return; }
+  renderNotices();
+}
+async function sendApology(postId, text) {
+  try {
+    await api(`/posts/${encodeURIComponent(postId)}/apology`, { method: 'POST', body: { text } });
+    toast('🐕 あやまりを届けたっす。勇気を出してえらいっす');
+    await loadNotices();
+  } catch (err) {
+    toast(err.message, 5000);
+  }
+}
+noticeBox.addEventListener('click', async (e) => {
+  const seen = e.target.closest('[data-seen]');
+  if (seen) {
+    await api(`/reports/notices/${encodeURIComponent(seen.dataset.seen)}/seen`, { method: 'POST' }).catch(() => {});
+    return loadNotices();
+  }
+  const fw = e.target.closest('[data-farewell]');
+  if (fw) {
+    await api(`/farewells/${encodeURIComponent(fw.dataset.farewell)}/seen`, { method: 'POST' }).catch(() => {});
+    return loadNotices();
+  }
+  const nd = e.target.closest('[data-notice-delete]');
+  if (nd) return openDelete(posts.find((p) => p.id === nd.dataset.noticeDelete) ?? { id: nd.dataset.noticeDelete, text: nd.dataset.text });
+  const pick = e.target.closest('[data-apology]');
+  if (pick) return sendApology(pick.dataset.apology, pick.dataset.text);
+  const ans = e.target.closest('[data-read]');
+  if (ans) {
+    const box = ans.closest('[data-apology-ask]');
+    try {
+      const r = await api(`/reports/${encodeURIComponent(box.dataset.apologyAsk)}/apology`, { method: 'POST', body: { read: ans.dataset.read === '1' } });
+      if (r.text) box.outerHTML = `<p class="apology-text">「${escapeHtml(r.text)}」</p>`;
+      else await loadNotices();
+    } catch (err) {
+      toast(err.message, 5000);
+    }
+  }
+});
+noticeBox.addEventListener('submit', (e) => {
+  const form = e.target.closest('[data-apology-form]');
+  if (!form) return;
+  e.preventDefault();
+  const text = form.text.value.trim();
+  if (!text) return;
+  const check = precheck(text);
+  if (check.level === 'block') return toast(`この内容は送れません（${check.reason}）`, 5000);
+  sendApology(form.dataset.apologyForm, text);
+});
+
 log.addEventListener('click', async (e) => {
   const speakBtn = e.target.closest('[data-speak]');
   if (speakBtn) {
@@ -226,6 +502,24 @@ log.addEventListener('click', async (e) => {
   if (replyBtn) {
     if (!me) return loginForm.querySelector('a').focus();
     return setReply(replyBtn.dataset.reply);
+  }
+  const deleteBtn = e.target.closest('[data-delete]');
+  if (deleteBtn) {
+    const post = posts.find((p) => p.id === deleteBtn.dataset.delete);
+    if (post) openDelete(post);
+    return;
+  }
+  const reportBtn = e.target.closest('[data-report]');
+  if (reportBtn) {
+    const post = posts.find((p) => p.id === reportBtn.dataset.report);
+    if (post) openReport(post);
+    return;
+  }
+  const blockBtn = e.target.closest('[data-block]');
+  if (blockBtn) {
+    const post = posts.find((p) => p.author.id === blockBtn.dataset.block);
+    if (post) openBlock(post.author);
+    return;
   }
   const likeBtn = e.target.closest('[data-like]');
   if (likeBtn) {
@@ -256,6 +550,7 @@ if (draft && me) {
   textarea.focus();
 }
 loadPosts();
+loadNotices();
 if (!threadId) loadMembers();
 onServerEvents({ post: loadPosts, like: loadPosts, agent: loadMembers });
 window.addEventListener('outbox-change', render);

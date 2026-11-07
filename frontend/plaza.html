@@ -22,6 +22,9 @@
         </div>
       </div>
 
+      <!-- 自分へのお知らせ：通報された投稿へのキャラの声（本人だけ）・届いたあやまり -->
+      <section id="report-notices" class="report-notices" hidden aria-label="あなたへのお知らせ"></section>
+
       <ol id="chat-log" class="chat-log" aria-live="polite"></ol>
 
       <div id="login-form" class="chat-login" hidden>
@@ -52,6 +55,73 @@
         <p class="error" id="post-error"></p>
       </form>
     </section>
+
+    <!-- ブロック：相手には知らせない。理由はシバたちキャラだけが読む -->
+    <dialog id="block-dialog" class="card oshi-dialog" aria-labelledby="block-title">
+      <form id="block-form" method="dialog">
+        <h2 id="block-title"></h2>
+        <div class="say-line"><img src="/shared/avatars/shiba.svg" alt="" width="44" height="44">
+          <p id="block-say"></p></div>
+        <div id="block-reason-box">
+          <fieldset class="block-kinds">
+            <legend class="sr-only">どちらにするか</legend>
+            <label class="block-kind"><input type="radio" name="kind" value="mute">
+              <span><strong>🙈 ミュート</strong><span class="muted small">その人の投稿が、あなたの広場に出なくなります。</span></span></label>
+            <label class="block-kind"><input type="radio" name="kind" value="block" checked>
+              <span><strong>🚫 ブロック</strong><span class="muted small">ミュートと同じ＋その人があなたの投稿にした返信が、ほかの人にも見えなくなります。</span></span></label>
+          </fieldset>
+          <label class="field">理由（書かなくてもいいっす。シバたちキャラだけが読むっす。100文字まで）
+            <textarea class="input" name="reason" rows="2" maxlength="100"></textarea></label>
+          <ul class="muted small block-notes">
+            <li>どちらも、相手には知らせません。</li>
+            <li>アカウントのページから、いつでも外せます。切りかえもできます。</li>
+          </ul>
+        </div>
+        <p class="error" id="block-error" role="alert"></p>
+        <div class="row end">
+          <button type="button" class="btn ghost" data-close id="block-cancel">やめる</button>
+          <button type="submit" class="btn" id="block-ok">ブロックする</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- 投稿を消す：ウサギが明るく見送る。返信した人には、えらんだひとことが届く -->
+    <dialog id="delete-dialog" class="card oshi-dialog" aria-labelledby="delete-title">
+      <form id="delete-form" method="dialog">
+        <h2 id="delete-title">🗑 この投稿を消す</h2>
+        <div class="say-line"><img src="/shared/avatars/usagi.svg" alt="" width="44" height="44">
+          <p id="delete-say">消しちゃう？ だいじょうぶ、また書きたくなったら、いつでも待ってるよ！</p></div>
+        <p class="report-quote" id="delete-quote"></p>
+        <div id="delete-farewell" hidden>
+          <p class="small"><strong>返信してくれた人がいるよ。</strong>返信も一緒に見えなくなるから、ひとこと届けよう！</p>
+          <fieldset class="block-kinds" id="farewell-choices"><legend class="sr-only">返信してくれた人へのひとこと</legend></fieldset>
+          <label class="field" id="farewell-own-box" hidden>自分のことば（50文字まで）
+            <input class="input" name="own" maxlength="50"></label>
+        </div>
+        <p class="error" id="delete-error" role="alert"></p>
+        <div class="row end">
+          <button type="button" class="btn ghost" data-close>やめる</button>
+          <button type="submit" class="btn" id="delete-ok">消す</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- 通報：通報した人の名前は、だれにも出さない -->
+    <dialog id="report-dialog" class="card oshi-dialog" aria-labelledby="report-title">
+      <form id="report-form" method="dialog">
+        <h2 id="report-title">🚩 この投稿を通報</h2>
+        <div class="say-line"><img src="/shared/avatars/shiba.svg" alt="" width="44" height="44">
+          <p>教えてくれてありがとうっす。だれが通報したかは、だれにも言わないっす。いちばん近いものをえらんでほしいっす。</p></div>
+        <p class="report-quote" id="report-quote"></p>
+        <fieldset class="block-kinds" id="report-reasons"><legend class="sr-only">通報の理由</legend></fieldset>
+        <p class="muted small">さらし・犯罪・おどしは、運営が見るまで、その投稿をほかの人に見えなくします。止めるかどうかは運営（人）が決めます。</p>
+        <p class="error" id="report-error" role="alert"></p>
+        <div class="row end">
+          <button type="button" class="btn ghost" data-close>やめる</button>
+          <button type="submit" class="btn" id="report-ok">通報する</button>
+        </div>
+      </form>
+    </dialog>
   </main>
   <script type="module" src="/plaza.js"></script>
   <script type="module" src="/shared/customize.js"></script>

@@ -1,5 +1,6 @@
 // 町の地図（トップ）：真ん中の広場と、まわりのキャラの家・ガレージ。家を押すとサイドフロント（家）へ
-import { api, onServerEvents, escapeHtml, headerHtml, STATUS_LABEL, unreadNewsKind } from '/shared/api.js';
+import { api, onServerEvents, escapeHtml, headerHtml, STATUS_LABEL, unreadNewsKind, toast } from '/shared/api.js';
+import { isComingSoon, SOON_LABEL } from '/shared/soon.js';
 
 document.querySelector('#header').innerHTML = headerHtml('map');
 
@@ -74,6 +75,20 @@ if (unread) {
   badge.textContent = unread === 'extra' ? '号外' : '新しい号';
   badge.classList.toggle('is-extra', unread === 'extra');
   badge.hidden = false;
+}
+
+// アップデート予定のアプリ（shared/soon.js）：札をつけて、押しても開かない。シバが「もうすぐっす」と教える
+for (const el of document.querySelectorAll('[data-app]')) {
+  if (!isComingSoon(el.dataset.app)) continue;
+  el.removeAttribute('href');
+  el.classList.add('is-soon');
+  el.setAttribute('role', 'button');
+  el.setAttribute('tabindex', '0');
+  el.setAttribute('aria-label', `${el.dataset.soonName}（アップデート予定。まだ開けません）`);
+  el.insertAdjacentHTML('beforeend', `<span class="soon-badge">${SOON_LABEL}</span>`);
+  const tell = () => toast(`🐕 ${el.dataset.soonName}は、アップデート予定っす！ 準備ができたら、新聞でお知らせするっす`, 4000);
+  el.addEventListener('click', tell);
+  el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tell(); } });
 }
 
 loadHouses();

@@ -57,7 +57,7 @@
   padding: 3px 10px; border-radius: 999px; border: 2px solid #8fbf7a;
 }
 .korotomo-spot {
-  position: absolute; left: 60%; top: 80%; z-index: 2; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;
+  position: absolute; left: 58.5%; top: 88%; z-index: 2; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;
   background: #fff; color: #2b2420; text-decoration: none; font-weight: 800; font-size: clamp(.65rem, 1.6vw, .85rem);
   padding: 3px 10px; border-radius: 999px; border: 2px solid #7fa7c9;
 }
@@ -384,3 +384,23 @@ html[data-oshi-color] .oshi-hero { color: var(--accent-text); }
 .extra-chip, .news-extra { display: inline-block; background: #b3262d; color: #fff; font-size: .72rem; font-weight: 700; border-radius: 4px; padding: 0 5px; margin-left: 4px; vertical-align: middle; }
 .extra-chip { margin: 0 4px 0 0; }
 .news-dot { display: inline-block; width: 8px; height: 8px; margin-left: 4px; border-radius: 50%; background: var(--like); vertical-align: top; }
+.block-notes { margin: 8px 0 0; padding-left: 1.2em; display: grid; gap: 2px; }
+.block-kinds { border: 0; margin: 12px 0 4px; padding: 0; display: grid; gap: 8px; }
+.block-kind { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; cursor: pointer; }
+.block-kind:has(input:checked) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface)); }
+.block-kind input { margin-top: 4px; accent-color: var(--accent); }
+.block-kind > span { display: grid; gap: 2px; }
+.report-notices { display: grid; gap: 10px; margin: 0 0 10px; max-height: 45vh; overflow-y: auto; }
+.report-notice { padding: 12px 14px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--border); display: grid; gap: 8px; }
+.report-notice[data-stage="enma"], .report-notice[data-stage="lawyer"] { border: 2px solid var(--danger); }
+.report-notice[data-stage="police"] { border: 2px solid #2563eb; }
+.report-notice .say-line img { flex: none; border-radius: 50%; background: var(--surface); }
+.report-quote { margin: 0; padding: 6px 10px; border-left: 3px solid var(--border); color: var(--muted); font-size: .88rem; }
+.apology summary { cursor: pointer; width: fit-content; }
+.apology-choices { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.apology-text { margin: 0; padding: 8px 12px; border-radius: 12px; background: var(--surface); }
+.held-note { display: block; margin-top: 4px; font-size: .78rem; color: var(--muted); }
+.report-admin li { display: grid; gap: 4px; }
+.is-soon { cursor: pointer; opacity: .92; }
+.soon-badge { display: block; font-size: .62rem; font-weight: 700; letter-spacing: 0; color: #6f625a; background: #fff6d6; border: 1px solid #e6c96a; border-radius: 999px; padding: 0 6px; margin-left: 4px; white-space: nowrap; }
+.mystery-sign.is-soon { display: inline-flex; align-items: center; }

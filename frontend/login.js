@@ -1,6 +1,8 @@
 // ログイン・はじめる（登録）・パスワードを忘れた・アカウント
 // ログインのしるしはサーバーのクッキー（JavaScript からは読めない）。ここでは画面の写しだけを更新する
 import { api, refreshMe, rememberMe, logout, headerHtml, escapeHtml, toast, timeAgo, safeNext } from '/shared/api.js';
+import { REPORT_REASONS } from '/shared/report.js';
+import { isComingSoon, SOON_LABEL } from '/shared/soon.js';
 
 const $ = (sel) => document.querySelector(sel);
 const AGE = { child: '子ども（12歳まで）', teen: '中高生（13〜17歳）', adult: '大人（18歳から）' };
@@ -38,14 +40,88 @@ function render(me) {
   $('#acc-login').textContent = me.loginId;
   $('#acc-age').textContent = AGE[me.ageGroup] ?? '―';
   $('#acc-role').textContent = ROLE[me.role] ?? me.role;
-  $('#acc-soratomo').textContent = me.soratomo ? `ミッション達成 ${me.soratomo.missions}回（${me.soratomo.plays}回あそんだ）` : 'まだ遊んでいません（町の地図の「宇宙」から）';
-  $('#acc-korotomo').textContent = me.korotomo ? `ゴール ${me.korotomo.goals}回（${me.korotomo.plays}回あそんだ）` : 'まだ遊んでいません（町の地図のガレージのとなりから）';
+  $('#acc-soratomo').textContent = isComingSoon('soratomo') && !me.soratomo ? SOON_LABEL : me.soratomo ? `ミッション達成 ${me.soratomo.missions}回（${me.soratomo.plays}回あそんだ）` : 'まだ遊んでいません（町の地図の「宇宙」から）';
+  $('#acc-korotomo').textContent = isComingSoon('korotomo') && !me.korotomo ? SOON_LABEL : me.korotomo ? `ゴール ${me.korotomo.goals}回（${me.korotomo.plays}回あそんだ）` : 'まだ遊んでいません（町の地図のガレージのとなりから）';
   $('#acc-ghost').textContent = me.ghost ? `自己ベスト更新 ${me.ghost.bests}回・${me.ghost.days}日つづけた` : 'まだ使っていません（町の地図のグラウンドから）';
   $('#acc-game').textContent = me.game ? `${me.game.wins}勝（${me.game.plays}回あそんだ）` : 'まだ遊んでいません（町の地図のシバの家から）';
   $('#acc-child').hidden = me.ageGroup !== 'child';
   $('#acc-back').href = nextUrl();
   renderFamily(me);
+  renderBlocks();
+  renderReportAdmin(me);
 }
+
+// ---- 運営だけ：通報の一覧 ----
+const STAGE_NAME = { gentle: 'やさしく声かけ', police: '👮 お巡りさん', lawyer: '⚖ 弁護士', enma: '👹 エンマ大王もどき' };
+const REASON_NAME = Object.fromEntries(REPORT_REASONS.map((r) => [r.id, r.label]));
+async function renderReportAdmin(me) {
+  $('#report-admin').hidden = me.role !== 'admin';
+  if (me.role !== 'admin') return;
+  let list;
+  try { list = await api('/reports'); } catch { return; }
+  $('#report-admin-list').innerHTML = list.length ? list.map((r) => {
+    const reasons = Object.entries(r.reasons).map(([k, n]) => `${REASON_NAME[k] ?? k} ${n}`).join('・');
+    const state = r.hidden === 'admin' ? '止めた' : r.hidden === 'report' ? '運営が見るまで見えない' : r.status === 'kept' ? '出したまま' : '出ている';
+    return `<li><strong>${escapeHtml(r.author)}</strong>「${escapeHtml(r.text)}」
+      <span class="muted small">${escapeHtml(reasons)}（${r.reporters}人）・${STAGE_NAME[r.stage] ?? ''}・いま：${state}</span>
+      <div class="row wrap">
+        <button type="button" class="btn ghost" data-decide="hide" data-post="${escapeHtml(r.postId)}">止める</button>
+        <button type="button" class="btn ghost" data-decide="show" data-post="${escapeHtml(r.postId)}">出す</button>
+      </div></li>`;
+  }).join('') : '<li class="muted small">通報はありません</li>';
+}
+$('#report-admin-list').addEventListener('click', async (e) => {
+  const btn = e.target.closest('[data-decide]');
+  if (!btn) return;
+  const label = btn.dataset.decide === 'hide' ? '止め' : '出し';
+  if (!confirm(`この投稿を${label}ますか？`)) return;
+  try {
+    await api(`/reports/${encodeURIComponent(btn.dataset.post)}/decision`, { method: 'POST', body: { action: btn.dataset.decide } });
+    toast(`投稿を${label}ました`);
+    renderReportAdmin(await refreshMe());
+  } catch (err) {
+    toast(err.message, 5000);
+  }
+});
+
+// ---- ミュート・ブロックした人 ----
+const KIND_NAME = { mute: '🙈 ミュート', block: '🚫 ブロック' };
+async function renderBlocks() {
+  let list;
+  try { list = await api('/blocks'); } catch { return; }
+  $('#block-list').innerHTML = list.length
+    ? list.map((b) => {
+      const id = escapeHtml(b.user?.id ?? '');
+      const name = escapeHtml(b.user?.name ?? '？');
+      const other = b.kind === 'mute' ? 'block' : 'mute';
+      return `<li><strong>${name}</strong>
+      <span class="muted small">${KIND_NAME[b.kind] ?? ''}（${escapeHtml(timeAgo(b.createdAt))}）</span>
+      <div class="row wrap">
+        <button type="button" class="btn ghost" data-switch="${id}" data-kind="${other}" data-name="${name}">${KIND_NAME[other]}にする</button>
+        <button type="button" class="btn ghost" data-unblock="${id}" data-name="${name}">外す</button>
+      </div></li>`;
+    }).join('')
+    : '<li class="muted small">ミュート・ブロックした人はいません</li>';
+}
+$('#block-list').addEventListener('click', async (e) => {
+  const sw = e.target.closest('[data-switch]');
+  const un = e.target.closest('[data-unblock]');
+  if (!sw && !un) return;
+  try {
+    if (sw) {
+      // 切りかえだけ。前に書いた理由はそのまま残す（keepReason）
+      await api(`/blocks/${encodeURIComponent(sw.dataset.switch)}`, { method: 'PUT', body: { kind: sw.dataset.kind, keepReason: true } });
+      toast(`🐕 ${sw.dataset.name} さんを${KIND_NAME[sw.dataset.kind]}にしたっす`);
+    } else {
+      if (!confirm(`${un.dataset.name} さんのミュート・ブロックを外しますか？`)) return;
+      await api(`/blocks/${encodeURIComponent(un.dataset.unblock)}`, { method: 'DELETE' });
+      toast(`🐕 ${un.dataset.name} さんを外したっす`);
+    }
+    renderBlocks();
+  } catch (err) {
+    toast(err.message, 5000);
+  }
+});
 
 // ---- 保護者とつなぐ ----
 async function renderFamily(me) {
