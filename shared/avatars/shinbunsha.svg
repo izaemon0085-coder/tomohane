@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="ともはね新聞社">
+  <circle cx="50" cy="50" r="48" fill="#3b332d"/>
+  <rect x="22" y="24" width="56" height="54" rx="3" fill="#fffdf7"/>
+  <rect x="28" y="30" width="44" height="9" fill="#3b332d"/>
+  <path d="M28 46 h20 M28 53 h20 M28 60 h20 M28 67 h20" stroke="#8a7b6e" stroke-width="3" stroke-linecap="round"/>
+  <rect x="53" y="44" width="19" height="25" fill="#e8739a" opacity=".85"/>
+  <path d="M84 12 C66 22 58 40 56 58 C64 44 74 32 88 24 Z" fill="#c8642a"/>
+  <path d="M84 14 L57 57" stroke="#fffdf7" stroke-width="1.5"/>
+</svg>

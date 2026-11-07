@@ -1,5 +1,7 @@
 // 3つのフロント共通：API 呼び出し、リアルタイム更新、ログインユーザー、表示ヘルパー
 // サーバーにつながらないときのエラーには err.offline = true が付く（ローカル回線の送信待ちで使う）
+import { latestIssueId, publishedIssues } from '/shared/news.js';
+
 export async function api(path, { method = 'GET', body, headers = {} } = {}) {
   let res;
   try {
@@ -90,6 +92,18 @@ export const STATUS_LABEL = {
   meeting: '🗣️ 会議中',
 };
 
+// ログインや案内のあとに、もどる画面（このサイトの中のページだけ）
+// 「/\よそ.example」のような書き方も、ブラウザはよそのサイトとして読むので、アドレスとして組み立ててから確かめる
+export function safeNext(raw) {
+  const next = raw || '/';
+  if (!next.startsWith('/') || /[\\\s]/.test(next)) return '/';
+  let u;
+  try { u = new URL(next, location.origin); } catch { return '/'; }
+  // いまの画面そのものには、もどらない（ログイン画面からログイン画面へ、など）
+  if (u.origin !== location.origin || u.pathname === location.pathname) return '/';
+  return u.pathname + u.search + u.hash;
+}
+
 export function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
@@ -117,6 +131,25 @@ export function avatarHtml(user, size = 42, { speak, label, focusable = true } =
   return `<span class="avatar" style="${style}" aria-hidden="true">${face}</span>`;
 }
 
+// ともはね新聞：まだ読んでいない新しい号があるか（この端末で見たかどうか）
+const NEWS_SEEN_KEY = 'tomohane.newsSeen';
+function hasUnreadNews() {
+  try { return Boolean(latestIssueId()) && localStorage.getItem(NEWS_SEEN_KEY) !== latestIssueId(); } catch { return false; }
+}
+// 号外は赤い「号外」の札、ふだんの号は小さな点
+function newsMark() {
+  return publishedIssues()[0]?.kind === 'extra'
+    ? '<span class="news-extra">号外</span>'
+    : '<span class="news-dot"></span><span class="sr-only">（新しい号）</span>';
+}
+// 地図の新聞社の札用：まだ読んでいない号があれば 'weekly' か 'extra'、なければ null
+export function unreadNewsKind() {
+  return hasUnreadNews() ? (publishedIssues()[0]?.kind ?? 'weekly') : null;
+}
+export function markNewsSeen() {
+  try { localStorage.setItem(NEWS_SEEN_KEY, latestIssueId()); } catch { /* 保存できない端末 */ }
+}
+
 export function headerHtml(current) {
   const me = getMe();
   const link = (href, label, key) =>
@@ -129,6 +162,7 @@ export function headerHtml(current) {
       ${link('/oshi.html', '💖 わたしの推し', 'oshi')}
       ${link('/games.html', '🎮 ゲーム', 'games')}
       ${link('/letter.html', '✉️ 手紙', 'letter')}
+      ${link('/news.html', `📰 新聞${current !== 'news' && hasUnreadNews() ? newsMark() : ''}`, 'news')}
       ${link('/side/', '🏡 家', 'side')}
       ${link('/sub/', '🗣️ 会議室', 'sub')}
     </nav>

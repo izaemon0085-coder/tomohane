@@ -1,21 +1,12 @@
 // ログイン・はじめる（登録）・パスワードを忘れた・アカウント
 // ログインのしるしはサーバーのクッキー（JavaScript からは読めない）。ここでは画面の写しだけを更新する
-import { api, refreshMe, rememberMe, logout, headerHtml, escapeHtml, toast, timeAgo } from '/shared/api.js';
+import { api, refreshMe, rememberMe, logout, headerHtml, escapeHtml, toast, timeAgo, safeNext } from '/shared/api.js';
 
 const $ = (sel) => document.querySelector(sel);
 const AGE = { child: '子ども（12歳まで）', teen: '中高生（13〜17歳）', adult: '大人（18歳から）' };
 const ROLE = { admin: '運営（管理者）', user: 'ユーザー' };
 
-// ログインしたあとに、もどる画面（このサイトの中のページだけ）
-// 「/\よそ.example」のような書き方も、ブラウザはよそのサイトとして読むので、アドレスとして組み立ててから確かめる
-function nextUrl() {
-  const next = new URLSearchParams(location.search).get('next') || '/';
-  if (!next.startsWith('/') || /[\\\s]/.test(next)) return '/';
-  let u;
-  try { u = new URL(next, location.origin); } catch { return '/'; }
-  if (u.origin !== location.origin || u.pathname.startsWith('/login.html')) return '/';
-  return u.pathname + u.search + u.hash;
-}
+const nextUrl = () => safeNext(new URLSearchParams(location.search).get('next'));
 
 function guide(face, name, text) {
   $('#guide-face').src = `/shared/avatars/${face}.svg`;
@@ -163,7 +154,8 @@ $('#save-codes').addEventListener('click', () => {
   a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 10000);
 });
-$('#codes-next').addEventListener('click', () => { location.href = nextUrl(); });
+// はじめて登録した人は、案内スライドを見てから行きたかった画面へ
+$('#codes-next').addEventListener('click', () => { location.href = `/welcome.html?next=${encodeURIComponent(nextUrl())}`; });
 
 $('#panel-recover').addEventListener('submit', async (e) => {
   e.preventDefault();

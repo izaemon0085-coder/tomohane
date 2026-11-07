@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="エンマ大王フクロウ">
+  <circle cx="50" cy="58" r="37" fill="#8f3a2c"/>
+  <path d="M18 74 Q50 104 82 74 L82 92 Q50 100 18 92 Z" fill="#b3262d"/>
+  <path d="M50 70 L38 96 M50 70 L62 96" stroke="#e9b949" stroke-width="3" fill="none"/>
+  <ellipse cx="50" cy="72" rx="15" ry="11" fill="#e6c9a8"/>
+  <rect x="26" y="8" width="48" height="22" rx="3" fill="#1f2433"/>
+  <rect x="22" y="26" width="56" height="7" rx="2" fill="#e9b949"/>
+  <path d="M43 12 h14 M44 17.5 h12 M42 23 h16 M50 12 v11" stroke="#e9b949" stroke-width="3" stroke-linecap="round"/>
+  <path d="M24 40 L44 46" stroke="#1f2433" stroke-width="4" stroke-linecap="round"/>
+  <path d="M76 40 L56 46" stroke="#1f2433" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="35" cy="52" r="11" fill="#f4ead8"/>
+  <circle cx="65" cy="52" r="11" fill="#f4ead8"/>
+  <circle cx="35" cy="53" r="6" fill="#f2b630"/>
+  <circle cx="65" cy="53" r="6" fill="#f2b630"/>
+  <circle cx="35" cy="53" r="3.5" fill="#1f2433"/>
+  <circle cx="65" cy="53" r="3.5" fill="#1f2433"/>
+  <circle cx="36.3" cy="51.7" r="1.1" fill="#fff"/>
+  <circle cx="66.3" cy="51.7" r="1.1" fill="#fff"/>
+  <polygon points="45,59 55,59 50,67" fill="#e08a2c"/>
+  <rect x="78" y="54" width="7" height="34" rx="3" fill="#e9b949" transform="rotate(12 81 71)"/>
+</svg>

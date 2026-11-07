@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ようこそ | ともはね β版</title>
+  <link rel="stylesheet" href="/shared/base.css">
+  <link rel="stylesheet" href="/shared/customize.css">
+  <link rel="stylesheet" href="/shared/network.css">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="site-header" id="header"></header>
+  <main class="page welcome-page">
+    <section class="card welcome" id="welcome" aria-roledescription="スライド" aria-label="ともはね の案内">
+      <p class="rare-badge" id="rare-badge" hidden>✨ レア！ めったに出ない案内役です ✨</p>
+      <div class="slide" id="slide" aria-live="polite">
+        <p class="slide-icon" id="slide-icon" aria-hidden="true"></p>
+        <h1 id="slide-title"></h1>
+        <p id="slide-text"></p>
+        <div class="say-line welcome-say">
+          <img id="guide-face" src="" alt="" width="64" height="64">
+          <div><p class="muted small" id="guide-name"></p><p id="guide-say"></p></div>
+        </div>
+      </div>
+
+      <!-- 最後のスライドだけ：今週の確率 -->
+      <section class="odds" id="odds" hidden aria-labelledby="odds-title">
+        <h2 id="odds-title">今週の案内役の確率</h2>
+        <ul class="odds-list" id="odds-list"></ul>
+        <p class="muted small" id="odds-next"></p>
+      </section>
+
+      <div class="dots" id="dots" role="tablist" aria-label="スライドの番号"></div>
+      <div class="row wrap welcome-nav">
+        <button type="button" class="btn ghost" id="prev">← もどる</button>
+        <button type="button" class="btn" id="next">つぎへ →</button>
+        <a class="btn" id="start" href="/" hidden>はじめる</a>
+      </div>
+      <p class="skip"><a href="/" id="skip">案内をとばす</a></p>
+    </section>
+  </main>
+  <script type="module" src="/welcome.js"></script>
+  <script type="module" src="/shared/customize.js"></script>
+  <script type="module" src="/shared/network.js"></script>
+</body>
+</html>
