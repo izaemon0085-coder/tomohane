@@ -13,6 +13,9 @@ import { precheck, isHarsh } from '../../shared/precheck.js';
 import { createKokotomoClient } from '../kokotomo.js';
 
 let server;
+// ゲームセンターの営業時間のための時刻（ふだんはお昼の12時・日本時間。テストで変える）
+const NOON_JST = new Date("2026-11-08T03:00:00Z");
+let arcadeNow = NOON_JST;
 let base;
 let store;
 let sim;
@@ -35,7 +38,7 @@ before(async () => {
   });
   videoDir = mkdtempSync(join(tmpdir(), 'letters-'));
   const kokotomo = createKokotomoClient({ baseUrl: 'http://localhost:3100', fetchImpl: fakeKokotomoFetch });
-  server = http.createServer(createApp({ store, sim, videoDir, maxVideoBytes: MAX_TEST_VIDEO, kokotomo }));
+  server = http.createServer(createApp({ store, sim, videoDir, maxVideoBytes: MAX_TEST_VIDEO, kokotomo, clock: () => arcadeNow }));
   await new Promise((r) => server.listen(0, r));
   base = `http://localhost:${server.address().port}`;
 });
@@ -1180,4 +1183,37 @@ test('ゲームセンター：地図のゲームの入口をまとめる・店�
   assert.deepEqual(agents.filter((a) => a.place === 'arcade').map((a) => [a.name, a.roleLabel]),
     [['キツネ', 'ゲームセンターの店長'], ['カエル', 'ゲームセンターの盛り上げ役']]);
   assert.equal((await call('/api/posts')).data.some((p) => ['agent-kitsune', 'agent-kaeru'].includes(p.authorId)), false, '広場には出ない');
+});
+
+test('ゲームセンター：年齢で閉店（こども21時・中高生22時・大人24時、朝6時に開店）。閉まっているとゲームに入れない', async () => {
+  const kid = await signup('ゲーセンのこども', { birthdate: '2018-01-01' });
+  const teen = await signup('ゲーセンの中高生', { birthdate: '2011-01-01' });
+  const adult = await signup('ゲーセンの大人');
+  const at = (h) => new Date(Date.UTC(2026, 10, 8, (h - 9 + 24) % 24, 30)); // 日本時間の h時30分
+  const status = async (who) => (await call('/api/arcade', { as: who })).data.open;
+  const start = async (who, path = '/api/link/game-start') =>
+    (await fetch(base + path, { redirect: 'manual', headers: { Cookie: who.cookie } })).headers.get('location');
+
+  try {
+    arcadeNow = at(20);
+    assert.deepEqual([await status(kid), await status(teen), await status(adult)], [true, true, true]);
+    arcadeNow = at(21);
+    assert.deepEqual([await status(kid), await status(teen), await status(adult)], [false, true, true], '21時：こどもは閉店');
+    assert.equal(await start(kid), '/games.html?closed=1', 'こどもはじゃんけんに入れない');
+    assert.match(await start(teen), /auth\/callback\?ticket=/);
+    arcadeNow = at(22);
+    assert.deepEqual([await status(teen), await status(adult)], [false, true], '22時：中高生も閉店');
+    arcadeNow = at(0);
+    assert.equal(await status(adult), false, '夜中の0時：大人も閉店');
+    assert.equal(await start(adult, '/api/link/korotomo-start'), '/games.html?closed=1');
+    assert.match(await start(adult, '/api/link/ghost-start'), /auth\/callback/, 'グラウンド（ゴースト）は運動なので、いつでも');
+    arcadeNow = at(5);
+    assert.equal(await status(adult), false);
+    arcadeNow = at(6);
+    assert.deepEqual([await status(kid), await status(teen), await status(adult)], [true, true, true], '朝6時に開店');
+    arcadeNow = at(21);
+    assert.equal((await call('/api/arcade')).data.open, false, 'ログインしていない人は、こどもと同じ');
+  } finally {
+    arcadeNow = NOON_JST;
+  }
 });

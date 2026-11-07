@@ -1,6 +1,7 @@
 // ゲーム一覧：遊ぶ・おすすめする（一言つき）・シバのおすすめ・ゲームを作っている人の申しこみ・運営の確認
 import { api, refreshMe, headerHtml, escapeHtml, toast, onServerEvents } from '/shared/api.js';
 import { SOON_LABEL } from '/shared/soon.js';
+import { kitsuneLine } from '/shared/arcade.js';
 
 const $ = (s) => document.querySelector(s);
 const AGE = { child: 'だれでも', teen: '13歳から', adult: '18歳から' };
@@ -8,6 +9,7 @@ const STATUS = { pending: '運営が見ています', listed: '一覧に出て�
 let me = null;
 let games = [];
 let tag = null;
+let arcade = { open: true }; // ゲームセンターの営業時間（見る人の年齢で、閉店の時間がちがう）
 
 function gameHtml(g) {
   const voices = g.voices.map((v) => `<li>${v.oshi ? `<span class="oshi-badge">${escapeHtml(v.oshi)}推し</span> ` : ''}${escapeHtml(v.name)}さん「${escapeHtml(v.comment)}」</li>`).join('');
@@ -28,7 +30,9 @@ function gameHtml(g) {
     ${g.myRecord ? `<p class="muted small">あなたの記録：${g.myRecord.plays}回あそんだ${g.myRecord.best != null ? `・いちばん ${g.myRecord.best}` : ''}</p>` : ''}
     ${voices ? `<ul class="voices">${voices}</ul>` : ''}
     <div class="row wrap">
-      ${g.soon ? `<span class="btn ghost" aria-disabled="true">${SOON_LABEL}（まだ遊べません）</span>` : `<a class="btn" href="${escapeHtml(g.play)}">▶ 遊ぶ</a>`}
+      ${g.soon ? `<span class="btn ghost" aria-disabled="true">${SOON_LABEL}（まだ遊べません）</span>`
+    : g.id !== 'ghost' && !arcade.open ? `<span class="btn ghost" aria-disabled="true">🌙 閉店中（${arcade.opensAt}時に開店）</span>`
+    : `<a class="btn" href="${escapeHtml(g.play)}">▶ 遊ぶ</a>`}
       ${me && !g.soon ? `<button type="button" class="btn ghost" data-rec="${escapeHtml(g.id)}">${g.myRec ? '💖 おすすめ中（一言を変える）' : '🤍 おすすめする'}</button>` : ''}
       ${g.myRec ? `<button type="button" class="btn ghost" data-unrec="${escapeHtml(g.id)}">取り消す</button>` : ''}
     </div>
@@ -60,7 +64,9 @@ async function loadGames() {
 async function loadPick() {
   try {
     const r = await api('/games/recommend');
-    $('#pick').innerHTML = r
+    $('#pick').innerHTML = r && !arcade.open
+      ? `ゲロ……いまは閉店中。あした開いたら「${escapeHtml(r.name)}」がおすすめだよ。おやすみゲロ〜`
+      : r
       ? `ゲロゲロ！ ${me ? `${escapeHtml(me.name)}さん` : 'いま'}へのおすすめは「<a href="${escapeHtml(r.play)}">${escapeHtml(r.name)}</a>」！ ${escapeHtml(r.reason)}んだよ。${r.comment ? `「${escapeHtml(r.comment)}」って声もあるよ！` : ''}`
       : 'ゲロ……いまは遊べる台がないみたい……';
   } catch { /* noop */ }
@@ -149,6 +155,13 @@ $('#review-list').addEventListener('click', async (e) => {
 
 me = await refreshMe();
 $('#header').innerHTML = headerHtml('games');
+try { arcade = await api('/arcade'); } catch { /* オフラインなら開いているあつかい（サーバーでも止める） */ }
+$('#kitsune-say').textContent = kitsuneLine(arcade);
+document.body.classList.toggle('arcade-closed', !arcade.open);
+if (new URLSearchParams(location.search).get('closed')) {
+  toast('🦊 いまは閉店中！ また明日「もう一回！」しよう', 5000);
+  history.replaceState(null, '', location.pathname);
+}
 $('#apply').hidden = me?.ageGroup !== 'adult';
 $('#apply-login').hidden = me?.ageGroup === 'adult';
 loadGames();

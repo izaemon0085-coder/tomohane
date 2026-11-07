@@ -29,10 +29,13 @@ function houseHtml(a) {
 }
 
 // ゲームセンター：じゃんけんなどのゲームをまとめた建物。盛り上げ役のカエルが呼びこみをする
+// 閉店中（見る人の年齢で時間がちがう）は、看板が「🌙 閉店中」になる
+let arcadeOpen = true;
 function gameSpotHtml() {
-  return `<a class="game-spot game-center" href="/games.html" aria-label="ゲームセンター（じゃんけんなどのゲーム）">
-      <span aria-hidden="true">🎮</span> ゲームセンター<span class="game-say">カエル：ゲロゲロ！ いらっしゃーい！</span></a>`;
+  return `<a class="game-spot game-center${arcadeOpen ? '' : ' closed'}" href="/games.html" aria-label="ゲームセンター（${arcadeOpen ? 'じゃんけんなどのゲーム' : '閉店中'}）">
+      <span aria-hidden="true">🎮</span> ゲームセンター<span class="game-say">${arcadeOpen ? 'カエル：ゲロゲロ！ いらっしゃーい！' : '🌙 閉店中'}</span></a>`;
 }
+api('/arcade').then((a) => { arcadeOpen = a.open; loadHouses(); }).catch(() => {});
 
 async function loadHouses() {
   try {
