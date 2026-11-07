@@ -707,32 +707,36 @@ test('ゲーム一覧：4つのゲーム・おすすめ（一言つき）・同�
 
   const list = (await call('/api/games')).data;
   assert.deepEqual(list.map((g) => g.id), ['tomojan', 'ghost', 'korotomo', 'soratomo']);
+  // ころとも・そらともはアップデート予定：一覧には出るが、遊べない・おすすめできない
+  assert.deepEqual(list.filter((g) => g.soon).map((g) => g.id), ['korotomo', 'soratomo']);
+  assert.ok(list.filter((g) => g.soon).every((g) => g.play === null));
+  assert.equal((await call('/api/games/soratomo/recommend', { method: 'PUT', as: a, body: { comment: 'x' } })).status, 409);
   assert.ok(!list.some((g) => g.id === 'tomoai'));
 
   // おすすめはログインが必要。一言は60文字まで
-  assert.equal((await call('/api/games/soratomo/recommend', { method: 'PUT', body: { comment: 'x' } })).status, 401);
-  assert.equal((await call('/api/games/soratomo/recommend', { method: 'PUT', as: a, body: { comment: 'あ'.repeat(61) } })).status, 400);
-  assert.equal((await call('/api/games/soratomo/recommend', { method: 'PUT', as: a, body: { comment: '推しの曲を聞きながら衛星を回すと最高' } })).status, 200);
-  const sora = (await call('/api/games', { as: a })).data.find((g) => g.id === 'soratomo');
+  assert.equal((await call('/api/games/ghost/recommend', { method: 'PUT', body: { comment: 'x' } })).status, 401);
+  assert.equal((await call('/api/games/ghost/recommend', { method: 'PUT', as: a, body: { comment: 'あ'.repeat(61) } })).status, 400);
+  assert.equal((await call('/api/games/ghost/recommend', { method: 'PUT', as: a, body: { comment: '推しの曲を聞きながら走ると最高' } })).status, 200);
+  const sora = (await call('/api/games', { as: a })).data.find((g) => g.id === 'ghost');
   assert.equal(sora.recCount, 1);
-  assert.deepEqual(sora.myRec, { comment: '推しの曲を聞きながら衛星を回すと最高' });
+  assert.deepEqual(sora.myRec, { comment: '推しの曲を聞きながら走ると最高' });
   assert.equal(sora.voices[0].oshi, 'ほしぞらユニット');
 
   // 同じ推しの B さんへのおすすめ
   const pick = (await call('/api/games/recommend', { as: b })).data;
-  assert.equal(pick.id, 'soratomo');
+  assert.equal(pick.id, 'ghost');
   assert.match(pick.reason, /ほしぞらユニット推し/);
 
   // 広場で「おすすめのゲームある？」→ シバが答える
   const posted = await call('/api/posts', { method: 'POST', as: b, body: { text: 'なにかおすすめのゲームある？' } });
   const reply = sim.respondToHumanPost(store.listPosts().find((p) => p.id === posted.data.id));
   assert.equal(reply.authorId, 'agent-shiba');
-  assert.match(reply.text, /そらとも/);
+  assert.match(reply.text, /ゴーストエージェント/);
   assert.match(reply.text, /ほしぞらユニット推し/);
 
   // 取り消し
-  await call('/api/games/soratomo/recommend', { method: 'DELETE', as: a });
-  assert.equal((await call('/api/games')).data.find((g) => g.id === 'soratomo').recCount, 0);
+  await call('/api/games/ghost/recommend', { method: 'DELETE', as: a });
+  assert.equal((await call('/api/games')).data.find((g) => g.id === 'ghost').recCount, 0);
 });
 
 test('ゲームを作っている人へ：キットをダウンロード → 申しこみ（合言葉は1回だけ）→ 運営が一覧に出す → ともはねでログインと記録', async () => {

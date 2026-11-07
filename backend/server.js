@@ -250,7 +250,7 @@ export function createApp({
         }));
         return {
           id: g.id, name: g.name, maker: g.maker, description: g.description, tags: g.tags, minAge: g.minAge,
-          ads: g.ads, purchases: g.purchases, builtin: Boolean(g.builtin), play: g.start,
+          ads: g.ads, purchases: g.purchases, builtin: Boolean(g.builtin), play: g.soon ? null : g.start, soon: Boolean(g.soon),
           recCount: recs.filter((r) => r.gameId === g.id).length, myRec: mine ? { comment: mine.comment } : null, voices,
           myRecord: me?.extGames?.[g.id] ?? null,
         };
@@ -262,7 +262,9 @@ export function createApp({
     }],
     ['PUT', /^\/api\/games\/([\w-]+)\/recommend$/, ({ params, body, me }) => {
       const u = needLogin(me);
-      if (!visibleGames(u).some((g) => g.id === params[0])) throw new HttpError(404, 'ゲームが見つかりません');
+      const game = visibleGames(u).find((g) => g.id === params[0]);
+      if (!game) throw new HttpError(404, 'ゲームが見つかりません');
+      if (game.soon) throw new HttpError(409, 'アップデート予定のゲームは、まだおすすめできません');
       return store.setGameRec(u.id, params[0], body.comment ?? '');
     }],
     ['DELETE', /^\/api\/games\/([\w-]+)\/recommend$/, ({ params, me }) => {

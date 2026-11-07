@@ -3,7 +3,7 @@
 // ・つながっているときは、いつも最新をサーバーから取る（ネットワーク優先）
 // ・つながらないときは、保存しておいたものを見せる（前に見た投稿が見られる）
 // ※ Service Worker は「安全な接続」（localhost か https）のときだけ動く
-const CACHE = 'tomohane-v13';
+const CACHE = 'tomohane-v14';
 
 const SHELL = [
   '/', '/style.css', '/map.js', '/plaza.html', '/plaza.js', '/oshi.html', '/oshi.js',
@@ -14,7 +14,7 @@ const SHELL = [
   '/shared/playground.js', '/shared/playground.css',
   '/shared/customize.js', '/shared/customize.css', '/shared/kisekae-opinions.js',
   '/shared/outbox.js', '/shared/network.js', '/shared/network.css',
-  '/shared/typefaces.js', '/shared/fonts.css', '/shared/precheck.js', '/shared/report.js',
+  '/shared/typefaces.js', '/shared/fonts.css', '/shared/precheck.js', '/shared/report.js', '/shared/soon.js',
   '/shared/avatars/yamaneko.svg', '/shared/avatars/usagi.svg', '/shared/avatars/fukurou.svg',
   '/shared/avatars/shiba.svg', '/shared/avatars/kuruma.svg', '/shared/avatars/mogu.svg', '/shared/avatars/enma-fukurou.svg', '/shared/avatars/shinbunsha.svg',
 ];

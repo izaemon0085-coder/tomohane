@@ -2,6 +2,7 @@
 // ログインのしるしはサーバーのクッキー（JavaScript からは読めない）。ここでは画面の写しだけを更新する
 import { api, refreshMe, rememberMe, logout, headerHtml, escapeHtml, toast, timeAgo, safeNext } from '/shared/api.js';
 import { REPORT_REASONS } from '/shared/report.js';
+import { isComingSoon, SOON_LABEL } from '/shared/soon.js';
 
 const $ = (sel) => document.querySelector(sel);
 const AGE = { child: '子ども（12歳まで）', teen: '中高生（13〜17歳）', adult: '大人（18歳から）' };
@@ -39,8 +40,8 @@ function render(me) {
   $('#acc-login').textContent = me.loginId;
   $('#acc-age').textContent = AGE[me.ageGroup] ?? '―';
   $('#acc-role').textContent = ROLE[me.role] ?? me.role;
-  $('#acc-soratomo').textContent = me.soratomo ? `ミッション達成 ${me.soratomo.missions}回（${me.soratomo.plays}回あそんだ）` : 'まだ遊んでいません（町の地図の「宇宙」から）';
-  $('#acc-korotomo').textContent = me.korotomo ? `ゴール ${me.korotomo.goals}回（${me.korotomo.plays}回あそんだ）` : 'まだ遊んでいません（町の地図のガレージのとなりから）';
+  $('#acc-soratomo').textContent = isComingSoon('soratomo') && !me.soratomo ? SOON_LABEL : me.soratomo ? `ミッション達成 ${me.soratomo.missions}回（${me.soratomo.plays}回あそんだ）` : 'まだ遊んでいません（町の地図の「宇宙」から）';
+  $('#acc-korotomo').textContent = isComingSoon('korotomo') && !me.korotomo ? SOON_LABEL : me.korotomo ? `ゴール ${me.korotomo.goals}回（${me.korotomo.plays}回あそんだ）` : 'まだ遊んでいません（町の地図のガレージのとなりから）';
   $('#acc-ghost').textContent = me.ghost ? `自己ベスト更新 ${me.ghost.bests}回・${me.ghost.days}日つづけた` : 'まだ使っていません（町の地図のグラウンドから）';
   $('#acc-game').textContent = me.game ? `${me.game.wins}勝（${me.game.plays}回あそんだ）` : 'まだ遊んでいません（町の地図のシバの家から）';
   $('#acc-child').hidden = me.ageGroup !== 'child';
