@@ -16,6 +16,8 @@ const replyTarget = $('#reply-target');
 
 let me = await refreshMe();
 let replyTo = null;
+// ?thread=投稿のID：ともはね新聞のスレッドを開いているとき
+const threadId = new URLSearchParams(location.search).get('thread');
 let posts = [];
 let agentsById = {};
 let checkedText = null; // キャラたちが声をかけたあと「このまま送る」を選んだ文面
@@ -39,7 +41,10 @@ function bubbleHtml(post) {
   const parent = post.replyTo && posts.find((p) => p.id === post.replyTo);
   const name = a.kind === 'agent'
     ? `<a href="/side/#${a.id}">${escapeHtml(a.name)}</a>`
-    : escapeHtml(a.name);
+    : a.kind === 'official' ? `<a href="/news.html">${escapeHtml(a.name)}</a> <span class="official-badge">公式</span>` : escapeHtml(a.name);
+  // 広場の一覧では、スレッドのはじまりに「スレッドを開く」を出す（スレッドの中の返信は一覧に出さない）
+  const threadLink = post.thread && !threadId
+    ? `<a class="thread-link" href="?thread=${encodeURIComponent(post.id)}">💬 スレッドを読む・話す（${post.replyCount ?? 0}件）</a>` : '';
   return `<li class="msg${mine ? ' mine' : ''}">
     ${mine ? '' : avatarHtml(a, 40, { speak: post.id, label: `${a.name}さんの発言を読み上げ` })}
     <div class="msg-body">
@@ -47,6 +52,7 @@ function bubbleHtml(post) {
       <div class="bubble">
         ${parent ? `<span class="quote">↩ ${escapeHtml(parent.author.name)}「${escapeHtml(snippet(parent.text))}」</span>` : ''}
         <p>${escapeHtml(post.text)}</p>
+        ${threadLink}
       </div>
       <div class="msg-meta">
         <time datetime="${post.createdAt}">${timeAgo(post.createdAt)}</time>
@@ -82,8 +88,19 @@ function render() {
 
 async function loadPosts() {
   try {
-    posts = (await api('/posts')).slice(0, 100); // オフラインなら、この端末に保存しておいた投稿が返る
+    if (threadId) {
+      const t = await api(`/threads/${encodeURIComponent(threadId)}`);
+      posts = [...t.posts].reverse(); // 画面は新しい順の配列を古い順に並べなおして出す
+    } else {
+      // オフラインなら、この端末に保存しておいた投稿が返る
+      posts = (await api('/posts')).filter((p) => !p.threadId || p.thread).slice(0, 100);
+    }
   } catch (err) {
+    if (err.status === 404 && threadId) {
+      toast('スレッドが見つかりません。広場にもどります');
+      setTimeout(() => { location.href = '/plaza.html'; }, 1500);
+      return;
+    }
     if (!err.offline) throw err;
   }
   render();
@@ -178,7 +195,8 @@ composer.addEventListener('submit', async (e) => {
   checkedText = null;
   btn.disabled = true;
   try {
-    const result = await sendPost({ authorId: me.id, text: textarea.value.trim(), replyTo }); // authorId は送信待ちの表示用。サーバーはログインしている本人として扱う
+    // スレッドを開いているときは、返信を選んでいなくてもスレッドに書く
+    const result = await sendPost({ authorId: me.id, text: textarea.value.trim(), replyTo: replyTo ?? (threadId || null) }); // authorId は送信待ちの表示用。サーバーはログインしている本人として扱う
     textarea.value = '';
     setReply(null);
     if (result.queued) {
@@ -222,6 +240,14 @@ log.addEventListener('click', async (e) => {
 });
 
 renderAuth();
+if (threadId) {
+  $('#chat-title').textContent = '📰 ともはね新聞のスレッド';
+  $('#chat-members').innerHTML = '<a href="/news.html">新聞を読む</a>・記者のキャラたちも読んでいます';
+  const back = document.querySelector('.back-link');
+  back.href = '/plaza.html';
+  back.setAttribute('aria-label', '広場にもどる');
+  textarea.placeholder = 'この号の感想や質問を書こう';
+}
 // ゴーストエージェントなどから「広場で知らせる」で来たとき：下書きを入れるだけ。送るかどうかは本人が決める
 const draft = new URLSearchParams(location.search).get('draft');
 if (draft && me) {
@@ -230,7 +256,7 @@ if (draft && me) {
   textarea.focus();
 }
 loadPosts();
-loadMembers();
+if (!threadId) loadMembers();
 onServerEvents({ post: loadPosts, like: loadPosts, agent: loadMembers });
 window.addEventListener('outbox-change', render);
 window.addEventListener('outbox-sent', loadPosts);

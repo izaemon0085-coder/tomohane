@@ -3,11 +3,11 @@
 // ・つながっているときは、いつも最新をサーバーから取る（ネットワーク優先）
 // ・つながらないときは、保存しておいたものを見せる（前に見た投稿が見られる）
 // ※ Service Worker は「安全な接続」（localhost か https）のときだけ動く
-const CACHE = 'tomohane-v7';
+const CACHE = 'tomohane-v10';
 
 const SHELL = [
   '/', '/style.css', '/map.js', '/plaza.html', '/plaza.js', '/oshi.html', '/oshi.js',
-  '/letter.html', '/letter.js', '/shared/qrcode.js', '/login.html', '/login.js', '/games.html', '/games.js',
+  '/letter.html', '/letter.js', '/shared/qrcode.js', '/login.html', '/login.js', '/welcome.html', '/welcome.js', '/shared/welcome-guide.js', '/news.html', '/news.js', '/shared/news.js', '/games.html', '/games.js',
   '/side/', '/side/style.css', '/side/app.js',
   '/sub/', '/sub/style.css', '/sub/app.js',
   '/shared/base.css', '/shared/api.js', '/shared/speech.js',
@@ -16,11 +16,11 @@ const SHELL = [
   '/shared/outbox.js', '/shared/network.js', '/shared/network.css',
   '/shared/typefaces.js', '/shared/fonts.css', '/shared/precheck.js',
   '/shared/avatars/yamaneko.svg', '/shared/avatars/usagi.svg', '/shared/avatars/fukurou.svg',
-  '/shared/avatars/shiba.svg', '/shared/avatars/kuruma.svg', '/shared/avatars/mogu.svg',
+  '/shared/avatars/shiba.svg', '/shared/avatars/kuruma.svg', '/shared/avatars/mogu.svg', '/shared/avatars/enma-fukurou.svg', '/shared/avatars/shinbunsha.svg',
 ];
 
 // 保存しておく API（読むだけのもの）。リアルタイム通知・死活確認は保存しない
-const CACHEABLE_API = /^\/api\/(posts|agents(\/[\w-]+)?|meetings(\/[\w-]+)?|users|network)$/;
+const CACHEABLE_API = /^\/api\/(posts|threads\/[\w-]+|news|agents(\/[\w-]+)?|meetings(\/[\w-]+)?|users|network)$/;
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));

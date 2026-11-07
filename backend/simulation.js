@@ -4,6 +4,7 @@ import { HttpError, ageGroup } from './store.js';
 import { gamesFor, isGameQuestion, recommendFor, gameRecommendReply } from './games.js';
 import * as net from './net.js';
 import * as kondate from './kondate.js';
+import { publishedIssues, threadText, SHINBUNSHA_ID } from '../shared/news.js';
 
 export function createSimulation(store, {
   random = Math.random,
@@ -280,17 +281,33 @@ export function createSimulation(store, {
     if (open) stepMeeting(open.id);
   }
 
+  // ---------- ともはね新聞：出た日に、新聞社が広場にその号のスレッドを立てる（号外もすぐ） ----------
+  // plaza があれば、そのキャラが記者として最初に返事をする
+  function announceNews() {
+    const posted = [];
+    for (const issue of [...publishedIssues(clock())].reverse()) {
+      if (store.getMeta(`news:${issue.id}`)) continue;
+      store.setMeta(`news:${issue.id}`, true);
+      const root = store.createPost({ authorId: SHINBUNSHA_ID, text: threadText(issue), thread: true, newsIssueId: issue.id });
+      posted.push(root);
+      if (issue.plaza) posted.push(store.createPost({ authorId: issue.plaza.by, text: issue.plaza.text, replyTo: root.id }));
+    }
+    return posted;
+  }
+
   return {
-    lifeTick, meetingTick, onHumanPost, respondToHumanPost, knock, netTick, lineStatus, kondateTick, kondateSummary, startMeeting, stepMeeting,
+    lifeTick, announceNews, meetingTick, onHumanPost, respondToHumanPost, knock, netTick, lineStatus, kondateTick, kondateSummary, startMeeting, stepMeeting,
     start() {
       timers.push(
         setInterval(lifeTick, lifeIntervalMs),
         setInterval(meetingTick, meetingIntervalMs),
         setInterval(netTick, netIntervalMs),
         setInterval(kondateTick, kondateIntervalMs),
+        setInterval(announceNews, 10 * 60 * 1000), // 月曜日になったら、新しい号を告知する
       );
       netTick();
       kondateTick();
+      announceNews();
     },
     stop() {
       timers.splice(0).forEach(clearInterval);

@@ -5,6 +5,7 @@ import { extname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createStore, HttpError, ageGroup, SESSION_DAYS } from './store.js';
 import { createSimulation } from './simulation.js';
+import { publishedIssues, findPoll, pollTalk } from '../shared/news.js';
 import { lanAddresses } from './net.js';
 import { MAX_VIDEO_BYTES, removeVideo, saveVideo, serveVideo } from './letters.js';
 import { createKokotomoClient } from './kokotomo.js';
@@ -279,6 +280,48 @@ export function createApp({
       return extGameView(store.setExtGameStatus(params[0], body.status));
     }],
 
+    // ---- ともはね新聞・アンケート（結果はキャラの座談会で伝える。正確な数とひとことは運営だけ） ----
+    ['GET', /^\/api\/news$/, ({ me }) => {
+      const votes = store.listNewsVotes();
+      const admin = me?.role === 'admin';
+      const threads = Object.fromEntries(store.listPosts().filter((p) => p.thread).map((p) => [p.newsIssueId, p.id]));
+      return publishedIssues().map(({ plaza: _p, ...rest }) => {
+        const issue = { ...rest, threadPostId: threads[rest.id] ?? null };
+        if (!issue.poll) return issue;
+        const mine = votes.filter((v) => v.newsId === issue.poll.id);
+        const counts = Object.fromEntries(issue.poll.choices.map((c) => [c.id, mine.filter((v) => v.choice === c.id).length]));
+        const my = me && mine.find((v) => v.userId === me.id);
+        const choices = issue.poll.choices.map(({ talk: _t, ...c }) => c);
+        return {
+          ...issue,
+          poll: {
+            ...issue.poll, choices, talk: pollTalk(issue.poll, counts),
+            myVote: my ? { choice: my.choice, comment: my.comment } : null,
+            ...(admin ? { counts, total: mine.length } : {}),
+          },
+        };
+      });
+    }],
+    ['PUT', /^\/api\/news\/([\w-]+)\/vote$/, ({ params, body, me }) => {
+      const u = needLogin(me);
+      const poll = findPoll(params[0]);
+      if (!poll) throw new HttpError(404, 'アンケートが見つかりません');
+      if (!poll.choices.some((c) => c.id === body.choice)) throw new HttpError(400, '答えを選んでください');
+      return store.setNewsVote(u.id, poll.id, body.choice, body.comment ?? '');
+    }],
+    ['DELETE', /^\/api\/news\/([\w-]+)\/vote$/, ({ params, me }) => {
+      store.setNewsVote(needLogin(me).id, params[0], null);
+      return { ok: true };
+    }],
+    ['GET', /^\/api\/news\/([\w-]+)\/voices$/, ({ params, me }) => {
+      needAdmin(me);
+      const users = store.usersById();
+      return store.listNewsVotes().filter((v) => v.newsId === params[0] && v.comment).reverse().map((v) => ({
+        name: users[v.userId]?.name ?? '？', age: users[v.userId] ? ageGroup(users[v.userId].birthdate) : null,
+        choice: v.choice, comment: v.comment, at: v.createdAt,
+      }));
+    }],
+
     // ---- やりくり献立との連結（最新の献立の「きょうの晩ごはん」と、画面のアドレス） ----
     ['GET', /^\/api\/kondate$/, () => sim.kondateSummary()],
 
@@ -290,9 +333,27 @@ export function createApp({
     }],
 
     // ---- posts（フロントエンド） ----
+    // threadId：新聞のスレッドの中の投稿なら、そのはじまりの投稿。はじまりの投稿には replyCount（スレッドの返信の数）
     ['GET', /^\/api\/posts$/, () => {
       const users = store.usersById();
-      return store.listPosts().map((p) => postView(p, users));
+      const posts = store.listPosts();
+      const replyCount = {};
+      const views = posts.map((p) => {
+        const root = store.threadRootOf(p);
+        if (root && root.id !== p.id) replyCount[root.id] = (replyCount[root.id] ?? 0) + 1;
+        return { ...postView(p, users), threadId: root?.id ?? null };
+      });
+      return views.map((v) => (v.thread ? { ...v, replyCount: replyCount[v.id] ?? 0 } : v));
+    }],
+    // 新聞のスレッドをまるごと（はじまり＋返信、古い順）
+    ['GET', /^\/api\/threads\/([\w-]+)$/, ({ params }) => {
+      const root = store.getPost(params[0]);
+      if (!root.thread) throw new HttpError(404, 'スレッドが見つかりません');
+      const users = store.usersById();
+      // 同じ時刻の投稿は、先に書かれたほうを上に（listPosts は新しい順で、同じ時刻は書いた順のまま）
+      const posts = store.listPosts().map((p, i) => [p, i]).filter(([p]) => store.threadRootOf(p)?.id === root.id)
+        .sort(([a, i], [b, j]) => a.createdAt.localeCompare(b.createdAt) || i - j).map(([p]) => p);
+      return { root: { ...postView(root, users), threadId: root.id, replyCount: posts.length - 1 }, posts: posts.map((p) => ({ ...postView(p, users), threadId: root.id })) };
     }],
     ['POST', /^\/api\/posts$/, ({ body, me }) => {
       const post = store.createPost({ authorId: needLogin(me).id, text: body.text, replyTo: body.replyTo });

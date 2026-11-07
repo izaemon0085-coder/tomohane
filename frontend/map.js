@@ -1,5 +1,5 @@
 // 町の地図（トップ）：真ん中の広場と、まわりのキャラの家・ガレージ。家を押すとサイドフロント（家）へ
-import { api, onServerEvents, escapeHtml, headerHtml, STATUS_LABEL } from '/shared/api.js';
+import { api, onServerEvents, escapeHtml, headerHtml, STATUS_LABEL, unreadNewsKind } from '/shared/api.js';
 
 document.querySelector('#header').innerHTML = headerHtml('map');
 
@@ -65,6 +65,15 @@ async function loadKondate() {
     document.querySelector('#kondate-today').textContent = k.todayDinner ? `今夜：${k.todayDinner}` : '献立を作ろう';
     shop.setAttribute('aria-label', `やりくり献立を開く（${k.todayDinner ? `今夜は${k.todayDinner}` : 'まだ献立がありません'}）`);
   } catch { /* noop */ }
+}
+
+// 新聞社の札：まだ読んでいない号があれば「新しい号」、号外なら「号外」
+const unread = unreadNewsKind();
+if (unread) {
+  const badge = document.querySelector('#shinbunsha-badge');
+  badge.textContent = unread === 'extra' ? '号外' : '新しい号';
+  badge.classList.toggle('is-extra', unread === 'extra');
+  badge.hidden = false;
 }
 
 loadHouses();

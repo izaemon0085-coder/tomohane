@@ -6,6 +6,7 @@ import { promisify } from 'node:util';
 import { SEED_AGENTS, MOODS } from './agents.js';
 import { DEFAULT_TYPEFACE, TYPEFACE_KEYS } from '../shared/typefaces.js';
 import { precheck } from '../shared/precheck.js';
+import { MAX_VOTE_COMMENT, OFFICIAL_ACCOUNTS } from '../shared/news.js';
 
 export const MAX_POST_LENGTH = 280;
 export const MAX_NAME_LENGTH = 20;
@@ -93,6 +94,12 @@ function seedState(now) {
 
 // 保存データを読み込んだあと、キャラの設定（名前・役割・家など）を最新にし、新しく増えたキャラを引っ越しさせる
 function syncSeedAgents(state, now) {
+  // 公式アカウント（ともはね新聞社）。キャラではないので、家・会議・遊び場には出ない
+  for (const official of OFFICIAL_ACCOUNTS) {
+    const existing = state.users.find((u) => u.id === official.id);
+    if (existing) Object.assign(existing, official);
+    else state.users.push({ ...official });
+  }
   for (const seed of SEED_AGENTS) {
     const existing = state.users.find((u) => u.id === seed.id);
     if (existing) {
@@ -129,6 +136,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
   state.sessions ??= [];
   state.extGames ??= []; // インディーズ・個人のゲーム（申しこみ → 運営が見て一覧に出す）
   state.gameRecs ??= []; // ゲームのおすすめ { gameId, userId, comment, createdAt }
+  state.newsVotes ??= []; // 新聞のアンケート { newsId（アンケートの id）, userId, choice, comment, createdAt }
   const listeners = new Set();
   const loginFails = new Map(); // ログインID → { count, until }（パスワードの総当たりを防ぐ）
   const guardianCodes = new Map(); // つなぐコードのハッシュ → { guardianId, expiresAt }（保存しない。30分で消える）
@@ -223,7 +231,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       if ([...pw].length < 8 || [...pw].length > 64) throw new HttpError(400, 'パスワードは8〜64文字にしてください');
       if (pw.toLowerCase().includes(id)) throw new HttpError(400, 'パスワードに、ログインIDを入れないでください');
       const clean = cleanText(name, MAX_NAME_LENGTH, '表示名');
-      if (state.users.some((u) => u.kind === 'agent' && u.name === clean)) throw new HttpError(409, 'その名前はエージェントが使っています');
+      if (state.users.some((u) => u.kind !== 'human' && u.name === clean)) throw new HttpError(409, 'その名前はエージェントか公式アカウントが使っています');
       if (typeof birthdate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(birthdate) || Number.isNaN(Date.parse(birthdate))) {
         throw new HttpError(400, '生年月日を入れてください');
       }
@@ -325,6 +333,24 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       state.gameRecs.push(rec);
       emit('game', { gameId });
       return rec;
+    },
+
+    // ---- 新聞のアンケート（1人1票。もう一度答えると書きかえる。choice が null なら取り消す） ----
+    listNewsVotes: () => state.newsVotes,
+    setNewsVote(userId, newsId, choice, comment = '') {
+      const user = requireUser(userId);
+      state.newsVotes = state.newsVotes.filter((v) => !(v.userId === userId && v.newsId === newsId));
+      if (choice === null) {
+        emit('news', { newsId });
+        return null;
+      }
+      const text = typeof comment === 'string' ? comment.trim() : '';
+      if ([...text].length > MAX_VOTE_COMMENT) throw new HttpError(400, `ひとことは${MAX_VOTE_COMMENT}文字以内にしてください`);
+      if (text) rejectBlocked(user, text);
+      const vote = { newsId, userId, choice, comment: text, createdAt: now() };
+      state.newsVotes.push(vote);
+      emit('news', { newsId });
+      return vote;
     },
 
     // ---- ゲーム一覧：インディーズ・個人のゲーム ----
@@ -564,12 +590,14 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
     // ---- posts (フロントエンド：SNS) ----
     listPosts: () => [...state.posts].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     getPost: requirePost,
-    createPost({ authorId, text, replyTo = null }) {
+    // thread：新聞の号ごとのスレッドのはじまり（newsIssueId はその号）。人間の投稿では使わない
+    createPost({ authorId, text, replyTo = null, thread = false, newsIssueId = null }) {
       const author = requireUser(authorId);
       const clean = cleanText(text, MAX_POST_LENGTH, '投稿');
       rejectBlocked(author, clean);
       if (replyTo) requirePost(replyTo);
       const post = { id: newId('p'), authorId, text: clean, replyTo: replyTo || null, likes: [], createdAt: now() };
+      if (thread && author.kind === 'official') Object.assign(post, { thread: true, newsIssueId });
       state.posts.push(post);
       emit('post', post);
       return post;
@@ -582,6 +610,15 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       else post.likes.splice(i, 1);
       emit('like', post);
       return post;
+    },
+    // スレッドのはじまり（thread の付いた投稿）。返信をたどって探す。スレッドの中でなければ null
+    threadRootOf(post) {
+      let p = post;
+      for (let i = 0; p && i < 1000; i++) {
+        if (p.thread) return p;
+        p = p.replyTo ? state.posts.find((x) => x.id === p.replyTo) : null;
+      }
+      return null;
     },
     hasReplied: (postId, userId) => state.posts.some((p) => p.replyTo === postId && p.authorId === userId),
 

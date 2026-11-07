@@ -786,3 +786,77 @@ test('ゲームを作っている人へ：キットをダウンロード → 申
   await assert.rejects(kit.report(player.gameId, { plays: -1 }), /記録/);
   assert.deepEqual((await call('/api/games', { as: maker })).data.find((g) => g.id === 'pixel-cat').myRecord.plays, 3);
 });
+
+test('ともはね新聞：アンケートは1人1票。数は運営だけ、みんなには座談会で伝える', async () => {
+  const id = 'guide-chara';
+  const pollOf = (data) => data.find((i) => i.poll?.id === id).poll;
+  const anon = await call('/api/news');
+  assert.equal(anon.status, 200);
+  assert.equal(anon.data[0].plaza, undefined, '広場の告知文は返さない');
+  const first = pollOf(anon.data);
+  assert.equal(first.counts, undefined, '数は返さない');
+  assert.equal(first.total, undefined);
+  assert.ok(first.choices.every((c) => c.talk === undefined));
+  assert.ok(first.talk.length >= 1);
+  assert.equal(first.myVote, null);
+
+  assert.equal((await call(`/api/news/${id}/vote`, { method: 'PUT', body: { choice: 'draw' } })).status, 401, 'ログインしていないと答えられない');
+  const fan = await signup('新聞に答える人');
+  const admin = await signup('新聞を見る運営');
+  store.getUser(admin.id).role = 'admin';
+  assert.equal((await call(`/api/news/${id}/vote`, { method: 'PUT', as: fan, body: { choice: 'ちがう' } })).status, 400);
+  assert.equal((await call('/api/news/no-such/vote', { method: 'PUT', as: fan, body: { choice: 'draw' } })).status, 404);
+  assert.equal((await call(`/api/news/${id}/vote`, { method: 'PUT', as: fan, body: { choice: 'draw', comment: 'x'.repeat(101) } })).status, 400);
+
+  assert.equal((await call(`/api/news/${id}/vote`, { method: 'PUT', as: fan, body: { choice: 'draw', comment: 'ネコのキャラを描きたい' } })).status, 200);
+  assert.equal((await call(`/api/news/${id}/vote`, { method: 'PUT', as: fan, body: { choice: 'see', comment: 'やっぱり見るだけ' } })).status, 200);
+  const mine = pollOf((await call('/api/news', { as: fan })).data);
+  assert.deepEqual(mine.myVote, { choice: 'see', comment: 'やっぱり見るだけ' });
+  assert.equal(mine.counts, undefined, '答えた人にも数は見せない');
+  assert.ok(!JSON.stringify(mine.talk).match(/\d/), '座談会に数字は出ない');
+
+  const forAdmin = pollOf((await call('/api/news', { as: admin })).data);
+  assert.equal(forAdmin.total, 1, '同じ人は1票だけ');
+  assert.equal(forAdmin.counts.see, 1);
+  assert.equal(forAdmin.counts.draw, 0);
+
+  assert.equal((await call(`/api/news/${id}/voices`, { as: fan })).status, 403, 'ひとことは運営だけ');
+  const voices = await call(`/api/news/${id}/voices`, { as: admin });
+  assert.deepEqual(voices.data.map((v) => [v.name, v.choice, v.comment, v.age]), [['新聞に答える人', 'see', 'やっぱり見るだけ', 'adult']]);
+
+  assert.equal((await call(`/api/news/${id}/vote`, { method: 'DELETE', as: fan })).status, 200);
+  assert.equal(pollOf((await call('/api/news', { as: admin })).data).total, 0);
+});
+
+test('ともはね新聞：出た号ごとに、新聞社が広場にスレッドを立てる（1回だけ）。返信はスレッドにまとまる', async () => {
+  const posted = sim.announceNews();
+  const [root, first] = posted;
+  assert.equal(root.authorId, 'official-shinbunsha');
+  assert.equal(root.thread, true);
+  assert.equal(root.newsIssueId, '2026-11-07-no1');
+  assert.match(root.text, /第1号/);
+  assert.equal(first.authorId, 'agent-shiba', '記者のシバが最初に返事をする');
+  assert.equal(first.replyTo, root.id);
+  assert.deepEqual(sim.announceNews(), [], '2回目は立てない');
+
+  // 人がスレッドの中の返信に返信しても、同じスレッドにまとまる
+  const reader = await signup('スレッドで話す人');
+  const r = await call('/api/posts', { method: 'POST', as: reader, body: { text: '創刊おめでとう！', replyTo: first.id } });
+  assert.equal(r.status, 201);
+  const list = (await call('/api/posts')).data;
+  assert.equal(list.find((p) => p.id === r.data.id).threadId, root.id);
+  assert.equal(list.find((p) => p.id === root.id).replyCount, 2);
+  assert.equal(list.find((p) => p.id === root.id).author.name, 'ともはね新聞社');
+  const thread = (await call(`/api/threads/${root.id}`)).data;
+  assert.deepEqual(thread.posts.map((p) => p.id).slice(0, 3), [root.id, first.id, r.data.id], '古い順');
+  assert.equal((await call(`/api/threads/${r.data.id}`)).status, 404, 'はじまりの投稿でなければスレッドではない');
+  const news = (await call('/api/news')).data.find((i) => i.id === '2026-11-07-no1');
+  assert.equal(news.threadPostId, root.id, '新聞から、その号のスレッドへ行ける');
+
+  // 人は新聞社の名前を使えない。人の投稿はスレッドのはじまりにならない
+  const fake = await call('/api/auth/register', { method: 'POST', body: { loginId: 'fake_paper', password: 'long-password', name: 'ともはね新聞社', birthdate: '1990-01-01' } });
+  assert.equal(fake.status, 409);
+  const sneaky = await call('/api/posts', { method: 'POST', as: reader, body: { text: 'スレッドにしたい', thread: true } });
+  assert.equal(sneaky.data.thread, undefined);
+  assert.ok(!store.listAgents().some((a) => a.id === 'official-shinbunsha'), '新聞社はキャラではない');
+});
