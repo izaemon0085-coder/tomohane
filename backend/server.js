@@ -213,7 +213,9 @@ export function createApp({
     ['DELETE', /^\/api\/users\/([\w-]+)\/oshi\/goods\/([\w-]+)$/, ({ params, me }) => store.removeGoods(self(me, params[0]), params[1])],
     ['GET', /^\/api\/users\/([\w-]+)\/oshi\/friends$/, ({ params, me }) => {
       const users = store.usersById();
-      return store.oshiFriendsPosts(self(me, params[0])).map((p) => postView(p, users));
+      const blocked = new Set(store.blocksOf(self(me, params[0])).map((b) => b.targetId));
+      return store.oshiFriendsPosts(me.id, 5 + blocked.size).filter((p) => !blocked.has(p.authorId))
+        .slice(0, 5).map((p) => postView(p, users));
     }],
 
     // ---- 保護者とつなぐ（子ども） ----
@@ -334,9 +336,10 @@ export function createApp({
 
     // ---- posts（フロントエンド） ----
     // threadId：新聞のスレッドの中の投稿なら、そのはじまりの投稿。はじまりの投稿には replyCount（スレッドの返信の数）
-    ['GET', /^\/api\/posts$/, () => {
+    // ブロックした人の投稿などは、その人の画面には出さない（store.canSee）
+    ['GET', /^\/api\/posts$/, ({ me }) => {
       const users = store.usersById();
-      const posts = store.listPosts();
+      const posts = store.listPosts().filter((p) => store.canSee(p, me?.id ?? null));
       const replyCount = {};
       const views = posts.map((p) => {
         const root = store.threadRootOf(p);
@@ -346,12 +349,12 @@ export function createApp({
       return views.map((v) => (v.thread ? { ...v, replyCount: replyCount[v.id] ?? 0 } : v));
     }],
     // 新聞のスレッドをまるごと（はじまり＋返信、古い順）
-    ['GET', /^\/api\/threads\/([\w-]+)$/, ({ params }) => {
+    ['GET', /^\/api\/threads\/([\w-]+)$/, ({ params, me }) => {
       const root = store.getPost(params[0]);
       if (!root.thread) throw new HttpError(404, 'スレッドが見つかりません');
       const users = store.usersById();
       // 同じ時刻の投稿は、先に書かれたほうを上に（listPosts は新しい順で、同じ時刻は書いた順のまま）
-      const posts = store.listPosts().map((p, i) => [p, i]).filter(([p]) => store.threadRootOf(p)?.id === root.id)
+      const posts = store.listPosts().map((p, i) => [p, i]).filter(([p]) => store.threadRootOf(p)?.id === root.id && store.canSee(p, me?.id ?? null))
         .sort(([a, i], [b, j]) => a.createdAt.localeCompare(b.createdAt) || i - j).map(([p]) => p);
       return { root: { ...postView(root, users), threadId: root.id, replyCount: posts.length - 1 }, posts: posts.map((p) => ({ ...postView(p, users), threadId: root.id })) };
     }],
@@ -360,6 +363,17 @@ export function createApp({
       sim.onHumanPost(post);
       return [201, postView(post, store.usersById())];
     }],
+    // ---- ミュート・ブロック（kind で本人が選ぶ）：相手には知らせない。理由はキャラだけが読むので、ここでも返さない ----
+    ['GET', /^\/api\/blocks$/, ({ me }) => {
+      const users = store.usersById();
+      return store.blocksOf(needLogin(me).id).map((b) => ({ user: publicUser(users[b.targetId]), kind: b.kind ?? 'block', createdAt: b.createdAt, hasReason: Boolean(b.reason) }));
+    }],
+    ['PUT', /^\/api\/blocks\/([\w-]+)$/, ({ params, body, me }) => {
+      const b = store.blockUser(needLogin(me).id, params[0], body.reason ?? '', body.kind ?? 'block', { keepReason: body.keepReason === true });
+      return { user: publicUser(store.usersById()[b.targetId]), kind: b.kind ?? 'block', createdAt: b.createdAt, hasReason: Boolean(b.reason) };
+    }],
+    ['DELETE', /^\/api\/blocks\/([\w-]+)$/, ({ params, me }) => store.unblockUser(needLogin(me).id, params[0])],
+
     ['POST', /^\/api\/posts\/([\w-]+)\/like$/, ({ params, me }) =>
       postView(store.toggleLike(params[0], needLogin(me).id), store.usersById())],
 

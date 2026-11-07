@@ -16,6 +16,9 @@ export const MAX_NOTE_LENGTH = 100;
 export const MAX_LETTERS_PER_USER = 50;
 const MAX_DIARY = 20;
 export const MAX_REC_LENGTH = 60;
+export const MAX_BLOCK_REASON = 100;
+export const MAX_BLOCKS = 500;
+export const BLOCK_KINDS = ['mute', 'block'];
 
 // 手紙の合言葉。サーバーには「ハッシュ」だけを残し、合言葉そのものは作った人のブラウザだけが持つ
 const randomToken = () => randomBytes(18).toString('base64url');
@@ -137,6 +140,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
   state.extGames ??= []; // インディーズ・個人のゲーム（申しこみ → 運営が見て一覧に出す）
   state.gameRecs ??= []; // ゲームのおすすめ { gameId, userId, comment, createdAt }
   state.newsVotes ??= []; // 新聞のアンケート { newsId（アンケートの id）, userId, choice, comment, createdAt }
+  state.blocks ??= []; // ミュート・ブロック { userId（した人）, targetId（された人）, kind（'mute' | 'block'）, reason（キャラだけが読む）, createdAt }
   const listeners = new Set();
   const loginFails = new Map(); // ログインID → { count, until }（パスワードの総当たりを防ぐ）
   const guardianCodes = new Map(); // つなぐコードのハッシュ → { guardianId, expiresAt }（保存しない。30分で消える）
@@ -621,6 +625,46 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       return null;
     },
     hasReplied: (postId, userId) => state.posts.some((p) => p.replyTo === postId && p.authorId === userId),
+
+    // ---- ミュート・ブロック（どちらにするかは本人が選ぶ） ----
+    // どちらも相手には知らせない（お知らせも、サーバーからの合図も出さない）。理由は書いても書かなくてもよく、
+    // キャラだけが読むもので、どの画面・API にも返さない。
+    // ミュート：した人の画面から、相手の投稿が見えなくなる
+    // ブロック：ミュート＋相手がした人の投稿にした返信が、ほかの人にも見えなくなる（書いた本人には見える）
+    blockUser(userId, targetId, reason = '', kind = 'block', { keepReason = false } = {}) {
+      if (!BLOCK_KINDS.includes(kind)) throw new HttpError(400, 'ミュートかブロックかを選んでください');
+      const user = requireUser(userId);
+      const target = requireUser(targetId);
+      if (user.kind !== 'human') throw new HttpError(400, 'ブロックできるのは人間のユーザーだけです');
+      if (target.id === user.id) throw new HttpError(400, '自分はブロックできません');
+      if (target.kind !== 'human') throw new HttpError(400, 'ブロックできるのは人間のユーザーだけです');
+      const clean = typeof reason === 'string' && reason.trim() ? cleanText(reason, MAX_BLOCK_REASON, 'ブロックの理由') : '';
+      const mine = state.blocks.filter((b) => b.userId === userId);
+      const found = mine.find((b) => b.targetId === targetId);
+      if (!found && mine.length >= MAX_BLOCKS) throw new HttpError(400, `ブロックは${MAX_BLOCKS}人までです`);
+      if (found) Object.assign(found, { kind }, keepReason ? {} : { reason: clean });
+      else state.blocks.push({ userId, targetId, kind, reason: clean, createdAt: now() });
+      save();
+      return found ?? state.blocks.at(-1);
+    },
+    unblockUser(userId, targetId) {
+      const i = state.blocks.findIndex((b) => b.userId === userId && b.targetId === targetId);
+      if (i === -1) throw new HttpError(404, 'ブロックしていません');
+      state.blocks.splice(i, 1);
+      save();
+      return { ok: true };
+    },
+    blocksOf: (userId) => state.blocks.filter((b) => b.userId === userId),
+    // viewerId の人に見せてよい投稿か（ログインしていなければ viewerId は null）
+    canSee(post, viewerId) {
+      if (viewerId && post.authorId !== viewerId) {
+        if (state.blocks.some((b) => b.userId === viewerId && b.targetId === post.authorId)) return false;
+      }
+      const parent = post.replyTo && state.posts.find((p) => p.id === post.replyTo);
+      if (parent && post.authorId !== viewerId
+        && state.blocks.some((b) => b.userId === parent.authorId && b.targetId === post.authorId && (b.kind ?? 'block') === 'block')) return false;
+      return true;
+    },
 
     // ---- meetings (サブフロント：会議室) ----
     listMeetings: () => [...state.meetings].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),

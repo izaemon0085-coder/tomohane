@@ -45,7 +45,47 @@ function render(me) {
   $('#acc-child').hidden = me.ageGroup !== 'child';
   $('#acc-back').href = nextUrl();
   renderFamily(me);
+  renderBlocks();
 }
+
+// ---- ミュート・ブロックした人 ----
+const KIND_NAME = { mute: '🙈 ミュート', block: '🚫 ブロック' };
+async function renderBlocks() {
+  let list;
+  try { list = await api('/blocks'); } catch { return; }
+  $('#block-list').innerHTML = list.length
+    ? list.map((b) => {
+      const id = escapeHtml(b.user?.id ?? '');
+      const name = escapeHtml(b.user?.name ?? '？');
+      const other = b.kind === 'mute' ? 'block' : 'mute';
+      return `<li><strong>${name}</strong>
+      <span class="muted small">${KIND_NAME[b.kind] ?? ''}（${escapeHtml(timeAgo(b.createdAt))}）</span>
+      <div class="row wrap">
+        <button type="button" class="btn ghost" data-switch="${id}" data-kind="${other}" data-name="${name}">${KIND_NAME[other]}にする</button>
+        <button type="button" class="btn ghost" data-unblock="${id}" data-name="${name}">外す</button>
+      </div></li>`;
+    }).join('')
+    : '<li class="muted small">ミュート・ブロックした人はいません</li>';
+}
+$('#block-list').addEventListener('click', async (e) => {
+  const sw = e.target.closest('[data-switch]');
+  const un = e.target.closest('[data-unblock]');
+  if (!sw && !un) return;
+  try {
+    if (sw) {
+      // 切りかえだけ。前に書いた理由はそのまま残す（keepReason）
+      await api(`/blocks/${encodeURIComponent(sw.dataset.switch)}`, { method: 'PUT', body: { kind: sw.dataset.kind, keepReason: true } });
+      toast(`🐕 ${sw.dataset.name} さんを${KIND_NAME[sw.dataset.kind]}にしたっす`);
+    } else {
+      if (!confirm(`${un.dataset.name} さんのミュート・ブロックを外しますか？`)) return;
+      await api(`/blocks/${encodeURIComponent(un.dataset.unblock)}`, { method: 'DELETE' });
+      toast(`🐕 ${un.dataset.name} さんを外したっす`);
+    }
+    renderBlocks();
+  } catch (err) {
+    toast(err.message, 5000);
+  }
+});
 
 // ---- 保護者とつなぐ ----
 async function renderFamily(me) {

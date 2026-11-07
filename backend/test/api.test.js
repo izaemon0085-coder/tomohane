@@ -860,3 +860,62 @@ test('ともはね新聞：出た号ごとに、新聞社が広場にスレッ�
   assert.equal(sneaky.data.thread, undefined);
   assert.ok(!store.listAgents().some((a) => a.id === 'official-shinbunsha'), '新聞社はキャラではない');
 });
+
+test('ミュート・ブロック：相手には知らせない・理由は返さない・相手の投稿が見えなくなる・返信はほかの人にも見えない・いつでも外せる', async () => {
+  const a = await signup('ブロックする人');
+  const b = await signup('ブロックされる人');
+  const c = await signup('見ている人');
+  const events = [];
+  const unsub = store.subscribe((e) => events.push(e.type));
+
+  const mine = (await call('/api/posts', { method: 'POST', as: a, body: { text: 'Aの投稿' } })).data;
+  const bPost = (await call('/api/posts', { method: 'POST', as: b, body: { text: 'Bの投稿' } })).data;
+  const bReply = (await call('/api/posts', { method: 'POST', as: b, body: { text: 'Aへの返信', replyTo: mine.id } })).data;
+
+  assert.equal((await call(`/api/blocks/${b.id}`, { method: 'PUT', body: {} })).status, 401, 'ログインが要る');
+  assert.equal((await call(`/api/blocks/${a.id}`, { method: 'PUT', as: a, body: {} })).status, 400, '自分はブロックできない');
+  assert.equal((await call('/api/blocks/agent-shiba', { method: 'PUT', as: a, body: {} })).status, 400, 'キャラはブロックできない');
+  assert.equal((await call(`/api/blocks/${b.id}`, { method: 'PUT', as: a, body: { reason: 'あ'.repeat(101) } })).status, 400);
+
+  events.length = 0;
+  const blocked = await call(`/api/blocks/${b.id}`, { method: 'PUT', as: a, body: { reason: 'しつこいから' } });
+  assert.equal(blocked.status, 200);
+  assert.equal(blocked.data.hasReason, true);
+  assert.equal(JSON.stringify(blocked.data).includes('しつこい'), false, '理由は返さない');
+  assert.deepEqual(events, [], '合図（お知らせ）を出さない');
+
+  const ids = async (as) => (await call('/api/posts', { as })).data.map((p) => p.id);
+  const seenByA = await ids(a);
+  assert.ok(!seenByA.includes(bPost.id) && !seenByA.includes(bReply.id), 'Aには Bの投稿が見えない');
+  const seenByC = await ids(c);
+  assert.ok(seenByC.includes(bPost.id), 'ほかの人には Bのふつうの投稿は見える');
+  assert.ok(!seenByC.includes(bReply.id), 'Aの投稿への Bの返信は、ほかの人にも見えない');
+  assert.ok(!(await ids(null)).includes(bReply.id), 'ログインしていない人にも見えない');
+  const seenByB = await ids(b);
+  assert.ok(seenByB.includes(bReply.id) && seenByB.includes(mine.id), 'B本人には全部ふつうに見える（知らせない）');
+  assert.equal((await call('/api/blocks', { as: b })).data.length, 0, 'Bの一覧には何も出ない');
+
+  const list = (await call('/api/blocks', { as: a })).data;
+  assert.deepEqual(list.map((x) => x.user.name), ['ブロックされる人']);
+  assert.equal(JSON.stringify(list).includes('しつこい'), false);
+
+  // 理由なしでもブロックできる（理由を変えても1人は1回）
+  await call(`/api/blocks/${b.id}`, { method: 'PUT', as: a, body: { reason: '   ' } });
+  assert.equal((await call('/api/blocks', { as: a })).data[0].hasReason, false);
+  assert.equal((await call('/api/blocks', { as: a })).data.length, 1);
+
+  // ミュートに切りかえ：Aには見えないまま、Aの投稿への返信はほかの人にも見える。理由は残せる
+  await call(`/api/blocks/${b.id}`, { method: 'PUT', as: a, body: { reason: 'まだいや' } });
+  const muted = await call(`/api/blocks/${b.id}`, { method: 'PUT', as: a, body: { kind: 'mute', keepReason: true } });
+  assert.equal(muted.data.kind, 'mute');
+  assert.equal(muted.data.hasReason, true, '切りかえても理由は残る');
+  assert.ok(!(await ids(a)).includes(bPost.id), 'ミュートでも Aには見えない');
+  assert.ok((await ids(c)).includes(bReply.id), 'ミュートなら、返信はほかの人には見える');
+  assert.equal((await call(`/api/blocks/${b.id}`, { method: 'PUT', as: a, body: { kind: 'kick' } })).status, 400);
+
+  assert.equal((await call(`/api/blocks/${b.id}`, { method: 'DELETE', as: a })).status, 200);
+  assert.equal((await call(`/api/blocks/${b.id}`, { method: 'DELETE', as: a })).status, 404);
+  assert.ok((await ids(a)).includes(bPost.id), '外すとまた見える');
+  assert.ok((await ids(c)).includes(bReply.id));
+  unsub();
+});

@@ -384,3 +384,9 @@ html[data-oshi-color] .oshi-hero { color: var(--accent-text); }
 .extra-chip, .news-extra { display: inline-block; background: #b3262d; color: #fff; font-size: .72rem; font-weight: 700; border-radius: 4px; padding: 0 5px; margin-left: 4px; vertical-align: middle; }
 .extra-chip { margin: 0 4px 0 0; }
 .news-dot { display: inline-block; width: 8px; height: 8px; margin-left: 4px; border-radius: 50%; background: var(--like); vertical-align: top; }
+.block-notes { margin: 8px 0 0; padding-left: 1.2em; display: grid; gap: 2px; }
+.block-kinds { border: 0; margin: 12px 0 4px; padding: 0; display: grid; gap: 8px; }
+.block-kind { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; cursor: pointer; }
+.block-kind:has(input:checked) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface)); }
+.block-kind input { margin-top: 4px; accent-color: var(--accent); }
+.block-kind > span { display: grid; gap: 2px; }

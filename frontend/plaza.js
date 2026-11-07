@@ -60,6 +60,7 @@ function bubbleHtml(post) {
           aria-label="いいね ${post.likeCount}件">${liked ? '♥' : '♡'} ${post.likeCount || ''}</button>
         <button type="button" class="msg-act" data-reply="${post.id}">返信</button>
         ${mine ? `<button type="button" class="msg-act" data-speak="${post.id}" aria-label="読み上げ">🔊</button>` : ''}
+        ${me && !mine && a.kind === 'human' ? `<button type="button" class="msg-act" data-block="${a.id}" aria-label="${escapeHtml(a.name)}さんをミュート・ブロック">🚫</button>` : ''}
       </div>
     </div>
   </li>`;
@@ -215,6 +216,64 @@ composer.addEventListener('submit', async (e) => {
 
 $('#cancel-reply').addEventListener('click', () => setReply(null));
 
+// ---- ミュート・ブロック（どちらにするかは本人が選ぶ） ----
+// ブロックで理由を書かずに押したときだけ、シバがさびしそうに1回だけ聞く（押しまちがい・携帯が変わった・家族がさわった、のため）
+const blockDialog = $('#block-dialog');
+const blockForm = $('#block-form');
+const KIND_NAME = { mute: 'ミュート', block: 'ブロック' };
+let blockTarget = null;
+let blockAsked = false;
+
+const chosenKind = () => blockForm.kind.value || 'block';
+
+function setBlockStep(asking) {
+  blockAsked = asking;
+  const kind = KIND_NAME[chosenKind()];
+  $('#block-reason-box').hidden = asking;
+  $('#block-say').textContent = asking
+    ? '……まちがえてないっすか？　押しまちがいや、おうちの人がさわっちゃったこともあるっす。'
+    : `${blockTarget.name}さんをどうするっすか？　どっちも相手には知らせないから、安心してほしいっす。`;
+  $('#block-cancel').textContent = asking ? 'まちがえた' : 'やめる';
+  $('#block-ok').textContent = `${kind}する`;
+}
+
+function openBlock(author) {
+  blockTarget = author;
+  blockForm.reset();
+  $('#block-error').textContent = '';
+  $('#block-title').textContent = `${author.name}さんをミュート・ブロック`;
+  setBlockStep(false);
+  blockDialog.showModal();
+}
+
+blockDialog.addEventListener('click', (e) => {
+  if (e.target === blockDialog || e.target.closest('[data-close]')) blockDialog.close();
+});
+blockForm.addEventListener('change', (e) => { if (e.target.name === 'kind') setBlockStep(false); });
+
+blockForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const reason = blockForm.reason.value.trim();
+  const kind = chosenKind();
+  if (kind === 'block' && !reason && !blockAsked) {
+    setBlockStep(true);
+    $('#block-ok').focus();
+    return;
+  }
+  $('#block-ok').disabled = true;
+  try {
+    await api(`/blocks/${encodeURIComponent(blockTarget.id)}`, { method: 'PUT', body: { reason, kind } });
+    blockDialog.close();
+    toast(`🐕 ${blockTarget.name}さんを${KIND_NAME[kind]}したっす。外したくなったら、アカウントのページからいつでもできるっす`);
+    if (replyTo && posts.find((p) => p.id === replyTo)?.author.id === blockTarget.id) setReply(null);
+    await loadPosts();
+  } catch (err) {
+    $('#block-error').textContent = err.offline ? '📴 オフラインなので、つながってからにしてほしいっす' : err.message;
+  } finally {
+    $('#block-ok').disabled = false;
+  }
+});
+
 log.addEventListener('click', async (e) => {
   const speakBtn = e.target.closest('[data-speak]');
   if (speakBtn) {
@@ -226,6 +285,12 @@ log.addEventListener('click', async (e) => {
   if (replyBtn) {
     if (!me) return loginForm.querySelector('a').focus();
     return setReply(replyBtn.dataset.reply);
+  }
+  const blockBtn = e.target.closest('[data-block]');
+  if (blockBtn) {
+    const post = posts.find((p) => p.author.id === blockBtn.dataset.block);
+    if (post) openBlock(post.author);
+    return;
   }
   const likeBtn = e.target.closest('[data-like]');
   if (likeBtn) {

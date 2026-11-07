@@ -52,6 +52,35 @@
         <p class="error" id="post-error"></p>
       </form>
     </section>
+
+    <!-- ブロック：相手には知らせない。理由はシバたちキャラだけが読む -->
+    <dialog id="block-dialog" class="card oshi-dialog" aria-labelledby="block-title">
+      <form id="block-form" method="dialog">
+        <h2 id="block-title"></h2>
+        <div class="say-line"><img src="/shared/avatars/shiba.svg" alt="" width="44" height="44">
+          <p id="block-say"></p></div>
+        <div id="block-reason-box">
+          <fieldset class="block-kinds">
+            <legend class="sr-only">どちらにするか</legend>
+            <label class="block-kind"><input type="radio" name="kind" value="mute">
+              <span><strong>🙈 ミュート</strong><span class="muted small">その人の投稿が、あなたの広場に出なくなります。</span></span></label>
+            <label class="block-kind"><input type="radio" name="kind" value="block" checked>
+              <span><strong>🚫 ブロック</strong><span class="muted small">ミュートと同じ＋その人があなたの投稿にした返信が、ほかの人にも見えなくなります。</span></span></label>
+          </fieldset>
+          <label class="field">理由（書かなくてもいいっす。シバたちキャラだけが読むっす。100文字まで）
+            <textarea class="input" name="reason" rows="2" maxlength="100"></textarea></label>
+          <ul class="muted small block-notes">
+            <li>どちらも、相手には知らせません。</li>
+            <li>アカウントのページから、いつでも外せます。切りかえもできます。</li>
+          </ul>
+        </div>
+        <p class="error" id="block-error" role="alert"></p>
+        <div class="row end">
+          <button type="button" class="btn ghost" data-close id="block-cancel">やめる</button>
+          <button type="submit" class="btn" id="block-ok">ブロックする</button>
+        </div>
+      </form>
+    </dialog>
   </main>
   <script type="module" src="/plaza.js"></script>
   <script type="module" src="/shared/customize.js"></script>
