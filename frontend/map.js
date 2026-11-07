@@ -28,21 +28,16 @@ function houseHtml(a) {
   </a>`;
 }
 
-// ゲームのスポット：キャラが家にいるときだけ光って、遊べることを教えてくれる
-function gameSpotHtml(agents) {
-  const shiba = agents.find((a) => a.id === 'agent-shiba');
-  const open = shiba?.status === 'home';
-  return open
-    ? `<a class="game-spot" href="/api/link/game-start" aria-label="シバの家でじゃんけん（ともじゃんが開きます）">
-        <span aria-hidden="true">✊✌️✋</span> じゃんけん<span class="game-say">シバ：あそぶっす！</span></a>`
-    : `<span class="game-spot closed" aria-label="じゃんけんはお休み（シバが${shiba?.status === 'sleeping' ? '寝ています' : 'お出かけ中です'}）">
-        じゃんけん お休み</span>`;
+// ゲームセンター：じゃんけんなどのゲームをまとめた建物。盛り上げ役のカエルが呼びこみをする
+function gameSpotHtml() {
+  return `<a class="game-spot game-center" href="/games.html" aria-label="ゲームセンター（じゃんけんなどのゲーム）">
+      <span aria-hidden="true">🎮</span> ゲームセンター<span class="game-say">カエル：ゲロゲロ！ いらっしゃーい！</span></a>`;
 }
 
 async function loadHouses() {
   try {
     const agents = await api('/agents');
-    document.querySelector('#map-houses').innerHTML = agents.filter((a) => SPOTS[a.id]).map(houseHtml).join('') + gameSpotHtml(agents);
+    document.querySelector('#map-houses').innerHTML = agents.filter((a) => SPOTS[a.id]).map(houseHtml).join('') + gameSpotHtml();
   } catch { /* オフラインで保存もなければ、前の表示のまま */ }
 }
 

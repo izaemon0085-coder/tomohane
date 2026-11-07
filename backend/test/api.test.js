@@ -112,8 +112,8 @@ test('入力チェック', async () => {
 
 test('サイドフロント：エージェントの家とノック', async () => {
   const { data: agents } = await call('/api/agents');
-  assert.equal(agents.length, 8);
-  assert.deepEqual(agents.map((a) => a.name), ['ヤマネコ', 'ウサギ', 'フクロウ', 'シバ', 'クルマ', 'モグ', 'タヌキ', 'ペンギン']);
+  assert.equal(agents.length, 10);
+  assert.deepEqual(agents.map((a) => a.name), ['ヤマネコ', 'ウサギ', 'フクロウ', 'シバ', 'クルマ', 'モグ', 'タヌキ', 'ペンギン', 'キツネ', 'カエル']);
   const id = agents[0].id;
   store.updateAgent(id, { status: 'sleeping' });
   const { data } = await call(`/api/agents/${id}/knock`, { method: 'POST' });
@@ -190,7 +190,7 @@ test('保存データに新しいキャラが自動で引っ越してくる', as
   const state = { users: old.listAgents().slice(0, 2), posts: [], meetings: [] };
   writeFileSync(file, JSON.stringify(state));
   const loaded = createStore({ file });
-  assert.equal(loaded.listAgents().length, 8);
+  assert.equal(loaded.listAgents().length, 10);
   assert.deepEqual(loaded.listTables().map((t) => t.id), ['free', 'idol', 'anime', 'game', 'vtuber', 'sports', 'other'], 'カフェのテーブルも用意される');
   rmSync(dir, { recursive: true, force: true });
 });
@@ -1165,4 +1165,19 @@ test('カフェ：同じ推しの人が3人そろうと、タヌキが推しの�
   assert.equal((await call('/api/posts', { method: 'POST', as: third, body: { text: 'まだいる？', table: t.id } })).status, 404);
   await set('ほしぞら推し4', 'ルミナスリボン', 'idol');
   assert.equal(sim.openOshiTables().length, 0);
+});
+
+test('ゲームセンター：地図のゲームの入口をまとめる・店長のキツネと盛り上げ役のカエル', async () => {
+  const index = await (await fetch(`${base}/`)).text();
+  assert.ok(!/korotomo-spot|soratomo-spot/.test(index), 'ころとも・宇宙の入口は地図から消した');
+  assert.ok(/ground-spot/.test(index), 'グラウンド（ゴースト）は地図に残す');
+  const map = await (await fetch(`${base}/map.js`)).text();
+  assert.match(map, /ゲームセンター/);
+  assert.ok(!map.includes('/api/link/game-start'), 'じゃんけんの入口はゲームセンターの中だけ');
+  const games = await (await fetch(`${base}/games.html`)).text();
+  assert.match(games, /ゲームセンター/);
+  const agents = (await call('/api/agents')).data;
+  assert.deepEqual(agents.filter((a) => a.place === 'arcade').map((a) => [a.name, a.roleLabel]),
+    [['キツネ', 'ゲームセンターの店長'], ['カエル', 'ゲームセンターの盛り上げ役']]);
+  assert.equal((await call('/api/posts')).data.some((p) => ['agent-kitsune', 'agent-kaeru'].includes(p.authorId)), false, '広場には出ない');
 });

@@ -422,3 +422,8 @@ html[data-oshi-color] .oshi-hero { color: var(--accent-text); }
 .cafe-oshi-tables { padding-top: 0; }
 .cafe-oshi-tables .cafe-table { font-size: .88rem; padding: 4px 10px; border-style: dashed; }
 .cafe-oshi-tables .cafe-table[aria-pressed="true"] { border-style: solid; }
+.game-spot.game-center { left: 66%; top: 46%; font-size: clamp(.7rem, 1.8vw, .95rem); border-radius: 10px 10px 6px 6px; border-color: #d9772b; }
+@media (max-width: 600px) { .game-spot.game-center { left: 62%; top: 46%; } }
+.arcade-staff { display: grid; gap: 10px; }
+.arcade-staff img { flex: none; border-radius: 50%; background: var(--surface-2); }
+.arcade-staff p { margin: 0; }

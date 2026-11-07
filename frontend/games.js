@@ -61,8 +61,8 @@ async function loadPick() {
   try {
     const r = await api('/games/recommend');
     $('#pick').innerHTML = r
-      ? `${me ? `${escapeHtml(me.name)}さん` : 'いま'}のおすすめは「<a href="${escapeHtml(r.play)}">${escapeHtml(r.name)}</a>」っす！ ${escapeHtml(r.reason)}っす。${r.comment ? `「${escapeHtml(r.comment)}」って声もあるっす！` : ''}`
-      : 'いまは遊べるゲームがないっす…';
+      ? `ゲロゲロ！ ${me ? `${escapeHtml(me.name)}さん` : 'いま'}へのおすすめは「<a href="${escapeHtml(r.play)}">${escapeHtml(r.name)}</a>」！ ${escapeHtml(r.reason)}んだよ。${r.comment ? `「${escapeHtml(r.comment)}」って声もあるよ！` : ''}`
+      : 'ゲロ……いまは遊べる台がないみたい……';
   } catch { /* noop */ }
 }
 
