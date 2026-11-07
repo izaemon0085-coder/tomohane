@@ -427,3 +427,19 @@ html[data-oshi-color] .oshi-hero { color: var(--accent-text); }
 .arcade-staff { display: grid; gap: 10px; }
 .arcade-staff img { flex: none; border-radius: 50%; background: var(--surface-2); }
 .arcade-staff p { margin: 0; }
+/* ゲームセンター：台（筐体）の見た目。夜のゲーセンのような色。コイン・お金の絵は使わない */
+.games-page .game-card.cabinet { padding: 0 0 14px; overflow: hidden; border: 3px solid var(--cab); border-radius: 18px 18px 12px 12px; gap: 8px; }
+.games-page .cabinet > :not(.cab-marquee):not(.cab-screen) { margin-left: 16px; margin-right: 16px; }
+.cab-marquee { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 8px 12px; background: var(--cab); color: #fff; text-align: center; }
+.cab-marquee h2 { margin: 0; font-size: 1.05rem; text-shadow: 0 0 6px rgb(255 255 255 / 55%); }
+.cab-new { font-size: .7rem; font-weight: 800; background: #ffe14d; color: #2b2420; border-radius: 999px; padding: 1px 8px; }
+.cab-screen { margin: 0 14px; display: grid; justify-items: center; gap: 4px; padding: 14px 8px; border-radius: 12px;
+  background: radial-gradient(circle at 50% 40%, #233056, #0d1226); color: #9ff3ff; border: 4px solid #1a1d29; }
+.cab-icon { font-size: 2rem; line-height: 1.1; }
+.cab-attract { font-size: .82rem; font-weight: 800; letter-spacing: .08em; animation: cab-blink 1.4s steps(2, start) infinite; }
+.cab-screen.is-off { background: #191c27; color: #a8a2b8; }
+.cab-screen.is-off .cab-attract { animation: none; }
+.cab-screen.is-off .cab-icon { filter: grayscale(1); opacity: .5; }
+@keyframes cab-blink { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .cab-attract { animation: none; } }
+.games-page h1 { text-shadow: 0 0 10px color-mix(in srgb, var(--accent) 35%, transparent); }

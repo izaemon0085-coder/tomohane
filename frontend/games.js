@@ -11,7 +11,23 @@ let games = [];
 let tag = null;
 let arcade = { open: true }; // ゲームセンターの営業時間（見る人の年齢で、閉店の時間がちがう）
 
-function gameHtml(g) {
+// ゲームの台（筐体）の見た目：上の看板・画面の絵・台の色。インディーズの台は 🕹️
+// ※ ともはね は課金なしなので、コインやお金の絵は使わない
+const CABINET = {
+  tomojan: { icon: '✊✌️✋', color: '#e8873a', attract: 'シバと勝負！' },
+  ghost: { icon: '👻🏃', color: '#7e5bb5', attract: 'きのうの自分と勝負！' },
+  korotomo: { icon: '🤖⭐', color: '#3b7dc4', attract: '星をあつめよう' },
+  soratomo: { icon: '🛰️🌍', color: '#1b2560', attract: '衛星をうごかそう' },
+};
+function screenHtml(g, closed) {
+  const c = CABINET[g.id] ?? { icon: '🕹️', attract: 'スタートをおしてね' };
+  const msg = g.soon ? '🛠 じゅんび中' : closed ? '🌙 閉店中' : c.attract;
+  return `<div class="cab-screen${g.soon || closed ? ' is-off' : ''}" aria-hidden="true">
+      <span class="cab-icon">${c.icon}</span><span class="cab-attract">${msg}</span></div>`;
+}
+
+function gameHtml(g, isNew = false) {
+  const closed = g.id !== 'ghost' && !arcade.open;
   const voices = g.voices.map((v) => `<li>${v.oshi ? `<span class="oshi-badge">${escapeHtml(v.oshi)}推し</span> ` : ''}${escapeHtml(v.name)}さん「${escapeHtml(v.comment)}」</li>`).join('');
   const marks = [
     g.soon ? `<strong>${SOON_LABEL}</strong>` : null,
@@ -20,9 +36,11 @@ function gameHtml(g) {
     g.ads ? '広告あり' : null,
     g.purchases ? '課金あり' : null,
   ].filter(Boolean).map((t) => `<span class="game-tag">${t}</span>`).join('');
-  return `<li class="card game-card">
+  return `<li class="card game-card cabinet" style="--cab:${(CABINET[g.id] ?? { color: '#2f9e8f' }).color}">
+    <div class="cab-marquee"><h2>${escapeHtml(g.name)}</h2>${isNew ? '<span class="cab-new">NEW</span>' : ''}</div>
+    ${screenHtml(g, closed)}
     <div class="game-head">
-      <h2>${escapeHtml(g.name)}</h2>
+      <span class="muted small">${g.builtin ? 'ともはねの台' : 'インディーズ・個人の台'}</span>
       <span class="rec-count" title="おすすめの数">💖 ${g.recCount}</span>
     </div>
     <p>${escapeHtml(g.description)}</p>
@@ -31,7 +49,7 @@ function gameHtml(g) {
     ${voices ? `<ul class="voices">${voices}</ul>` : ''}
     <div class="row wrap">
       ${g.soon ? `<span class="btn ghost" aria-disabled="true">${SOON_LABEL}（まだ遊べません）</span>`
-    : g.id !== 'ghost' && !arcade.open ? `<span class="btn ghost" aria-disabled="true">🌙 閉店中（${arcade.opensAt}時に開店）</span>`
+    : closed ? `<span class="btn ghost" aria-disabled="true">🌙 閉店中（${arcade.opensAt}時に開店）</span>`
     : `<a class="btn" href="${escapeHtml(g.play)}">▶ 遊ぶ</a>`}
       ${me && !g.soon ? `<button type="button" class="btn ghost" data-rec="${escapeHtml(g.id)}">${g.myRec ? '💖 おすすめ中（一言を変える）' : '🤍 おすすめする'}</button>` : ''}
       ${g.myRec ? `<button type="button" class="btn ghost" data-unrec="${escapeHtml(g.id)}">取り消す</button>` : ''}
@@ -50,7 +68,9 @@ function renderList() {
   $('#tags').innerHTML = [`<button type="button" class="game-tag tag-btn" data-tag="" aria-pressed="${!tag}">すべて</button>`,
     ...tags.map((t) => `<button type="button" class="game-tag tag-btn" data-tag="${escapeHtml(t)}" aria-pressed="${tag === t}">#${escapeHtml(t)}</button>`)].join('');
   const shown = tag ? games.filter((g) => g.tags.includes(tag)) : games;
-  $('#games').innerHTML = shown.map(gameHtml).join('') || '<li class="muted">このタグのゲームはありません</li>';
+  // いちばん新しく入ったインディーズ・個人の台に「NEW」
+  const newest = games.filter((g) => !g.builtin).at(-1)?.id;
+  $('#games').innerHTML = shown.map((g) => gameHtml(g, g.id === newest)).join('') || '<li class="muted">このタグのゲームはありません</li>';
 }
 
 async function loadGames() {
