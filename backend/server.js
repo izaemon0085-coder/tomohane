@@ -219,7 +219,11 @@ export function createApp({
 
     // ---- 推しの情報（わたしの推しページ）：本人だけが見られる・変えられる ----
     ['GET', /^\/api\/users\/([\w-]+)\/oshi$/, ({ params, me }) => store.getOshi(self(me, params[0]))],
-    ['PUT', /^\/api\/users\/([\w-]+)\/oshi$/, ({ params, body, me }) => store.updateOshi(self(me, params[0]), body)],
+    ['PUT', /^\/api\/users\/([\w-]+)\/oshi$/, ({ params, body, me }) => {
+      const oshi = store.updateOshi(self(me, params[0]), body);
+      sim.openOshiTables?.(); // 同じ推しの人がそろったら、マスターのタヌキがカフェにテーブルを開く
+      return oshi;
+    }],
     ['POST', /^\/api\/users\/([\w-]+)\/oshi\/goods$/, ({ params, body, me }) => [201, store.addGoods(self(me, params[0]), body.name)]],
     ['DELETE', /^\/api\/users\/([\w-]+)\/oshi\/goods\/([\w-]+)$/, ({ params, me }) => store.removeGoods(self(me, params[0]), params[1])],
     ['GET', /^\/api\/users\/([\w-]+)\/oshi\/friends$/, ({ params, me }) => {
@@ -393,7 +397,7 @@ export function createApp({
 
     // ---- カフェのテーブル（決まった並び）と、それぞれの投稿の数 ----
     ['GET', /^\/api\/cafe\/tables$/, () => store.listTables().map((t) => ({
-      id: t.id, kind: t.kind, name: t.name, emoji: t.emoji, note: t.note ?? '',
+      id: t.id, kind: t.kind, name: t.name, emoji: t.emoji, note: t.note ?? '', parent: t.parent ?? null,
       postCount: store.listPosts().filter((p) => p.table === t.id && !p.hidden && !p.orphaned).length,
     }))],
     // ユーザーの声：ほしいジャンルのリクエスト（ペンギンが受け取る）→ 運営が見て、テーブルを足す
@@ -408,6 +412,12 @@ export function createApp({
     ['DELETE', /^\/api\/cafe\/requests\/([\w-]+)$/, ({ params, me }) => {
       needAdmin(me);
       return store.dismissTableRequest(params[0]);
+    }],
+    // 運営だけ：推しのテーブルを閉じる（タヌキは開け直さない）
+    ['DELETE', /^\/api\/cafe\/tables\/([\w-]+)$/, ({ params, me }) => {
+      needAdmin(me);
+      store.closeTable(params[0]);
+      return { ok: true };
     }],
     ['POST', /^\/api\/cafe\/tables$/, ({ body, me }) => {
       needAdmin(me);

@@ -13,3 +13,14 @@ export const GENRE_TABLES = [
 export const MAX_TABLE_NAME = 12;
 export const MAX_TABLE_REQUEST = 30;
 export const MAX_OPEN_REQUESTS = 3; // 1人が同時に出せるリクエストの数
+
+// 推しのテーブル：同じ推しの人がこの人数になったら、マスターのタヌキが開く
+export const OSHI_TABLE_MIN = 3;
+export const GENRE_IDS = GENRE_TABLES.map((g) => g.id);
+
+// 店員さんのペンギンが、似た名前をそろえる（全角・半角、カタカナ・ひらがな、大文字・小文字、空白や「・」のちがい）
+export function normalizeOshi(name) {
+  return String(name ?? '').normalize('NFKC').toLowerCase()
+    .replace(/[\s・･·.\-ー_~〜!！?？'"’”]/g, '')
+    .replace(/[ァ-ヶ]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0x60));
+}

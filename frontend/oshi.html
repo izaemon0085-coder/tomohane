@@ -78,10 +78,12 @@
       <form id="edit-form" method="dialog">
         <h2 id="edit-title">推しを登録・へんしゅう</h2>
         <label class="field">推しの名前<input class="input" name="name" maxlength="20" placeholder="例：推しの名前"></label>
+        <label class="field">推しのジャンル（カフェの「推しのテーブル」をどこに置くかに使います）
+          <select class="input" name="genre" id="genre-select"><option value="">えらばない</option></select></label>
         <label class="field">次のライブの日<input class="input" type="date" name="liveDate"></label>
         <label class="field">会場の名前<input class="input" name="liveVenue" maxlength="30" placeholder="例：〇〇ホール"></label>
         <label class="field">推しの誕生日<input class="input" type="date" name="birthday"></label>
-        <p class="muted small">推しの名前は「同じ推しの仲間」を探すのに使います。自分の住所や電話番号は書かないでください。</p>
+        <p class="muted small">推しの名前は「同じ推しの仲間」を探すのに使います。同じ推しの人が3人そろうと、カフェのマスターのタヌキが推しのテーブルを開きます。自分の住所や電話番号は書かないでください。</p>
         <p class="error" id="edit-error"></p>
         <div class="row end">
           <button type="button" class="btn ghost" data-close>やめる</button>

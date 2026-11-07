@@ -1124,3 +1124,45 @@ test('カフェ：ジャンルのテーブル・ジャンルのリクエスト�
   await call(`/api/cafe/requests/${reqs[0].id}`, { method: 'DELETE', as: admin });
   assert.equal((await call('/api/cafe/requests', { as: admin })).data.length, 2);
 });
+
+test('カフェ：同じ推しの人が3人そろうと、タヌキが推しのテーブルを開く（似た書き方はペンギンがそろえる）・運営は閉じられる', async () => {
+  const admin = [...people.values()][0];
+  const set = async (name, oshi, genre) => {
+    const u = await signup(name);
+    assert.equal((await call(`/api/users/${u.id}/oshi`, { method: 'PUT', as: u, body: { name: oshi, genre } })).status, 200);
+    return u;
+  };
+  const before = (await call('/api/cafe/tables')).data.length;
+  await set('ほしぞら推し1', 'ルミナス リボン', 'idol');
+  await set('ほしぞら推し2', 'るみなすリボン', 'idol');
+  assert.equal((await call('/api/cafe/tables')).data.length, before, '2人ではまだ開かない');
+  const third = await set('ほしぞら推し3', 'ﾙﾐﾅｽリボン', 'anime');
+
+  const tables = (await call('/api/cafe/tables')).data;
+  const t = tables.find((x) => x.kind === 'oshi' && /ルミナス|るみなす|ﾙﾐﾅｽ/.test(x.name));
+  assert.ok(t, '3人そろうと開く');
+  assert.equal(t.parent, 'idol', 'いちばん多いジャンルに置く');
+  assert.match(t.name, /推し$/);
+  const idol = (await call('/api/posts?table=idol')).data;
+  assert.ok(idol.some((p) => p.authorId === 'agent-tanuki' && /開けといたよ/.test(p.text)), 'タヌキがジャンルの席で知らせる');
+  assert.ok(idol.some((p) => p.authorId === 'agent-penguin' && /そろえてあります/.test(p.text)), 'ペンギンが似た書き方をそろえたと知らせる');
+
+  // 同じ推しの仲間（わたしの推しページ）も、似た書き方をまとめて見つける
+  const posted = (await call('/api/posts', { method: 'POST', as: third, body: { text: '新曲よかった！', table: t.id } })).data;
+  assert.equal(posted.table, t.id);
+  const first = people.get('ほしぞら推し1');
+  assert.ok((await call(`/api/users/${first.id}/oshi/friends`, { as: first })).data.some((p) => p.id === posted.id));
+
+  // もう一度保存しても、2つ目は開かない
+  await call(`/api/users/${third.id}/oshi`, { method: 'PUT', as: third, body: { name: 'ルミナスリボン', genre: 'idol' } });
+  assert.equal((await call('/api/cafe/tables')).data.filter((x) => x.kind === 'oshi' && x.name.startsWith('ルミナス')).length, 1);
+
+  // 運営が閉じる → 一覧から消え、書けない。タヌキは開け直さない
+  assert.equal((await call(`/api/cafe/tables/${t.id}`, { method: 'DELETE', as: third })).status, 403);
+  assert.equal((await call('/api/cafe/tables/free', { method: 'DELETE', as: admin })).status, 400, 'ジャンル・フリーは閉じられない');
+  assert.equal((await call(`/api/cafe/tables/${t.id}`, { method: 'DELETE', as: admin })).status, 200);
+  assert.ok(!(await call('/api/cafe/tables')).data.some((x) => x.id === t.id));
+  assert.equal((await call('/api/posts', { method: 'POST', as: third, body: { text: 'まだいる？', table: t.id } })).status, 404);
+  await set('ほしぞら推し4', 'ルミナスリボン', 'idol');
+  assert.equal(sim.openOshiTables().length, 0);
+});

@@ -419,3 +419,6 @@ html[data-oshi-color] .oshi-hero { color: var(--accent-text); }
 .cafe-request { margin: 0 0 8px; }
 .cafe-request summary { cursor: pointer; width: fit-content; font-size: .88rem; }
 .cafe-request form { margin-top: 6px; }
+.cafe-oshi-tables { padding-top: 0; }
+.cafe-oshi-tables .cafe-table { font-size: .88rem; padding: 4px 10px; border-style: dashed; }
+.cafe-oshi-tables .cafe-table[aria-pressed="true"] { border-style: solid; }

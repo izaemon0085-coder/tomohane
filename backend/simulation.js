@@ -5,6 +5,7 @@ import { gamesFor, isGameQuestion, recommendFor, gameRecommendReply } from './ga
 import * as net from './net.js';
 import * as kondate from './kondate.js';
 import { publishedIssues, threadText, SHINBUNSHA_ID } from '../shared/news.js';
+import { OSHI_TABLE_MIN } from '../shared/cafe.js';
 
 export function createSimulation(store, {
   random = Math.random,
@@ -321,8 +322,34 @@ export function createSimulation(store, {
     return posted;
   }
 
+  // ---------- カフェ：推しのテーブル ----------
+  // 同じ推しの人が OSHI_TABLE_MIN 人そろったら、マスターのタヌキがテーブルを開いて、ジャンルの席で知らせる。
+  // 店員さんのペンギンは、似た書き方をそろえたことを伝える。運営が閉じたテーブルは開け直さない
+  function openOshiTables() {
+    const opened = [];
+    for (const g of store.oshiGroups()) {
+      if (g.people < OSHI_TABLE_MIN || store.oshiTableByKey(g.key)) continue;
+      const table = store.openOshiTable(g);
+      opened.push(table);
+      const by = (role) => store.listAgents().find((a) => brain.isCafeAgent(a) && a.role === role);
+      const master = by('master');
+      const staff = by('staff');
+      if (master) {
+        store.createPost({ authorId: master.id, table: table.parent, text: `${table.name}の人が${g.people}人そろったから、「💖 ${table.name}」のテーブルを開けといたよ。まあ、ゆっくりしていきなよ。` });
+        store.addDiary(master.id, `「${table.name}」のテーブルを開いた`);
+      }
+      const variants = [...new Set(store.listUsers()
+        .filter((u) => u.kind === 'human' && u.oshi?.name && brain.normalizeOshi(u.oshi.name) === g.key)
+        .map((u) => u.oshi.name))];
+      if (staff && variants.length > 1) {
+        store.createPost({ authorId: staff.id, table: table.parent, text: `テーブルの準備ができました。「${variants.slice(0, 3).join('」「')}」は同じ推しとして、同じテーブルにそろえてあります。` });
+      }
+    }
+    return opened;
+  }
+
   return {
-    lifeTick, announceNews, meetingTick, onHumanPost, respondToHumanPost, knock, netTick, lineStatus, kondateTick, kondateSummary, startMeeting, stepMeeting,
+    openOshiTables, lifeTick, announceNews, meetingTick, onHumanPost, respondToHumanPost, knock, netTick, lineStatus, kondateTick, kondateSummary, startMeeting, stepMeeting,
     start() {
       timers.push(
         setInterval(lifeTick, lifeIntervalMs),

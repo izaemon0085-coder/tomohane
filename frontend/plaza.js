@@ -544,9 +544,16 @@ log.addEventListener('click', async (e) => {
 async function loadTables() {
   try { tables = await api('/cafe/tables'); } catch { return; }
   if (!tables.some((t) => t.id === table)) table = tables[0]?.id ?? 'free';
-  $('#cafe-tables').innerHTML = tables.map((t) => `<button type="button" class="cafe-table" data-table="${escapeHtml(t.id)}"
-    aria-pressed="${t.id === table}">${escapeHtml(t.emoji)} ${escapeHtml(t.name)}<span class="cafe-count">${t.postCount}</span></button>`).join('');
   const cur = tables.find((t) => t.id === table);
+  const btn = (t, pressed) => `<button type="button" class="cafe-table" data-table="${escapeHtml(t.id)}"
+    aria-pressed="${pressed}">${escapeHtml(t.emoji)} ${escapeHtml(t.name)}<span class="cafe-count">${t.postCount}</span></button>`;
+  // 上の段：フリーとジャンル。下の段：いま選んでいるジャンルの、推しのテーブル（タヌキが開いたもの）
+  const genre = cur?.kind === 'oshi' ? cur.parent : cur?.id;
+  $('#cafe-tables').innerHTML = tables.filter((t) => t.kind !== 'oshi').map((t) => btn(t, t.id === genre)).join('');
+  const oshiTables = tables.filter((t) => t.kind === 'oshi' && t.parent === genre);
+  $('#cafe-oshi-tables').hidden = !oshiTables.length;
+  $('#cafe-oshi-tables').innerHTML = oshiTables.map((t) => btn(t, t.id === table)).join('');
+  $('#cafe-close').hidden = !(me?.role === 'admin' && cur?.kind === 'oshi');
   if (cur) $('#cafe-guide-text').textContent = `いらっしゃいませ。こちら「${cur.name}」です。${cur.note ? `${cur.note}。` : ''}ごゆっくりどうぞ。`;
 }
 if (cafeMode) {
@@ -564,7 +571,23 @@ if (cafeMode) {
       toast(err.offline ? '📴 オフラインなので、つながってからお願いします' : err.message, 5000);
     }
   });
-  $('#cafe-tables').addEventListener('click', (e) => {
+  $('#cafe-close').addEventListener('click', async () => {
+    const cur = tables.find((t) => t.id === table);
+    if (!cur || !confirm(`「${cur.name}」のテーブルを閉じますか？ タヌキは開け直しません`)) return;
+    try {
+      await api(`/cafe/tables/${encodeURIComponent(cur.id)}`, { method: 'DELETE' });
+      toast(`「${cur.name}」のテーブルを閉じました`);
+      table = cur.parent ?? 'free';
+      history.replaceState(null, '', `?table=${encodeURIComponent(table)}`);
+      render.done = false;
+      loadTables();
+      loadPosts();
+    } catch (err) {
+      toast(err.message, 5000);
+    }
+  });
+  $('main').addEventListener('click', (e) => {
+    if (!e.target.closest('.cafe-tables')) return;
     const btn = e.target.closest('[data-table]');
     if (!btn || btn.dataset.table === table) return;
     table = btn.dataset.table;

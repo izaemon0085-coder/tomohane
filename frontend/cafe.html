@@ -24,8 +24,10 @@
 
       <!-- テーブルをえらぶ（いまはフリーテーブルだけ。ジャンル・推しのテーブルはあとで） -->
       <nav class="cafe-tables" id="cafe-tables" aria-label="テーブルをえらぶ"></nav>
+      <nav class="cafe-tables cafe-oshi-tables" id="cafe-oshi-tables" aria-label="推しのテーブル" hidden></nav>
       <div class="say-line cafe-guide" id="cafe-guide"><img src="/shared/avatars/penguin.svg" alt="" width="36" height="36">
-        <p id="cafe-guide-text">いらっしゃいませ。お席までご案内します。</p></div>
+        <p id="cafe-guide-text">いらっしゃいませ。お席までご案内します。</p>
+        <button type="button" class="link-btn" id="cafe-close" hidden>このテーブルを閉じる（運営）</button></div>
       <!-- ユーザーの声：ほしいジャンルのテーブル（ペンギンが受け取り、運営が見て足す） -->
       <details class="cafe-request" id="cafe-request" hidden>
         <summary class="link-btn">＋ ほしいジャンルをリクエスト</summary>

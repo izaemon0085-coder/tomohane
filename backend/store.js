@@ -8,7 +8,9 @@ import { DEFAULT_TYPEFACE, TYPEFACE_KEYS } from '../shared/typefaces.js';
 import { precheck } from '../shared/precheck.js';
 import { MAX_VOTE_COMMENT, OFFICIAL_ACCOUNTS } from '../shared/news.js';
 import { findReason, stageOf, MAX_APOLOGY } from '../shared/report.js';
-import { FREE_TABLE, GENRE_TABLES, MAX_TABLE_NAME, MAX_TABLE_REQUEST, MAX_OPEN_REQUESTS } from '../shared/cafe.js';
+import {
+  FREE_TABLE, GENRE_TABLES, GENRE_IDS, MAX_TABLE_NAME, MAX_TABLE_REQUEST, MAX_OPEN_REQUESTS, normalizeOshi,
+} from '../shared/cafe.js';
 
 export const MAX_POST_LENGTH = 280;
 export const MAX_NAME_LENGTH = 20;
@@ -530,9 +532,10 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
     getOshi(userId) {
       const user = requireUser(userId);
       if (user.kind !== 'human') throw new HttpError(400, '推しを登録できるのは人間のユーザーだけです');
-      return user.oshi ?? { name: '', liveDate: '', liveVenue: '', birthday: '', goods: [] };
+      return user.oshi ?? { name: '', genre: '', liveDate: '', liveVenue: '', birthday: '', goods: [] };
     },
-    updateOshi(userId, { name = '', liveDate = '', liveVenue = '', birthday = '' }) {
+    // genre：推しのジャンル（カフェの推しのテーブルをどのジャンルに置くかに使う）
+    updateOshi(userId, { name = '', genre = '', liveDate = '', liveVenue = '', birthday = '' }) {
       const user = requireUser(userId);
       if (user.kind !== 'human') throw new HttpError(400, '推しを登録できるのは人間のユーザーだけです');
       const optText = (v, max, label) => (v === '' || v == null ? '' : cleanText(v, max, label));
@@ -546,6 +549,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       const prev = user.oshi ?? { goods: [] };
       user.oshi = {
         name: optText(name, MAX_NAME_LENGTH, '推しの名前'),
+        genre: GENRE_IDS.includes(genre) ? genre : '',
         liveDate: optDate(liveDate, 'ライブ'),
         liveVenue: optText(liveVenue, 30, '会場の名前'),
         birthday: optDate(birthday, '誕生日'),
@@ -576,7 +580,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       const name = this.getOshi(userId).name;
       if (!name) return [];
       const friends = new Set(state.users
-        .filter((u) => u.kind === 'human' && u.id !== userId && u.oshi?.name === name)
+        .filter((u) => u.kind === 'human' && u.id !== userId && u.oshi?.name && normalizeOshi(u.oshi.name) === normalizeOshi(name))
         .map((u) => u.id));
       return [...state.posts]
         .filter((p) => friends.has(p.authorId))
@@ -607,9 +611,44 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
     listPosts: () => [...state.posts].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     getPost: requirePost,
     // ---- カフェのテーブル ----
-    listTables: () => [...state.tables],
+    listTables: () => state.tables.filter((t) => !t.closed),
+    // ---- 推しのテーブル（マスターのタヌキが開く。運営は閉じられる） ----
+    // 同じ推し（ペンギンが名前をそろえたもの）の人間の数と、いちばん多いジャンル・いちばん多い書き方
+    oshiGroups() {
+      const groups = new Map();
+      for (const u of state.users) {
+        if (u.kind !== 'human' || !u.oshi?.name) continue;
+        const key = normalizeOshi(u.oshi.name);
+        if (!key) continue;
+        if (!groups.has(key)) groups.set(key, { key, people: 0, names: new Map(), genres: new Map() });
+        const g = groups.get(key);
+        g.people += 1;
+        g.names.set(u.oshi.name, (g.names.get(u.oshi.name) ?? 0) + 1);
+        if (u.oshi.genre) g.genres.set(u.oshi.genre, (g.genres.get(u.oshi.genre) ?? 0) + 1);
+      }
+      const top = (m, fallback) => [...m].sort((a, b) => b[1] - a[1])[0]?.[0] ?? fallback;
+      return [...groups.values()].map((g) => ({ key: g.key, people: g.people, name: top(g.names, g.key), genre: top(g.genres, 'other') }));
+    },
+    // 開いていても閉じていても、その推しのテーブル（閉じたものは、タヌキが勝手に開け直さない）
+    oshiTableByKey: (key) => state.tables.find((t) => t.kind === 'oshi' && t.oshiKey === key) ?? null,
+    openOshiTable({ key, name, genre }) {
+      if (this.oshiTableByKey(key)) throw new HttpError(409, 'その推しのテーブルはもうあります');
+      const parent = GENRE_IDS.includes(genre) ? genre : 'other';
+      const label = [...name].slice(0, MAX_TABLE_NAME).join('');
+      const table = { id: newId('t'), kind: 'oshi', name: `${label}推し`, emoji: '💖', note: `${label}推しの人が集まる席`, parent, oshiKey: key, createdAt: now() };
+      state.tables.push(table);
+      emit('table', table);
+      return table;
+    },
+    closeTable(id) {
+      const t = this.getTable(id);
+      if (t.kind !== 'oshi') throw new HttpError(400, '閉じられるのは推しのテーブルだけです');
+      t.closed = true;
+      emit('table', t);
+      return t;
+    },
     getTable(id) {
-      const t = state.tables.find((x) => x.id === id);
+      const t = state.tables.find((x) => x.id === id && !x.closed);
       if (!t) throw new HttpError(404, 'テーブルが見つかりません');
       return t;
     },

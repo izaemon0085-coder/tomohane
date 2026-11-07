@@ -14,6 +14,7 @@
 //                 カフェの2人は、カフェ（cafe.html）でだけ返事をする。広場・会議・遊び場には出てこない
 
 import { isHarsh } from '../shared/precheck.js';
+export { normalizeOshi } from '../shared/cafe.js';
 
 export const SEED_AGENTS = [
   {
