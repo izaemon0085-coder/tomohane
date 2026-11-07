@@ -7,6 +7,7 @@ import { createStore, HttpError, ageGroup, SESSION_DAYS } from './store.js';
 import { createSimulation } from './simulation.js';
 import { publishedIssues, findPoll, pollTalk } from '../shared/news.js';
 import { lanAddresses } from './net.js';
+import { REPORT_REASONS, STAGES, findReason, stageOf } from '../shared/report.js';
 import { MAX_VIDEO_BYTES, removeVideo, saveVideo, serveVideo } from './letters.js';
 import { createKokotomoClient } from './kokotomo.js';
 import { createGameLink, GHOST_URL, MISETOMO_URL, KOROTOMO_URL, SORATOMO_URL } from './gamelink.js';
@@ -53,6 +54,13 @@ function postView(post, usersById) {
     author: publicUser(usersById[post.authorId]),
     likeCount: post.likes.length,
   };
+}
+
+// 通報された本人に声をかけるキャラ。やさしい段階は、投稿ごとにシバかウサギ
+function guideFor(stage, postId) {
+  if (stage !== 'gentle') return STAGES[stage];
+  const n = [...String(postId)].reduce((sum, c) => sum + c.charCodeAt(0), 0);
+  return STAGES.gentle[n % STAGES.gentle.length];
 }
 
 function meetingView(meeting, usersById) {
@@ -214,7 +222,7 @@ export function createApp({
     ['GET', /^\/api\/users\/([\w-]+)\/oshi\/friends$/, ({ params, me }) => {
       const users = store.usersById();
       const blocked = new Set(store.blocksOf(self(me, params[0])).map((b) => b.targetId));
-      return store.oshiFriendsPosts(me.id, 5 + blocked.size).filter((p) => !blocked.has(p.authorId))
+      return store.oshiFriendsPosts(me.id, 5 + blocked.size).filter((p) => !blocked.has(p.authorId) && store.canSee(p, me.id))
         .slice(0, 5).map((p) => postView(p, users));
     }],
 
@@ -373,6 +381,55 @@ export function createApp({
       return { user: publicUser(store.usersById()[b.targetId]), kind: b.kind ?? 'block', createdAt: b.createdAt, hasReason: Boolean(b.reason) };
     }],
     ['DELETE', /^\/api\/blocks\/([\w-]+)$/, ({ params, me }) => store.unblockUser(needLogin(me).id, params[0])],
+
+    // ---- 通報：通報した人はだれにも出さない。止める・警察に知らせる、を決めるのは運営（人） ----
+    ['POST', /^\/api\/posts\/([\w-]+)\/report$/, ({ params, body, me }) => {
+      const r = store.reportPost(params[0], needLogin(me).id, body.reason);
+      return [201, { ok: true, level: r.level, held: Boolean(findReason(r.reason)?.hold) }];
+    }],
+    // 自分へのお知らせ：通報された投稿へのキャラの声（本人だけ）と、届いたあやまり（読むかは本人が決める）
+    ['GET', /^\/api\/reports\/mine$/, ({ me }) => {
+      const u = needLogin(me);
+      return {
+        notices: store.reportNoticesFor(u.id).map((n) => ({
+          postId: n.post.id, text: n.post.text, stage: n.stage, guide: guideFor(n.stage, n.post.id),
+          held: Boolean(n.post.hidden), apologized: n.apologized,
+        })),
+        apologies: store.apologiesFor(u.id).map((r) => ({
+          id: r.id, from: publicUser(store.usersById()[r.authorId])?.name ?? '？', at: r.apology.at,
+        })),
+      };
+    }],
+    ['POST', /^\/api\/reports\/notices\/([\w-]+)\/seen$/, ({ params, me }) => store.markReportNoticeSeen(needLogin(me).id, params[0])],
+    ['POST', /^\/api\/posts\/([\w-]+)\/apology$/, ({ params, body, me }) => store.apologize(needLogin(me).id, params[0], body.text)],
+    ['POST', /^\/api\/reports\/([\w-]+)\/apology$/, ({ params, body, me }) => store.answerApology(needLogin(me).id, params[0], body.read === true)],
+    // 運営だけ：通報の一覧（通報した人の名前は出さず、人数だけ）と、止める・出す
+    ['GET', /^\/api\/reports$/, ({ me }) => {
+      needAdmin(me);
+      const users = store.usersById();
+      const byPost = new Map();
+      for (const r of store.listReports()) {
+        if (!byPost.has(r.postId)) byPost.set(r.postId, []);
+        byPost.get(r.postId).push(r);
+      }
+      return [...byPost].map(([postId, rs]) => {
+        let post = null;
+        try { post = store.getPost(postId); } catch { /* 消えた投稿 */ }
+        const reasons = Object.fromEntries(REPORT_REASONS.map((x) => [x.id, rs.filter((r) => r.reason === x.id).length]).filter(([, n]) => n));
+        return {
+          postId, text: post?.text ?? '（消えた投稿）', author: users[rs[0].authorId]?.name ?? '？',
+          reporters: new Set(rs.map((r) => r.reporterId)).size, reasons,
+          stage: stageOf(rs.map((r) => r.reason), new Set(rs.map((r) => r.reporterId)).size),
+          hidden: post?.hidden ?? null, status: rs.some((r) => r.status === 'open') ? 'open' : rs[0].status,
+          latest: rs.reduce((m, r) => (r.createdAt > m ? r.createdAt : m), ''),
+        };
+      }).sort((a, b) => (b.status === 'open') - (a.status === 'open') || b.latest.localeCompare(a.latest));
+    }],
+    ['POST', /^\/api\/reports\/([\w-]+)\/decision$/, ({ params, body, me }) => {
+      needAdmin(me);
+      const post = store.decideReport(params[0], body.action);
+      return { postId: post.id, hidden: post.hidden ?? null };
+    }],
 
     ['POST', /^\/api\/posts\/([\w-]+)\/like$/, ({ params, me }) =>
       postView(store.toggleLike(params[0], needLogin(me).id), store.usersById())],

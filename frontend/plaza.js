@@ -5,6 +5,7 @@ import {
 import { speak } from '/shared/speech.js';
 import { sendPost, getOutbox, flushOutbox } from '/shared/outbox.js';
 import { precheck } from '/shared/precheck.js';
+import { REPORT_REASONS, APOLOGY_CHOICES, MAX_APOLOGY } from '/shared/report.js';
 
 const $ = (sel) => document.querySelector(sel);
 const header = $('#header');
@@ -53,6 +54,7 @@ function bubbleHtml(post) {
         ${parent ? `<span class="quote">↩ ${escapeHtml(parent.author.name)}「${escapeHtml(snippet(parent.text))}」</span>` : ''}
         <p>${escapeHtml(post.text)}</p>
         ${threadLink}
+        ${mine && post.hidden ? `<span class="held-note">🔒 ${post.hidden === 'admin' ? '運営が止めました。' : '運営が見るまで、'}ほかの人には見えていません</span>` : ''}
       </div>
       <div class="msg-meta">
         <time datetime="${post.createdAt}">${timeAgo(post.createdAt)}</time>
@@ -60,7 +62,8 @@ function bubbleHtml(post) {
           aria-label="いいね ${post.likeCount}件">${liked ? '♥' : '♡'} ${post.likeCount || ''}</button>
         <button type="button" class="msg-act" data-reply="${post.id}">返信</button>
         ${mine ? `<button type="button" class="msg-act" data-speak="${post.id}" aria-label="読み上げ">🔊</button>` : ''}
-        ${me && !mine && a.kind === 'human' ? `<button type="button" class="msg-act" data-block="${a.id}" aria-label="${escapeHtml(a.name)}さんをミュート・ブロック">🚫</button>` : ''}
+        ${me && !mine && a.kind === 'human' ? `<button type="button" class="msg-act" data-report="${post.id}" aria-label="この投稿を通報">🚩</button>
+          <button type="button" class="msg-act" data-block="${a.id}" aria-label="${escapeHtml(a.name)}さんをミュート・ブロック">🚫</button>` : ''}
       </div>
     </div>
   </li>`;
@@ -274,6 +277,129 @@ blockForm.addEventListener('submit', async (e) => {
   }
 });
 
+// ---- 通報 ----
+const reportDialog = $('#report-dialog');
+const reportForm = $('#report-form');
+let reportPost = null;
+$('#report-reasons').insertAdjacentHTML('beforeend', REPORT_REASONS.map((r) => `<label class="block-kind">
+  <input type="radio" name="reason" value="${r.id}" required>
+  <span><strong>${escapeHtml(r.label)}</strong><span class="muted small">${r.level === 'heavy' ? '重い' : '軽い'}</span></span></label>`).join(''));
+
+function openReport(post) {
+  reportPost = post;
+  reportForm.reset();
+  $('#report-error').textContent = '';
+  $('#report-quote').textContent = `${post.author.name}「${snippet(post.text, 40)}」`;
+  reportDialog.showModal();
+}
+reportDialog.addEventListener('click', (e) => {
+  if (e.target === reportDialog || e.target.closest('[data-close]')) reportDialog.close();
+});
+reportForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const reason = reportForm.reason.value;
+  if (!reason) return;
+  $('#report-ok').disabled = true;
+  try {
+    const r = await api(`/posts/${encodeURIComponent(reportPost.id)}/report`, { method: 'POST', body: { reason } });
+    reportDialog.close();
+    toast(r.level === 'heavy'
+      ? '🐕 通報したっす。運営が見るっす。こわいときは、おうちの人や近くの大人にも話してほしいっす'
+      : '🐕 通報したっす。教えてくれてありがとうっす。その投稿は、もう出さないっす', 6000);
+    await loadPosts();
+  } catch (err) {
+    $('#report-error').textContent = err.offline ? '📴 オフラインなので、つながってからにしてほしいっす' : err.message;
+  } finally {
+    $('#report-ok').disabled = false;
+  }
+});
+
+// ---- 自分へのお知らせ（通報された投稿へのキャラの声・届いたあやまり） ----
+const noticeBox = $('#report-notices');
+let notices = { notices: [], apologies: [] };
+
+function noticeHtml(n) {
+  const g = n.guide;
+  const apology = n.apologized
+    ? '<p class="muted small">あやまりは届けたっす。</p>'
+    : `<details class="apology"><summary class="link-btn">あやまる</summary>
+        <div class="apology-choices">${APOLOGY_CHOICES.map((c) => `<button type="button" class="btn ghost" data-apology="${n.postId}" data-text="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join('')}</div>
+        <form class="row" data-apology-form="${n.postId}">
+          <label class="sr-only" for="apology-${n.postId}">自分のことば</label>
+          <input class="input" id="apology-${n.postId}" name="text" maxlength="${MAX_APOLOGY}" placeholder="自分のことばで（${MAX_APOLOGY}文字まで）">
+          <button class="btn" type="submit">届ける</button>
+        </form>
+        <p class="muted small">あやまりは、通報した人が「読む」をえらんだときだけ届きます。だれが通報したかは、わかりません。</p>
+      </details>`;
+  return `<article class="report-notice" data-stage="${n.stage}">
+    <div class="say-line"><img src="${g.avatar}" alt="" width="44" height="44">
+      <div><p class="precheck-who">${escapeHtml(g.name)}${g.note ? `<span class="precheck-kind">${escapeHtml(g.note)}</span>` : ''}</p>
+      <p>${escapeHtml(g.text)}</p></div></div>
+    <p class="report-quote">あなたの投稿「${escapeHtml(snippet(n.text, 40))}」</p>
+    ${n.stage === 'stopped' ? '' : apology}
+    <div class="row end"><button type="button" class="btn ghost" data-seen="${n.postId}">わかった</button></div>
+  </article>`;
+}
+function apologyAskHtml(a) {
+  return `<article class="report-notice" data-stage="apology">
+    <div class="say-line"><img src="/shared/avatars/shiba.svg" alt="" width="44" height="44">
+      <p>${escapeHtml(a.from)}さんから、あやまりが届いているっす。読むっすか？ 読まなくても大丈夫っす。</p></div>
+    <div class="row end" data-apology-ask="${a.id}">
+      <button type="button" class="btn ghost" data-read="0">読まない</button>
+      <button type="button" class="btn" data-read="1">読む</button>
+    </div>
+  </article>`;
+}
+function renderNotices() {
+  const html = notices.notices.map(noticeHtml).join('') + notices.apologies.map(apologyAskHtml).join('');
+  noticeBox.innerHTML = html;
+  noticeBox.hidden = !html;
+}
+async function loadNotices() {
+  if (!me) return;
+  try { notices = await api('/reports/mine'); } catch { return; }
+  renderNotices();
+}
+async function sendApology(postId, text) {
+  try {
+    await api(`/posts/${encodeURIComponent(postId)}/apology`, { method: 'POST', body: { text } });
+    toast('🐕 あやまりを届けたっす。勇気を出してえらいっす');
+    await loadNotices();
+  } catch (err) {
+    toast(err.message, 5000);
+  }
+}
+noticeBox.addEventListener('click', async (e) => {
+  const seen = e.target.closest('[data-seen]');
+  if (seen) {
+    await api(`/reports/notices/${encodeURIComponent(seen.dataset.seen)}/seen`, { method: 'POST' }).catch(() => {});
+    return loadNotices();
+  }
+  const pick = e.target.closest('[data-apology]');
+  if (pick) return sendApology(pick.dataset.apology, pick.dataset.text);
+  const ans = e.target.closest('[data-read]');
+  if (ans) {
+    const box = ans.closest('[data-apology-ask]');
+    try {
+      const r = await api(`/reports/${encodeURIComponent(box.dataset.apologyAsk)}/apology`, { method: 'POST', body: { read: ans.dataset.read === '1' } });
+      if (r.text) box.outerHTML = `<p class="apology-text">「${escapeHtml(r.text)}」</p>`;
+      else await loadNotices();
+    } catch (err) {
+      toast(err.message, 5000);
+    }
+  }
+});
+noticeBox.addEventListener('submit', (e) => {
+  const form = e.target.closest('[data-apology-form]');
+  if (!form) return;
+  e.preventDefault();
+  const text = form.text.value.trim();
+  if (!text) return;
+  const check = precheck(text);
+  if (check.level === 'block') return toast(`この内容は送れません（${check.reason}）`, 5000);
+  sendApology(form.dataset.apologyForm, text);
+});
+
 log.addEventListener('click', async (e) => {
   const speakBtn = e.target.closest('[data-speak]');
   if (speakBtn) {
@@ -285,6 +411,12 @@ log.addEventListener('click', async (e) => {
   if (replyBtn) {
     if (!me) return loginForm.querySelector('a').focus();
     return setReply(replyBtn.dataset.reply);
+  }
+  const reportBtn = e.target.closest('[data-report]');
+  if (reportBtn) {
+    const post = posts.find((p) => p.id === reportBtn.dataset.report);
+    if (post) openReport(post);
+    return;
   }
   const blockBtn = e.target.closest('[data-block]');
   if (blockBtn) {
@@ -321,6 +453,7 @@ if (draft && me) {
   textarea.focus();
 }
 loadPosts();
+loadNotices();
 if (!threadId) loadMembers();
 onServerEvents({ post: loadPosts, like: loadPosts, agent: loadMembers });
 window.addEventListener('outbox-change', render);

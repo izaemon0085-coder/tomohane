@@ -22,6 +22,9 @@
         </div>
       </div>
 
+      <!-- 自分へのお知らせ：通報された投稿へのキャラの声（本人だけ）・届いたあやまり -->
+      <section id="report-notices" class="report-notices" hidden aria-label="あなたへのお知らせ"></section>
+
       <ol id="chat-log" class="chat-log" aria-live="polite"></ol>
 
       <div id="login-form" class="chat-login" hidden>
@@ -78,6 +81,23 @@
         <div class="row end">
           <button type="button" class="btn ghost" data-close id="block-cancel">やめる</button>
           <button type="submit" class="btn" id="block-ok">ブロックする</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- 通報：通報した人の名前は、だれにも出さない -->
+    <dialog id="report-dialog" class="card oshi-dialog" aria-labelledby="report-title">
+      <form id="report-form" method="dialog">
+        <h2 id="report-title">🚩 この投稿を通報</h2>
+        <div class="say-line"><img src="/shared/avatars/shiba.svg" alt="" width="44" height="44">
+          <p>教えてくれてありがとうっす。だれが通報したかは、だれにも言わないっす。いちばん近いものをえらんでほしいっす。</p></div>
+        <p class="report-quote" id="report-quote"></p>
+        <fieldset class="block-kinds" id="report-reasons"><legend class="sr-only">通報の理由</legend></fieldset>
+        <p class="muted small">さらし・犯罪・おどしは、運営が見るまで、その投稿をほかの人に見えなくします。止めるかどうかは運営（人）が決めます。</p>
+        <p class="error" id="report-error" role="alert"></p>
+        <div class="row end">
+          <button type="button" class="btn ghost" data-close>やめる</button>
+          <button type="submit" class="btn" id="report-ok">通報する</button>
         </div>
       </form>
     </dialog>

@@ -7,6 +7,7 @@ import { SEED_AGENTS, MOODS } from './agents.js';
 import { DEFAULT_TYPEFACE, TYPEFACE_KEYS } from '../shared/typefaces.js';
 import { precheck } from '../shared/precheck.js';
 import { MAX_VOTE_COMMENT, OFFICIAL_ACCOUNTS } from '../shared/news.js';
+import { findReason, stageOf, MAX_APOLOGY } from '../shared/report.js';
 
 export const MAX_POST_LENGTH = 280;
 export const MAX_NAME_LENGTH = 20;
@@ -141,6 +142,8 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
   state.gameRecs ??= []; // ゲームのおすすめ { gameId, userId, comment, createdAt }
   state.newsVotes ??= []; // 新聞のアンケート { newsId（アンケートの id）, userId, choice, comment, createdAt }
   state.blocks ??= []; // ミュート・ブロック { userId（した人）, targetId（された人）, kind（'mute' | 'block'）, reason（キャラだけが読む）, createdAt }
+  state.reports ??= []; // 通報 { id, postId, reporterId, authorId, reason, level, status, createdAt, apology }
+  state.reportSeen ??= []; // 通報された本人が、お知らせを読んだしるし { postId, authorId, at }
   const listeners = new Set();
   const loginFails = new Map(); // ログインID → { count, until }（パスワードの総当たりを防ぐ）
   const guardianCodes = new Map(); // つなぐコードのハッシュ → { guardianId, expiresAt }（保存しない。30分で消える）
@@ -655,8 +658,103 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       return { ok: true };
     },
     blocksOf: (userId) => state.blocks.filter((b) => b.userId === userId),
+    // ---- 通報 ----
+    // 通報した人はだれにも出さない。重いもの（hold）は運営が見るまでほかの人に見えなくする。
+    // 止めるかどうかは運営（人）が決める
+    reportPost(postId, reporterId, reasonId) {
+      const post = requirePost(postId);
+      const reporter = requireUser(reporterId);
+      const author = requireUser(post.authorId);
+      const reason = findReason(reasonId);
+      if (!reason) throw new HttpError(400, '通報の理由をえらんでください');
+      if (reporter.kind !== 'human') throw new HttpError(400, '通報できるのは人間のユーザーだけです');
+      if (author.id === reporter.id) throw new HttpError(400, '自分の投稿は通報できません');
+      if (author.kind !== 'human') throw new HttpError(400, 'キャラや公式の投稿は通報できません');
+      if (state.reports.some((r) => r.postId === postId && r.reporterId === reporterId)) {
+        throw new HttpError(409, 'この投稿はもう通報しています');
+      }
+      const report = {
+        id: newId('r'), postId, reporterId, authorId: author.id, reason: reason.id, level: reason.level,
+        status: 'open', createdAt: now(), apology: null,
+      };
+      state.reports.push(report);
+      if (reason.hold && !post.hidden) post.hidden = 'report';
+      save();
+      return report;
+    },
+    reportsOn: (postId) => state.reports.filter((r) => r.postId === postId),
+    listReports: () => [...state.reports],
+    // 本人（通報された人）に見せる、投稿ごとのお知らせ
+    reportNoticesFor(authorId) {
+      const byPost = new Map();
+      for (const r of state.reports) {
+        if (r.authorId !== authorId) continue;
+        if (!byPost.has(r.postId)) byPost.set(r.postId, []);
+        byPost.get(r.postId).push(r);
+      }
+      const out = [];
+      for (const [postId, reports] of byPost) {
+        const post = state.posts.find((p) => p.id === postId);
+        if (!post) continue;
+        const seen = state.reportSeen.find((s) => s.postId === postId && s.authorId === authorId);
+        const latest = reports.reduce((m, r) => (r.createdAt > m ? r.createdAt : m), '');
+        const stoppedAt = post.hidden === 'admin' ? post.hiddenAt ?? latest : null;
+        const changedAt = stoppedAt && stoppedAt > latest ? stoppedAt : latest;
+        if (seen && seen.at >= changedAt) continue;
+        out.push({
+          post,
+          stage: post.hidden === 'admin' ? 'stopped' : stageOf(reports.map((r) => r.reason), new Set(reports.map((r) => r.reporterId)).size),
+          apologized: reports.some((r) => r.apology),
+          changedAt,
+        });
+      }
+      return out.sort((a, b) => b.changedAt.localeCompare(a.changedAt));
+    },
+    markReportNoticeSeen(authorId, postId) {
+      const s = state.reportSeen.find((x) => x.postId === postId && x.authorId === authorId);
+      if (s) s.at = now();
+      else state.reportSeen.push({ postId, authorId, at: now() });
+      save();
+      return { ok: true };
+    },
+    // 本人があやまる：その投稿を通報した人みんなに届く（だれが通報したかは本人に知らせない）
+    apologize(authorId, postId, text) {
+      const post = requirePost(postId);
+      if (post.authorId !== authorId) throw new HttpError(403, '自分の投稿だけです');
+      const reports = state.reports.filter((r) => r.postId === postId);
+      if (!reports.length) throw new HttpError(404, 'この投稿への通報はありません');
+      if (reports.some((r) => r.apology)) throw new HttpError(409, 'あやまりはもう届けています');
+      const clean = cleanText(text, MAX_APOLOGY, 'あやまりのことば');
+      rejectBlocked(requireUser(authorId), clean);
+      for (const r of reports) r.apology = { text: clean, at: now(), state: 'waiting' };
+      save();
+      return { ok: true };
+    },
+    // 通報した人へ：「あやまりが届いています。読みますか？」（読むか読まないかは本人が決める）
+    apologiesFor: (reporterId) => state.reports.filter((r) => r.reporterId === reporterId && r.apology?.state === 'waiting'),
+    answerApology(reporterId, reportId, read) {
+      const r = state.reports.find((x) => x.id === reportId && x.reporterId === reporterId);
+      if (!r?.apology) throw new HttpError(404, 'あやまりが見つかりません');
+      r.apology.state = read ? 'read' : 'declined';
+      save();
+      return read ? { text: r.apology.text } : { ok: true };
+    },
+    // 運営が決める：hide（止める）/ show（出す）
+    decideReport(postId, action) {
+      const post = requirePost(postId);
+      if (!['hide', 'show'].includes(action)) throw new HttpError(400, '止めるか、出すかをえらんでください');
+      post.hidden = action === 'hide' ? 'admin' : null;
+      post.hiddenAt = action === 'hide' ? now() : null;
+      for (const r of state.reports) if (r.postId === postId) r.status = action === 'hide' ? 'stopped' : 'kept';
+      emit('post', post);
+      return post;
+    },
+
     // viewerId の人に見せてよい投稿か（ログインしていなければ viewerId は null）
     canSee(post, viewerId) {
+      // 通報で止まっている投稿は、書いた本人にだけ見える。通報した人には、その投稿はもう出さない
+      if (post.hidden && post.authorId !== viewerId) return false;
+      if (viewerId && state.reports.some((r) => r.postId === post.id && r.reporterId === viewerId)) return false;
       if (viewerId && post.authorId !== viewerId) {
         if (state.blocks.some((b) => b.userId === viewerId && b.targetId === post.authorId)) return false;
       }

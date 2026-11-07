@@ -390,3 +390,14 @@ html[data-oshi-color] .oshi-hero { color: var(--accent-text); }
 .block-kind:has(input:checked) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface)); }
 .block-kind input { margin-top: 4px; accent-color: var(--accent); }
 .block-kind > span { display: grid; gap: 2px; }
+.report-notices { display: grid; gap: 10px; margin: 0 0 10px; max-height: 45vh; overflow-y: auto; }
+.report-notice { padding: 12px 14px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--border); display: grid; gap: 8px; }
+.report-notice[data-stage="enma"], .report-notice[data-stage="lawyer"] { border: 2px solid var(--danger); }
+.report-notice[data-stage="police"] { border: 2px solid #2563eb; }
+.report-notice .say-line img { flex: none; border-radius: 50%; background: var(--surface); }
+.report-quote { margin: 0; padding: 6px 10px; border-left: 3px solid var(--border); color: var(--muted); font-size: .88rem; }
+.apology summary { cursor: pointer; width: fit-content; }
+.apology-choices { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.apology-text { margin: 0; padding: 8px 12px; border-radius: 12px; background: var(--surface); }
+.held-note { display: block; margin-top: 4px; font-size: .78rem; color: var(--muted); }
+.report-admin li { display: grid; gap: 4px; }

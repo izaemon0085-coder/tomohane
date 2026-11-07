@@ -919,3 +919,85 @@ test('ミュート・ブロック：相手には知らせない・理由は返�
   assert.ok((await ids(c)).includes(bReply.id));
   unsub();
 });
+
+test('通報：通報した人は出さない・本人にだけキャラが声をかける・重いものは運営が見るまで見えない・あやまりは読むかを選べる・運営が決める', async () => {
+  const admin = [...people.values()][0]; // いちばん最初に登録した人が運営
+  const writer = await signup('通報される人');
+  const r1 = await signup('通報する人1');
+  const r2 = await signup('通報する人2');
+  const r3 = await signup('通報する人3');
+  const other = await signup('通報を見ている人');
+  const post = (await call('/api/posts', { method: 'POST', as: writer, body: { text: 'ちょっときつい言い方' } })).data;
+  const ids = async (as) => (await call('/api/posts', { as })).data.map((p) => p.id);
+
+  assert.equal((await call(`/api/posts/${post.id}/report`, { method: 'POST', body: { reason: 'rude' } })).status, 401);
+  assert.equal((await call(`/api/posts/${post.id}/report`, { method: 'POST', as: writer, body: { reason: 'rude' } })).status, 400, '自分の投稿は通報できない');
+  assert.equal((await call(`/api/posts/${post.id}/report`, { method: 'POST', as: r1, body: { reason: 'なんとなく' } })).status, 400);
+
+  // 軽い通報：通報した人には見えなくなる。ほかの人には見えたまま。本人にはやさしい声
+  assert.equal((await call(`/api/posts/${post.id}/report`, { method: 'POST', as: r1, body: { reason: 'rude' } })).status, 201);
+  assert.equal((await call(`/api/posts/${post.id}/report`, { method: 'POST', as: r1, body: { reason: 'rude' } })).status, 409, '同じ人は1回');
+  assert.ok(!(await ids(r1)).includes(post.id));
+  assert.ok((await ids(other)).includes(post.id));
+  let mine = (await call('/api/reports/mine', { as: writer })).data;
+  assert.equal(mine.notices.length, 1);
+  assert.equal(mine.notices[0].stage, 'gentle');
+  assert.ok(['シバ', 'ウサギ'].includes(mine.notices[0].guide.name));
+  assert.equal(JSON.stringify(mine).includes('通報する人1'), false, '通報した人の名前は出さない');
+  assert.equal((await call('/api/reports/mine', { as: other })).data.notices.length, 0, 'ほかの人には出ない');
+
+  // ちがう人から3つ → お巡りさん（本物ではないと書く）
+  await call(`/api/posts/${post.id}/report`, { method: 'POST', as: r2, body: { reason: 'pester' } });
+  await call(`/api/posts/${post.id}/report`, { method: 'POST', as: r3, body: { reason: 'rude' } });
+  mine = (await call('/api/reports/mine', { as: writer })).data;
+  assert.equal(mine.notices[0].stage, 'police');
+  assert.match(mine.notices[0].guide.note, /^本物の.+ではありません$/);
+
+  // あやまる：通報した人には「読みますか？」だけ。読むと中身が出る。読まないも選べる
+  assert.equal((await call(`/api/posts/${post.id}/apology`, { method: 'POST', as: other, body: { text: 'ごめん' } })).status, 403);
+  assert.equal((await call(`/api/posts/${post.id}/apology`, { method: 'POST', as: writer, body: { text: 'あ'.repeat(51) } })).status, 400);
+  assert.equal((await call(`/api/posts/${post.id}/apology`, { method: 'POST', as: writer, body: { text: 'ごめんなさい。言い方がよくなかったです' } })).status, 200);
+  assert.equal((await call(`/api/posts/${post.id}/apology`, { method: 'POST', as: writer, body: { text: 'もう一回' } })).status, 409);
+  const ask1 = (await call('/api/reports/mine', { as: r1 })).data.apologies;
+  assert.equal(ask1.length, 1);
+  assert.equal(ask1[0].from, '通報される人');
+  assert.equal(JSON.stringify(ask1).includes('ごめんなさい'), false, '読むと決めるまで中身は出さない');
+  const read = await call(`/api/reports/${ask1[0].id}/apology`, { method: 'POST', as: r1, body: { read: true } });
+  assert.equal(read.data.text, 'ごめんなさい。言い方がよくなかったです');
+  const ask2 = (await call('/api/reports/mine', { as: r2 })).data.apologies;
+  assert.deepEqual((await call(`/api/reports/${ask2[0].id}/apology`, { method: 'POST', as: r2, body: { read: false } })).data, { ok: true });
+  assert.equal((await call('/api/reports/mine', { as: r2 })).data.apologies.length, 0);
+  assert.equal((await call(`/api/reports/${ask2[0].id}/apology`, { method: 'POST', as: r3, body: { read: true } })).status, 404, 'ほかの人の通報のあやまりは読めない');
+
+  // わかった → お知らせは消える
+  await call(`/api/reports/notices/${post.id}/seen`, { method: 'POST', as: writer });
+  assert.equal((await call('/api/reports/mine', { as: writer })).data.notices.length, 0);
+
+  // 重い通報（さらし）：運営が見るまで、本人以外に見えない。本人には弁護士フクロウ
+  const bad = (await call('/api/posts', { method: 'POST', as: writer, body: { text: 'だれかの住所みたいなもの' } })).data;
+  const heavy = await call(`/api/posts/${bad.id}/report`, { method: 'POST', as: r1, body: { reason: 'expose' } });
+  assert.equal(heavy.data.held, true);
+  assert.ok(!(await ids(other)).includes(bad.id), 'ほかの人には見えない');
+  assert.ok(!(await ids(null)).includes(bad.id));
+  const own = (await call('/api/posts', { as: writer })).data.find((p) => p.id === bad.id);
+  assert.equal(own.hidden, 'report', '本人には見えて、止まっているとわかる');
+  mine = (await call('/api/reports/mine', { as: writer })).data;
+  assert.equal(mine.notices[0].stage, 'lawyer');
+
+  // 運営：一覧（通報した人の名前は出さない）→ 出す／止める
+  assert.equal((await call('/api/reports', { as: writer })).status, 403, '運営だけ');
+  const list = (await call('/api/reports', { as: admin })).data;
+  const row = list.find((x) => x.postId === bad.id);
+  assert.equal(row.reporters, 1);
+  assert.equal(JSON.stringify(list).includes('通報する人'), false);
+  await call(`/api/reports/${bad.id}/decision`, { method: 'POST', as: admin, body: { action: 'show' } });
+  assert.ok((await ids(other)).includes(bad.id), '運営が出すと、また見える');
+  await call(`/api/reports/${bad.id}/decision`, { method: 'POST', as: admin, body: { action: 'hide' } });
+  assert.ok(!(await ids(other)).includes(bad.id), '運営が止めると見えない');
+  mine = (await call('/api/reports/mine', { as: writer })).data;
+  assert.equal(mine.notices.find((n) => n.postId === bad.id).stage, 'stopped');
+
+  // キャラの投稿は通報できない
+  const agentPost = store.listPosts().find((p) => p.authorId.startsWith('agent-'));
+  assert.equal((await call(`/api/posts/${agentPost.id}/report`, { method: 'POST', as: r1, body: { reason: 'rude' } })).status, 400);
+});

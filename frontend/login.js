@@ -1,6 +1,7 @@
 // ログイン・はじめる（登録）・パスワードを忘れた・アカウント
 // ログインのしるしはサーバーのクッキー（JavaScript からは読めない）。ここでは画面の写しだけを更新する
 import { api, refreshMe, rememberMe, logout, headerHtml, escapeHtml, toast, timeAgo, safeNext } from '/shared/api.js';
+import { REPORT_REASONS } from '/shared/report.js';
 
 const $ = (sel) => document.querySelector(sel);
 const AGE = { child: '子ども（12歳まで）', teen: '中高生（13〜17歳）', adult: '大人（18歳から）' };
@@ -46,7 +47,41 @@ function render(me) {
   $('#acc-back').href = nextUrl();
   renderFamily(me);
   renderBlocks();
+  renderReportAdmin(me);
 }
+
+// ---- 運営だけ：通報の一覧 ----
+const STAGE_NAME = { gentle: 'やさしく声かけ', police: '👮 お巡りさん', lawyer: '⚖ 弁護士', enma: '👹 エンマ大王もどき' };
+const REASON_NAME = Object.fromEntries(REPORT_REASONS.map((r) => [r.id, r.label]));
+async function renderReportAdmin(me) {
+  $('#report-admin').hidden = me.role !== 'admin';
+  if (me.role !== 'admin') return;
+  let list;
+  try { list = await api('/reports'); } catch { return; }
+  $('#report-admin-list').innerHTML = list.length ? list.map((r) => {
+    const reasons = Object.entries(r.reasons).map(([k, n]) => `${REASON_NAME[k] ?? k} ${n}`).join('・');
+    const state = r.hidden === 'admin' ? '止めた' : r.hidden === 'report' ? '運営が見るまで見えない' : r.status === 'kept' ? '出したまま' : '出ている';
+    return `<li><strong>${escapeHtml(r.author)}</strong>「${escapeHtml(r.text)}」
+      <span class="muted small">${escapeHtml(reasons)}（${r.reporters}人）・${STAGE_NAME[r.stage] ?? ''}・いま：${state}</span>
+      <div class="row wrap">
+        <button type="button" class="btn ghost" data-decide="hide" data-post="${escapeHtml(r.postId)}">止める</button>
+        <button type="button" class="btn ghost" data-decide="show" data-post="${escapeHtml(r.postId)}">出す</button>
+      </div></li>`;
+  }).join('') : '<li class="muted small">通報はありません</li>';
+}
+$('#report-admin-list').addEventListener('click', async (e) => {
+  const btn = e.target.closest('[data-decide]');
+  if (!btn) return;
+  const label = btn.dataset.decide === 'hide' ? '止め' : '出し';
+  if (!confirm(`この投稿を${label}ますか？`)) return;
+  try {
+    await api(`/reports/${encodeURIComponent(btn.dataset.post)}/decision`, { method: 'POST', body: { action: btn.dataset.decide } });
+    toast(`投稿を${label}ました`);
+    renderReportAdmin(await refreshMe());
+  } catch (err) {
+    toast(err.message, 5000);
+  }
+});
 
 // ---- ミュート・ブロックした人 ----
 const KIND_NAME = { mute: '🙈 ミュート', block: '🚫 ブロック' };
