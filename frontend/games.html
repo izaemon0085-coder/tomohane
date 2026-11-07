@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ゲーム一覧 | ともはね β版</title>
+  <title>ゲームセンター | ともはね β版</title>
   <link rel="stylesheet" href="/shared/base.css">
   <link rel="stylesheet" href="/shared/playground.css">
   <link rel="stylesheet" href="/shared/customize.css">
@@ -13,15 +13,16 @@
 <body>
   <header class="site-header" id="header"></header>
   <main class="page games-page">
-    <h1>🎮 ゲーム一覧</h1>
+    <h1>🎮 ゲームセンター</h1>
 
-    <!-- シバのおすすめ -->
-    <section class="card panel guide" aria-live="polite">
-      <img src="/shared/avatars/shiba.svg" alt="" width="48" height="48">
-      <div>
-        <p class="muted small">シバから</p>
-        <p id="pick">おすすめを考えてるっす…</p>
-      </div>
+    <!-- 店長のキツネと、盛り上げ役のカエル -->
+    <section class="card panel arcade-staff" aria-live="polite">
+      <div class="say-line"><img src="/shared/avatars/kitsune.svg" alt="" width="48" height="48">
+        <div><p class="muted small">店長のキツネ</p>
+        <p id="kitsune-say">いらっしゃい！ 勝負する？ 負けても「もう一回！」だよ。</p></div></div>
+      <div class="say-line"><img src="/shared/avatars/kaeru.svg" alt="" width="48" height="48">
+        <div><p class="muted small">盛り上げ役のカエル</p>
+        <p id="pick">おすすめを考えてるよ……ゲロ</p></div></div>
     </section>
 
     <div class="game-filter" id="tags" role="group" aria-label="タグでしぼる"></div>

@@ -10,7 +10,7 @@ import { isComingSoon } from '../shared/soon.js';
 export const BUILTIN_GAMES = [
   {
     id: 'tomojan', name: 'ともじゃん（じゃんけん）', maker: 'ともはね', url: GAME_URL, start: '/api/link/game-start',
-    description: 'シバの家でじゃんけん。勝ち数でグッズの割引券がもらえる', tags: ['すぐ遊べる', 'ひとり'], minAge: 'child', ads: false, purchases: false,
+    description: 'シバが相手のじゃんけん。勝ち数でグッズの割引券がもらえる', tags: ['すぐ遊べる', 'ひとり'], minAge: 'child', ads: false, purchases: false,
   },
   {
     id: 'ghost', name: 'ゴーストエージェント', maker: 'ともはね', url: GHOST_URL, start: '/api/link/ghost-start',
@@ -70,9 +70,9 @@ export function recommendFor({ games: all, recs, usersById, user }) {
 }
 
 export function gameRecommendReply(rec, authorName) {
-  if (!rec) return `${authorName}さん、いまは遊べるゲームがないっす…。ゲーム一覧（/games.html）をのぞいてみてほしいっす！`;
+  if (!rec) return `${authorName}さん、いまは遊べるゲームがないっす…。ゲームセンター（/games.html）をのぞいてみてほしいっす！`;
   const said = rec.comment ? `「${rec.comment}」って声もあるっす！` : '';
-  return `${authorName}さんには「${rec.game.name}」がおすすめっす！ ${rec.reason}っす。${said} ゲーム一覧（/games.html）から遊べるっす 🎮`;
+  return `${authorName}さんには「${rec.game.name}」がおすすめっす！ ${rec.reason}っす。${said} ゲームセンター（/games.html）から遊べるっす 🎮`;
 }
 
 // 見る人の年齢の区分に合わせたゲーム一覧（ログインしていない人には、子どもと同じものだけ）

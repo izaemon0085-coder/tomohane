@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="カエル">
+  <circle cx="30" cy="30" r="15" fill="#5cba5f"/>
+  <circle cx="70" cy="30" r="15" fill="#5cba5f"/>
+  <circle cx="30" cy="30" r="9" fill="#fff"/>
+  <circle cx="70" cy="30" r="9" fill="#fff"/>
+  <circle cx="31" cy="31" r="5" fill="#1f2433"/>
+  <circle cx="69" cy="31" r="5" fill="#1f2433"/>
+  <circle cx="32.5" cy="29.5" r="1.6" fill="#fff"/>
+  <circle cx="70.5" cy="29.5" r="1.6" fill="#fff"/>
+  <ellipse cx="50" cy="62" rx="40" ry="32" fill="#5cba5f"/>
+  <ellipse cx="50" cy="72" rx="26" ry="18" fill="#d8f0c8"/>
+  <path d="M28 58 Q50 76 72 58" fill="#c0392b" stroke="#2b2420" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M40 64 Q50 70 60 64 Q50 74 40 64Z" fill="#f28ca6"/>
+  <circle cx="22" cy="58" r="5" fill="#f7c3d3" opacity=".7"/>
+  <circle cx="78" cy="58" r="5" fill="#f7c3d3" opacity=".7"/>
+</svg>

@@ -161,7 +161,7 @@ export function headerHtml(current) {
       ${link('/plaza.html', '💬 広場', 'plaza')}
       ${link('/cafe.html', '☕ カフェ', 'cafe')}
       ${link('/oshi.html', '💖 わたしの推し', 'oshi')}
-      ${link('/games.html', '🎮 ゲーム', 'games')}
+      ${link('/games.html', '🎮 ゲーセン', 'games')}
       ${link('/letter.html', '✉️ 手紙', 'letter')}
       ${link('/news.html', `📰 新聞${current !== 'news' && hasUnreadNews() ? newsMark() : ''}`, 'news')}
       ${link('/side/', '🏡 家', 'side')}

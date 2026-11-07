@@ -8,6 +8,7 @@ import { createSimulation } from './simulation.js';
 import { publishedIssues, findPoll, pollTalk } from '../shared/news.js';
 import { lanAddresses } from './net.js';
 import { REPORT_REASONS, STAGES, findReason, stageOf } from '../shared/report.js';
+import { ARCADE_APPS, arcadeStatus } from '../shared/arcade.js';
 import { MAX_VIDEO_BYTES, removeVideo, saveVideo, serveVideo } from './letters.js';
 import { createKokotomoClient } from './kokotomo.js';
 import { createGameLink, GHOST_URL, MISETOMO_URL, KOROTOMO_URL, SORATOMO_URL } from './gamelink.js';
@@ -202,7 +203,14 @@ export function createApp({
   misetomoLink = createGameLink({ app: 'misetomo', gameUrl: MISETOMO_URL }),
   korotomoLink = createGameLink({ app: 'korotomo', gameUrl: KOROTOMO_URL }),
   soratomoLink = createGameLink({ app: 'soratomo', gameUrl: SORATOMO_URL }),
+  clock = () => new Date(), // ゲームセンターの営業時間に使う（テストでは時刻を決められる）
 }) {
+  // ゲームセンターが閉まっていたら、ゲームセンターの画面にもどす（キツネが「閉店！」と言う）
+  const arcadeFor = (me) => arcadeStatus(me ? ageGroup(me.birthdate) : 'child', clock());
+  function closedRedirect(res) {
+    res.writeHead(302, { Location: '/games.html?closed=1', 'Cache-Control': 'no-store' });
+    return res.end() || true;
+  }
   const routes = [
     // line：回線番のモグが選んだ回線（wifi / local / offline）
     ['GET', /^\/api\/health$/, () => ({ ok: true, line: sim.lineStatus()?.active ?? null })],
@@ -245,6 +253,9 @@ export function createApp({
     ['POST', /^\/api\/guardian\/code$/, ({ me }) => [201, store.issueGuardianCode(needLogin(me).id)]],
     ['POST', /^\/api\/guardian\/join$/, ({ body, me }) => publicUser(store.acceptGuardianCode(needLogin(me).id, body.code))],
     ['DELETE', /^\/api\/guardian\/children\/([\w-]+)$/, ({ params, me }) => store.unlinkChild(needLogin(me).id, params[0])],
+
+    // ---- ゲームセンターの営業時間（見る人の年齢で、閉店の時間がちがう） ----
+    ['GET', /^\/api\/arcade$/, ({ me }) => arcadeFor(me)],
 
     // ---- ゲーム一覧（もとからある4つ＋一覧に出たインディーズ・個人のゲーム）・おすすめ ----
     ['GET', /^\/api\/games$/, ({ me }) => {
@@ -592,6 +603,7 @@ export function createApp({
         return res.end() || true;
       }
       if (!visibleFor(game, ageGroup(me.birthdate))) throw new HttpError(403, 'このゲームは、年齢の区分に合わないので遊べません');
+      if (!arcadeFor(me).open) return closedRedirect(res);
       const ticket = link.issue(me.id);
       res.writeHead(302, { Location: `${game.url}/auth/callback?ticket=${ticket}`, 'Cache-Control': 'no-store' });
       return res.end() || true;
@@ -646,6 +658,7 @@ export function createApp({
         res.writeHead(302, { Location: `/login.html?next=${encodeURIComponent(pathname)}` });
         return res.end() || true;
       }
+      if (ARCADE_APPS.includes(name) && !arcadeFor(me).open) return closedRedirect(res);
       const ticket = link.issue(me.id);
       res.writeHead(302, { Location: `${gameUrlFor(req, link)}/auth/callback?ticket=${ticket}`, 'Cache-Control': 'no-store' });
       return res.end() || true;
