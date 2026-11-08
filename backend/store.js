@@ -8,7 +8,7 @@ import { DEFAULT_TYPEFACE, TYPEFACE_KEYS } from '../shared/typefaces.js';
 import { precheck } from '../shared/precheck.js';
 import { MAX_VOTE_COMMENT, OFFICIAL_ACCOUNTS } from '../shared/news.js';
 import { findReason, stageOf, MAX_APOLOGY } from '../shared/report.js';
-import { LEAVE_MS } from '../shared/leave.js';
+import { LEAVE_MS, GUARDIAN_LEAVE_MS, FAMILY_DIARY } from '../shared/leave.js';
 import {
   FREE_TABLE, GENRE_TABLES, GENRE_IDS, MAX_TABLE_NAME, MAX_TABLE_REQUEST, MAX_OPEN_REQUESTS, normalizeOshi,
 } from '../shared/cafe.js';
@@ -155,6 +155,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
   }
   state.tableRequests ??= []; // ジャンルのリクエスト { id, userId, text, createdAt }（運営が見て、テーブルを足す）
   state.farewells ??= []; // 投稿を消した人（退会した人）から、返信した人へのひとこと { id, toId, fromId, fromName, text, at }
+  state.familyDiary ??= []; // おうちの人に届くシバの日記 { id, guardianId, childId, text, at }
   state.reportSeen ??= []; // 通報された本人が、お知らせを読んだしるし { postId, authorId, at }
   const listeners = new Set();
   const loginFails = new Map(); // ログインID → { count, until }（パスワードの総当たりを防ぐ）
@@ -179,6 +180,13 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
   const userById = (id) => state.users.find((u) => u.id === id);
   // 退会の7日のあいだ（投稿はほかの人に見えない）
   const isLeaving = (u) => Boolean(u?.leaving?.at);
+  // 子ども（おうちの人とつながっている）は、7日で入れなくなる（データは14日まで残して、おうちの人が取り消せる）
+  const isClosed = (u) => Boolean(u?.leaving?.guarded) && Date.parse(u.leaving.at) + LEAVE_MS <= clockMs();
+  const leaveDueMs = (u) => Date.parse(u.leaving.at) + (u.leaving.guarded ? GUARDIAN_LEAVE_MS : LEAVE_MS);
+  // おうちの人みんなへ、シバの日記を書く
+  const writeFamilyDiary = (child, text) => {
+    for (const g of child.guardianIds ?? []) state.familyDiary.push({ id: newId('d'), guardianId: g, childId: child.id, text, at: now() });
+  };
   const requireUser = (id) => {
     const user = userById(id);
     if (!user) throw new HttpError(404, 'ユーザーが見つかりません');
@@ -210,6 +218,8 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
   // 通報した記録は、だれが通報したかだけ消して残す（運営が見るまで止めている投稿があるため）
   function eraseUser(user) {
     const id = user.id;
+    if (user.guardianIds?.length) writeFamilyDiary(user, FAMILY_DIARY.gone(user.name));
+    state.familyDiary = state.familyDiary.filter((d) => d.guardianId !== id);
     const to = store.leaveRepliers(id).filter((x) => !isLeaving(userById(x)));
     const gone = new Set(state.posts.filter((p) => p.authorId === id).map((p) => p.id));
     for (let changed = true; changed;) {
@@ -333,6 +343,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
         throw new HttpError(401, 'ログインIDかパスワードがちがいます');
       }
       loginFails.delete(id);
+      if (isClosed(user)) throw new HttpError(403, '退会しました。まちがいだったときは、おうちの人に取り消してもらってください（14日まで）');
       return user;
     },
     // 回復コードを1つ使って、新しいパスワードにする（コードは1回だけ）
@@ -369,7 +380,8 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       if (!token) return null;
       const h = hashSession(token);
       const s = state.sessions.find((x) => x.hash === h && x.expiresAt > clockMs());
-      return s ? userById(s.userId) || null : null;
+      const u = s ? userById(s.userId) || null : null;
+      return isClosed(u) ? null : u;
     },
     endSession(token) {
       const h = hashSession(token);
@@ -952,29 +964,35 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       const text = typeof farewell === 'string' && farewell.trim() ? cleanText(farewell, MAX_FAREWELL, '返信した人へのひとこと') : '';
       if (text) rejectBlocked(user, text);
       if (!text && store.leaveRepliers(user.id).length) throw new HttpError(400, '返信してくれた人へのひとことを選んでください');
-      // 子どもでおうちの人とつながっていれば、おうちの人の OK を待つ
-      const needsGuardian = ageGroup(user.birthdate, new Date(clockMs())) === 'child' && (user.guardianIds?.length ?? 0) > 0;
-      user.leaving = { requestedAt: now(), at: needsGuardian ? null : now(), farewell: text, needsGuardian };
+      // 子どもでおうちの人とつながっていれば、シバの日記でおうちの人に伝える（14日まで、おうちの人が取り消せる）
+      const guarded = ageGroup(user.birthdate, new Date(clockMs())) === 'child' && (user.guardianIds?.length ?? 0) > 0;
+      user.leaving = { requestedAt: now(), at: now(), farewell: text, guarded };
+      if (guarded) writeFamilyDiary(user, FAMILY_DIARY.leave(user.name));
       emit('user', user);
       return user.leaving;
     },
     cancelLeave(userId) {
       const user = requireUser(userId);
       if (!user.leaving) throw new HttpError(404, '退会の手続きはしていません');
+      if (isClosed(user)) throw new HttpError(409, '7日すぎたので、本人からは取り消せません');
+      if (user.leaving.guarded) writeFamilyDiary(user, FAMILY_DIARY.back(user.name));
       delete user.leaving;
       emit('user', user);
       return { ok: true };
     },
-    // おうちの人が、子どもの退会に OK する／しない（しないなら、申しこみはなくなる）
-    answerChildLeave(guardianId, childId, approve) {
+    isClosed,
+    leaveDueMs,
+    // おうちの人が、子どもの退会を取り消す（機種変更などのまちがい。14日まで）
+    guardianCancelLeave(guardianId, childId) {
       const child = requireUser(childId);
       if (!child.guardianIds?.includes(guardianId)) throw new HttpError(404, 'つながっていません');
-      if (!child.leaving?.needsGuardian) throw new HttpError(404, '退会の申しこみはありません');
-      if (approve) Object.assign(child.leaving, { at: now(), needsGuardian: false });
-      else delete child.leaving;
+      if (!child.leaving) throw new HttpError(404, '退会の手続きはしていません');
+      delete child.leaving;
+      writeFamilyDiary(child, FAMILY_DIARY.guardianBack(child.name));
       emit('user', child);
       return { ok: true };
     },
+    familyDiaryFor: (guardianId) => state.familyDiary.filter((d) => d.guardianId === guardianId).slice(-20).reverse(),
     // この人の投稿に返信していた人（人間・本人以外。返信の返信もふくむ）
     leaveRepliers(userId) {
       const tree = new Set(state.posts.filter((p) => p.authorId === userId).map((p) => p.id));
@@ -993,7 +1011,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
     },
     // 7日たった人を消す。消した手紙のビデオを返す（ファイルはサーバーが消す）
     purgeLeaving(atMs = clockMs()) {
-      const due = state.users.filter((u) => u.leaving?.at && Date.parse(u.leaving.at) + LEAVE_MS <= atMs);
+      const due = state.users.filter((u) => u.leaving?.at && leaveDueMs(u) <= atMs);
       const videos = [];
       for (const u of due) videos.push(...eraseUser(u));
       if (due.length) emit('user', { id: null });

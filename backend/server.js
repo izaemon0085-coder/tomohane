@@ -9,7 +9,7 @@ import { publishedIssues, findPoll, pollTalk } from '../shared/news.js';
 import { lanAddresses } from './net.js';
 import { REPORT_REASONS, STAGES, findReason, stageOf } from '../shared/report.js';
 import { ARCADE_APPS, arcadeStatus } from '../shared/arcade.js';
-import { LEAVE_MS } from '../shared/leave.js';
+import { LEAVE_MS, GUARDIAN_LEAVE_MS } from '../shared/leave.js';
 import { MAX_VIDEO_BYTES, removeVideo, saveVideo, serveVideo } from './letters.js';
 import { createKokotomoClient } from './kokotomo.js';
 import { createGameLink, GHOST_URL, MISETOMO_URL, KOROTOMO_URL, SORATOMO_URL } from './gamelink.js';
@@ -104,11 +104,15 @@ function meView(u) {
   };
 }
 
-// 退会の手続き（7日のあいだ）。until：消える日時。needsGuardian：おうちの人の OK を待っている
+// 退会の手続き。until：本人が入れなくなる（消える）日時。
+// guarded：おうちの人とつながっている子ども。guardianUntil：おうちの人が取り消せる日時（そのあと消える）
 function leavingView(u) {
   if (!u.leaving) return null;
-  const until = u.leaving.at ? new Date(Date.parse(u.leaving.at) + LEAVE_MS).toISOString() : null;
-  return { requestedAt: u.leaving.requestedAt, until, needsGuardian: Boolean(u.leaving.needsGuardian) };
+  const at = Date.parse(u.leaving.at);
+  return {
+    requestedAt: u.leaving.requestedAt, until: new Date(at + LEAVE_MS).toISOString(), guarded: Boolean(u.leaving.guarded),
+    guardianUntil: u.leaving.guarded ? new Date(at + GUARDIAN_LEAVE_MS).toISOString() : null,
+  };
 }
 
 // おうちの人が見る、つながった子どものようす（広場の投稿は誰でも見えるもの。手紙・推しページ・パスワードなどは出さない）
@@ -258,13 +262,14 @@ export function createApp({
       return {
         guardians: store.guardiansOf(u.id).map(publicUser),
         children: store.childrenOf(u.id).map((c) => childView(c, store.listPosts(), users)),
+        diary: store.familyDiaryFor(u.id).map((d) => ({ id: d.id, text: d.text, at: d.at })),
       };
     }],
     ['POST', /^\/api\/guardian\/code$/, ({ me }) => [201, store.issueGuardianCode(needLogin(me).id)]],
     ['POST', /^\/api\/guardian\/join$/, ({ body, me }) => publicUser(store.acceptGuardianCode(needLogin(me).id, body.code))],
     ['DELETE', /^\/api\/guardian\/children\/([\w-]+)$/, ({ params, me }) => store.unlinkChild(needLogin(me).id, params[0])],
-    // 子どもの退会：おうちの人が OK する／しない
-    ['POST', /^\/api\/guardian\/children\/([\w-]+)\/leave$/, ({ params, body, me }) => store.answerChildLeave(needLogin(me).id, params[0], body.approve === true)],
+    // 子どもの退会を、おうちの人が取り消す（機種変更などのまちがい。14日まで）
+    ['POST', /^\/api\/guardian\/children\/([\w-]+)\/leave-cancel$/, ({ params, me }) => store.guardianCancelLeave(needLogin(me).id, params[0])],
 
     // ---- ゲームセンターの営業時間（見る人の年齢で、閉店の時間がちがう） ----
     ['GET', /^\/api\/arcade$/, ({ me }) => arcadeFor(me)],

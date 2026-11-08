@@ -3,7 +3,7 @@
 import { api, refreshMe, rememberMe, logout, headerHtml, escapeHtml, toast, timeAgo, safeNext } from '/shared/api.js';
 import { REPORT_REASONS } from '/shared/report.js';
 import { isComingSoon, SOON_LABEL } from '/shared/soon.js';
-import { FAREWELL_CHOICES, SEND_OFF, WAIT_GUARDIAN, WELCOME_BACK } from '/shared/leave.js';
+import { FAREWELL_CHOICES, SEND_OFF, WELCOME_BACK } from '/shared/leave.js';
 
 const $ = (sel) => document.querySelector(sel);
 const AGE = { child: '子ども（12歳まで）', teen: '中高生（13〜17歳）', adult: '大人（18歳から）' };
@@ -63,10 +63,10 @@ function renderLeaving(me) {
   $('#leave-box').hidden = Boolean(l) || me.role === 'admin';
   $('#leave-child-note').hidden = me.ageGroup !== 'child';
   if (!l) return;
-  $('#leaving-when').textContent = l.needsGuardian
-    ? 'おうちの人の OK を待っています。OK のあと、7日たつと消えます。'
+  $('#leaving-when').textContent = l.guarded
+    ? `${dateJa(l.until)} に、ともはね に入れなくなります。おうちの人には、シバの日記で伝わっています。`
     : `${dateJa(l.until)} に、アカウントと投稿などが消えます。`;
-  $('#leaving-lines').innerHTML = (l.needsGuardian ? [WAIT_GUARDIAN] : SEND_OFF).map(sayLine).join('');
+  $('#leaving-lines').innerHTML = SEND_OFF.map(sayLine).join('');
 }
 $('#leave-farewell-choices').innerHTML = [...FAREWELL_CHOICES, ''].map((t, i) => `<label class="block-kind">
   <input type="radio" name="farewell" value="${escapeHtml(t)}"${i === 0 ? ' checked' : ''}>
@@ -236,6 +236,10 @@ async function renderFamily(me) {
       : 'まだ、おうちの人とつながっていません。';
     return;
   }
+  const diary = data.diary ?? [];
+  $('#family-diary-box').hidden = !diary.length;
+  $('#family-diary').innerHTML = diary.map((d) => `<li><img src="/shared/avatars/shiba.svg" alt="" width="32" height="32">
+    <div><span class="muted small">${escapeHtml(dateJa(d.at))}</span><p>${escapeHtml(d.text)}</p></div></li>`).join('');
   const count = (label, v, text) => (v ? `${label} ${text(v)}` : null);
   $('#family-children').innerHTML = data.children.map((c) => {
     const games = [
@@ -249,11 +253,11 @@ async function renderFamily(me) {
       : '<p class="muted small">広場の投稿はまだありません</p>';
     const id = escapeHtml(c.id);
     const name = escapeHtml(c.name);
-    const leave = c.leaving?.needsGuardian
-      ? `<p class="note-line">🌸 ${name} さんが退会を申しこんでいます。OK すると、7日たってからアカウントと投稿などが消えます（7日のあいだは本人が取り消せます）。</p>
-        <div class="row wrap"><button type="button" class="btn" data-leave="${id}" data-approve="1" data-name="${name}">OK する</button>
-        <button type="button" class="btn ghost" data-leave="${id}" data-approve="0" data-name="${name}">OK しない</button></div>`
-      : c.leaving?.until ? `<p class="muted small">🌸 退会の手続き中（${escapeHtml(dateJa(c.leaving.until))} に消えます）</p>` : '';
+    const until = c.leaving?.guardianUntil ?? c.leaving?.until;
+    const leave = c.leaving
+      ? `<p class="note-line">🌸 退会の手続き中です。${escapeHtml(dateJa(c.leaving.until))} に本人は入れなくなり、${escapeHtml(dateJa(until))} にアカウントと投稿などが消えます。機種変更などのまちがいなら、それまでここで取り消せます。</p>
+        <div class="row wrap"><button type="button" class="btn ghost" data-leave="${id}" data-name="${name}">退会を取り消す</button></div>`
+      : '';
     return `<li><strong>${name}</strong> <span class="muted small">${escapeHtml(games)}</span>${posts}${leave}
       <button type="button" class="btn ghost" data-unlink="${id}" data-name="${name}">つなぐのをやめる</button></li>`;
   }).join('');
@@ -269,11 +273,10 @@ $('#family-issue').addEventListener('click', async () => {
 $('#family-children').addEventListener('click', async (e) => {
   const lv = e.target.closest('[data-leave]');
   if (lv) {
-    const approve = lv.dataset.approve === '1';
-    if (!confirm(approve ? `${lv.dataset.name} さんの退会に OK しますか？` : `${lv.dataset.name} さんの退会に OK しませんか？（申しこみはなくなります）`)) return;
+    if (!confirm(`${lv.dataset.name} さんの退会を取り消しますか？`)) return;
     try {
-      await api(`/guardian/children/${encodeURIComponent(lv.dataset.leave)}/leave`, { method: 'POST', body: { approve } });
-      toast(approve ? '🐕 OK したっす。7日のカウントが始まったっす' : '🐕 申しこみをなくしたっす');
+      await api(`/guardian/children/${encodeURIComponent(lv.dataset.leave)}/leave-cancel`, { method: 'POST' });
+      toast(`🐕 取り消したっす。${lv.dataset.name}さん、おかえりなさいっす！`, 5000);
       renderFamily(await refreshMe());
     } catch (err) {
       toast(err.message, 5000);
