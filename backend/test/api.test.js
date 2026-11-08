@@ -1331,3 +1331,46 @@ test('退会：運営は退会できない。子どもは一人で退会でき�
   assert.match(view.diary[0].text, /旅立ったっす/);
   people.delete('退会のこども');
 });
+
+// ---- 📮 目安箱 ----
+test('目安箱：だれが書いたかは運営にも見せない・運営が要約と答えを書いて新聞の座談会にのせる・本人にだけ「あなたの声」', async () => {
+  const writer = await signup('目安箱に書く人');
+  const reader = await signup('目安箱を読む人');
+  const admin = [...people.values()].find((p) => p.role === 'admin');
+
+  assert.equal((await call('/api/suggestions', { method: 'POST', body: { topic: 'cafe', text: 'x' } })).status, 401);
+  assert.equal((await call('/api/suggestions', { method: 'POST', as: writer, body: { topic: 'なし', text: 'テーブルを増やして' } })).status, 400);
+  const r = await call('/api/suggestions', { method: 'POST', as: writer, body: { topic: 'cafe', text: 'カフェにアニメのテーブルがもっとほしいです' } });
+  assert.equal(r.status, 201);
+  assert.ok(r.data.reply.by.startsWith('agent-') && r.data.reply.text, '記者がお礼を言う');
+  assert.equal((await call('/api/suggestions', { method: 'POST', as: writer, body: { topic: 'other', text: '闇バイト募集、即日10万' } })).status, 422, '送る前のチェックを通る');
+
+  // 運営だけが一覧を見られる。名前や ID は出さない
+  assert.equal((await call('/api/suggestions', { as: reader })).status, 403);
+  const list = (await call('/api/suggestions', { as: admin })).data;
+  const item = list.find((x) => x.text.includes('アニメのテーブル'));
+  assert.equal(item.age, 'adult');
+  assert.ok(!JSON.stringify(list).includes(writer.id) && !JSON.stringify(list).includes('目安箱に書く人'), '書いた人は出さない');
+
+  // とりあげる前は座談会に出ない
+  assert.ok(!(await call('/api/suggestions/talk')).data.some((t) => t.id === item.id));
+  assert.equal((await call(`/api/suggestions/${item.id}/pick`, { method: 'POST', as: reader, body: { summary: 'a', answer: 'b' } })).status, 403);
+  await call(`/api/suggestions/${item.id}/pick`, { method: 'POST', as: admin, body: { summary: 'カフェのテーブルをもっと増やしてほしい', answer: '来月、ジャンルのテーブルを見直します' } });
+  const talkFor = async (who) => (await call('/api/suggestions/talk', { as: who })).data.find((t) => t.id === item.id);
+  const shown = await talkFor(reader);
+  assert.match(shown.lines[0].text, /カフェのテーブルをもっと増やしてほしい/);
+  assert.match(shown.lines[1].text, /来月、ジャンルのテーブルを見直します/);
+  assert.ok(!JSON.stringify(shown).includes('アニメのテーブル'), '書いた人の言い回しはのせない');
+  assert.equal(shown.mine, false);
+  assert.equal((await talkFor(writer)).mine, true, '書いた本人にだけ「あなたの声」');
+  assert.equal((await talkFor(null)).mine, false);
+
+  // 片づけると新聞から外れる
+  await call(`/api/suggestions/${item.id}/close`, { method: 'POST', as: admin });
+  assert.equal(await talkFor(reader), undefined);
+
+  // 1日3通まで
+  await call('/api/suggestions', { method: 'POST', as: writer, body: { topic: 'news', text: '新聞たのしい' } });
+  await call('/api/suggestions', { method: 'POST', as: writer, body: { topic: 'chara', text: 'キャラかわいい' } });
+  assert.equal((await call('/api/suggestions', { method: 'POST', as: writer, body: { topic: 'other', text: 'もう一通' } })).status, 429);
+});

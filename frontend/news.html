@@ -14,6 +14,26 @@
   <header class="site-header" id="header"></header>
   <main class="page news-page">
     <article class="paper" id="paper" aria-live="polite"></article>
+    <!-- 📮 目安箱：記者が受け取る。答えは「目安箱から」の座談会で -->
+    <section class="card meyasu" id="meyasu" aria-labelledby="meyasu-title">
+      <h2 id="meyasu-title">📮 目安箱から</h2>
+      <div id="meyasu-talk"></div>
+      <h3>📮 目安箱（新聞社の前）</h3>
+      <p class="muted small">ともはね へのお願い・こまったこと・アイデアをどうぞ。<strong>だれが書いたかは、運営にも見せません</strong>。とりあげた声は、運営が短くまとめて、この座談会で答えます。</p>
+      <form id="meyasu-form" hidden>
+        <label class="field">テーマ<select class="input" name="topic" id="meyasu-topic" required></select></label>
+        <label class="field">あなたの声（200文字まで・1日3通まで）<textarea class="input" name="text" maxlength="200" rows="3" required></textarea></label>
+        <p class="error" role="alert"></p>
+        <button class="btn" type="submit">目安箱に入れる</button>
+      </form>
+      <p id="meyasu-login" hidden><a href="/login.html?next=/news.html">ログイン</a>すると、目安箱に入れられます。</p>
+      <div class="say-line" id="meyasu-reply" hidden aria-live="polite"></div>
+      <details class="admin-box" id="meyasu-admin" hidden>
+        <summary>運営だけ：目安箱に届いた声</summary>
+        <p class="small muted">書いた人の名前は出していません。「新聞でとりあげる」ときは、本人と分からないように短くまとめて、答えを書いてください。</p>
+        <ul class="meyasu-admin-list" id="meyasu-admin-list"></ul>
+      </details>
+    </section>
     <nav class="card backnumbers" aria-labelledby="back-title">
       <h2 id="back-title">バックナンバー</h2>
       <ul id="backnumbers"></ul>

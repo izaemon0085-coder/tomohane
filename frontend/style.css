@@ -456,3 +456,13 @@ html[data-oshi-color] .oshi-hero { color: var(--accent-text); }
 .family-diary li { display: flex; gap: 10px; align-items: flex-start; background: var(--surface-2); border-radius: 10px; padding: 8px 12px; }
 .family-diary li img { flex: none; border-radius: 50%; background: var(--surface); }
 .family-diary p { margin: 2px 0 0; }
+
+/* 📮 目安箱 */
+.meyasu { margin-top: 16px; display: grid; gap: 10px; }
+.meyasu form { display: grid; gap: 8px; }
+.meyasu-item { border-bottom: 1px dashed var(--border); padding-bottom: 6px; }
+.mine-chip { display: inline-block; margin: 0 0 4px; font-size: .82rem; background: var(--surface-2); border-radius: 999px; padding: 2px 10px; }
+#meyasu-reply img { flex: none; border-radius: 50%; background: var(--surface); }
+.meyasu-admin-list { list-style: none; padding: 0; display: grid; gap: 10px; }
+.meyasu-admin-list > li { border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; }
+.meyasu-admin-list p { margin: 2px 0; }

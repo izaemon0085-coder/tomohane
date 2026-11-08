@@ -9,6 +9,7 @@ import { precheck } from '../shared/precheck.js';
 import { MAX_VOTE_COMMENT, OFFICIAL_ACCOUNTS } from '../shared/news.js';
 import { findReason, stageOf, MAX_APOLOGY } from '../shared/report.js';
 import { LEAVE_MS, GUARDIAN_LEAVE_MS, FAMILY_DIARY } from '../shared/leave.js';
+import { MAX_SUGGESTION, MAX_PER_DAY, MAX_SUMMARY, MAX_ANSWER, SUGGEST_TOPICS } from '../shared/suggest.js';
 import {
   FREE_TABLE, GENRE_TABLES, GENRE_IDS, MAX_TABLE_NAME, MAX_TABLE_REQUEST, MAX_OPEN_REQUESTS, normalizeOshi,
 } from '../shared/cafe.js';
@@ -156,6 +157,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
   state.tableRequests ??= []; // ジャンルのリクエスト { id, userId, text, createdAt }（運営が見て、テーブルを足す）
   state.farewells ??= []; // 投稿を消した人（退会した人）から、返信した人へのひとこと { id, toId, fromId, fromName, text, at }
   state.familyDiary ??= []; // おうちの人に届くシバの日記 { id, guardianId, childId, text, at }
+  state.suggestions ??= []; // 目安箱 { id, userId（運営にも見せない）, age, topic, text, status（new/picked/done）, picked: { summary, answer, at }, createdAt }
   state.reportSeen ??= []; // 通報された本人が、お知らせを読んだしるし { postId, authorId, at }
   const listeners = new Set();
   const loginFails = new Map(); // ログインID → { count, until }（パスワードの総当たりを防ぐ）
@@ -253,6 +255,8 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
     state.gameRecs = state.gameRecs.filter((r) => r.userId !== id);
     state.newsVotes = state.newsVotes.filter((v) => v.userId !== id);
     state.tableRequests = state.tableRequests.filter((r) => r.userId !== id);
+    state.suggestions = state.suggestions.filter((x) => x.userId !== id || x.status === 'picked');
+    for (const x of state.suggestions) if (x.userId === id) x.userId = null;
     state.extGames = state.extGames.filter((g) => g.ownerId !== id);
     for (const u of state.users) if (u.guardianIds?.includes(id)) u.guardianIds = u.guardianIds.filter((x) => x !== id);
     state.users = state.users.filter((u) => u.id !== id);
@@ -1016,6 +1020,45 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       for (const u of due) videos.push(...eraseUser(u));
       if (due.length) emit('user', { id: null });
       return { erased: due.length, videos };
+    },
+
+    // ---- 目安箱（だれが書いたかは運営にも見せない） ----
+    addSuggestion(userId, { topic, text }) {
+      const user = requireUser(userId);
+      if (user.kind !== 'human') throw new HttpError(400, '目安箱に入れられるのは、人間のユーザーだけです');
+      if (!SUGGEST_TOPICS.some((t) => t.id === topic)) throw new HttpError(400, 'テーマを選んでください');
+      const clean = cleanText(text, MAX_SUGGESTION, '声');
+      rejectBlocked(user, clean);
+      const since = new Date(clockMs() - 86400000).toISOString();
+      if (state.suggestions.filter((x) => x.userId === userId && x.createdAt > since).length >= MAX_PER_DAY) {
+        throw new HttpError(429, `目安箱は1日${MAX_PER_DAY}通までです。また明日どうぞ`);
+      }
+      const item = { id: newId('s'), userId, age: ageGroup(user.birthdate, new Date(clockMs())), topic, text: clean, status: 'new', picked: null, createdAt: now() };
+      state.suggestions.push(item);
+      emit('suggestion', { id: item.id });
+      return item;
+    },
+    listSuggestions: () => [...state.suggestions].reverse(),
+    // 運営：新聞でとりあげる（要約と答えは運営が書く）
+    pickSuggestion(id, { summary, answer }) {
+      const item = state.suggestions.find((x) => x.id === id);
+      if (!item) throw new HttpError(404, '声が見つかりません');
+      item.picked = {
+        summary: cleanText(summary, MAX_SUMMARY, '要約'), answer: cleanText(answer, MAX_ANSWER, '運営の答え'), at: now(),
+      };
+      item.status = 'picked';
+      emit('news', { id: item.id });
+      return item;
+    },
+    // 運営：片づける（とりあげない）。とりあげたものを片づけると、新聞からも外れる
+    closeSuggestion(id) {
+      const item = state.suggestions.find((x) => x.id === id);
+      if (!item) throw new HttpError(404, '声が見つかりません');
+      const wasPicked = item.status === 'picked';
+      item.status = 'done';
+      item.picked = null;
+      emit(wasPicked ? 'news' : 'suggestion', { id: item.id });
+      return item;
     },
 
     // ---- meetings (サブフロント：会議室) ----

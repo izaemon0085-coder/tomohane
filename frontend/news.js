@@ -1,6 +1,7 @@
 // ともはね新聞。アンケートの結果は数字を出さず、キャラの座談会で見せる（正確な数とひとことは運営だけ）
 import { api, refreshMe, getMe, headerHtml, escapeHtml, toast, timeAgo, onServerEvents, markNewsSeen } from '/shared/api.js';
 import { PAPER_NAME, MAX_VOTE_COMMENT, AGENT_NAMES, issueLabel } from '/shared/news.js';
+import { SUGGEST_TOPICS, topicLabel, MAX_SUMMARY, MAX_ANSWER } from '/shared/suggest.js';
 
 const $ = (sel) => document.querySelector(sel);
 const AGE = { child: '子ども', teen: '中高生', adult: '大人' };
@@ -134,10 +135,87 @@ $('#paper').addEventListener('toggle', async (e) => {
   }
 }, true);
 
+// ---- 📮 目安箱 ----
+const AGE_LABEL = { child: '子ども', teen: '中高生', adult: '大人' };
+const STATUS_LABEL = { new: '🆕 新しい', picked: '📰 新聞でとりあげた', done: '片づけた' };
+$('#meyasu-topic').innerHTML = SUGGEST_TOPICS.map((t) => `<option value="${t.id}">${escapeHtml(t.label)}</option>`).join('');
+
+async function loadMeyasu() {
+  const me = getMe();
+  $('#meyasu-form').hidden = !me;
+  $('#meyasu-login').hidden = Boolean(me);
+  try {
+    const talk = await api('/suggestions/talk');
+    $('#meyasu-talk').innerHTML = talk.length
+      ? talk.map((t) => `<div class="meyasu-item">${t.mine ? '<p class="mine-chip">📮 あなたの声がのっています</p>' : ''}${talkHtml(t.lines)}</div>`).join('')
+      : talkHtml([{ by: 'agent-shiba', text: 'まだ、とりあげた声はないっす。下の目安箱に、なんでも入れてほしいっす！' }]);
+  } catch { /* オフラインなど */ }
+  $('#meyasu-admin').hidden = me?.role !== 'admin';
+  if (me?.role === 'admin' && $('#meyasu-admin').open) await loadMeyasuAdmin();
+}
+async function loadMeyasuAdmin() {
+  const list = await api('/suggestions');
+  $('#meyasu-admin-list').innerHTML = list.length ? list.map((x) => `<li data-id="${escapeHtml(x.id)}">
+      <p class="small muted">${escapeHtml(topicLabel(x.topic))}・${escapeHtml(AGE_LABEL[x.age] ?? '')}・${escapeHtml(timeAgo(x.at))}・${STATUS_LABEL[x.status] ?? ''}</p>
+      <p>${escapeHtml(x.text)}</p>
+      ${x.picked ? `<p class="small">要約「${escapeHtml(x.picked.summary)}」／答え「${escapeHtml(x.picked.answer)}」</p>` : ''}
+      ${x.status === 'done' ? '' : `<form class="meyasu-pick">
+        <label class="field">要約（${MAX_SUMMARY}文字まで・本人と分からない言い方で）<input class="input" name="summary" maxlength="${MAX_SUMMARY}" value="${escapeHtml(x.picked?.summary ?? '')}" required></label>
+        <label class="field">運営の答え（${MAX_ANSWER}文字まで）<textarea class="input" name="answer" maxlength="${MAX_ANSWER}" rows="2" required>${escapeHtml(x.picked?.answer ?? '')}</textarea></label>
+        <div class="row wrap"><button class="btn" type="submit">${x.picked ? '直す' : '新聞でとりあげる'}</button>
+        <button class="btn ghost" type="button" data-close>片づける</button></div></form>`}
+    </li>`).join('') : '<li class="muted small">まだ届いていません</li>';
+}
+$('#meyasu-admin').addEventListener('toggle', () => { if ($('#meyasu-admin').open) loadMeyasuAdmin().catch((x) => toast(x.message, 5000)); });
+$('#meyasu-admin-list').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const li = e.target.closest('[data-id]');
+  try {
+    await api(`/suggestions/${encodeURIComponent(li.dataset.id)}/pick`, { method: 'POST', body: { summary: e.target.elements.summary.value.trim(), answer: e.target.elements.answer.value.trim() } });
+    toast('📰 新聞の「目安箱から」にのせました');
+    await loadMeyasu();
+    await loadMeyasuAdmin();
+  } catch (x) {
+    toast(x.message, 5000);
+  }
+});
+$('#meyasu-admin-list').addEventListener('click', async (e) => {
+  if (!e.target.closest('[data-close]')) return;
+  const li = e.target.closest('[data-id]');
+  if (!confirm('この声を片づけますか？（新聞にのっていたら、外れます）')) return;
+  try {
+    await api(`/suggestions/${encodeURIComponent(li.dataset.id)}/close`, { method: 'POST' });
+    await loadMeyasu();
+    await loadMeyasuAdmin();
+  } catch (x) {
+    toast(x.message, 5000);
+  }
+});
+$('#meyasu-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = e.target.elements;
+  const err = e.target.querySelector('.error');
+  err.textContent = '';
+  try {
+    const { reply } = await api('/suggestions', { method: 'POST', body: { topic: f.topic.value, text: f.text.value.trim() } });
+    e.target.reset();
+    $('#meyasu-reply').innerHTML = `<img src="${face(reply.by)}" alt="" width="40" height="40"><p><strong>${escapeHtml(AGENT_NAMES[reply.by] ?? '')} 記者</strong>：${escapeHtml(reply.text)}</p>`;
+    $('#meyasu-reply').hidden = false;
+  } catch (x) {
+    err.textContent = x.offline ? 'つながっていません。つながってから、もう一度どうぞ' : x.message;
+  }
+});
+
 markNewsSeen();
 $('#header').innerHTML = headerHtml('news');
 await refreshMe().catch(() => null);
 $('#header').innerHTML = headerHtml('news');
 await load();
+await loadMeyasu();
 // 書いている途中で紙面が作りなおされないように、入力中は待つ
-onServerEvents({ news: () => { if (!document.activeElement?.closest('.vote-form')) load(); } });
+onServerEvents({
+  news: () => {
+    if (!document.activeElement?.closest('.vote-form')) load();
+    if (!document.activeElement?.closest('.meyasu-pick')) loadMeyasu();
+  },
+});

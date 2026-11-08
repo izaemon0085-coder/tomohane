@@ -10,6 +10,7 @@ import { lanAddresses } from './net.js';
 import { REPORT_REASONS, STAGES, findReason, stageOf } from '../shared/report.js';
 import { ARCADE_APPS, arcadeStatus } from '../shared/arcade.js';
 import { LEAVE_MS, GUARDIAN_LEAVE_MS } from '../shared/leave.js';
+import { reporterFor, suggestionTalk, TALK_SHOW } from '../shared/suggest.js';
 import { MAX_VIDEO_BYTES, removeVideo, saveVideo, serveVideo } from './letters.js';
 import { createKokotomoClient } from './kokotomo.js';
 import { createGameLink, GHOST_URL, MISETOMO_URL, KOROTOMO_URL, SORATOMO_URL } from './gamelink.js';
@@ -367,6 +368,31 @@ export function createApp({
         name: users[v.userId]?.name ?? '？', age: users[v.userId] ? ageGroup(users[v.userId].birthdate) : null,
         choice: v.choice, comment: v.comment, at: v.createdAt,
       }));
+    }],
+
+    // ---- 📮 目安箱：記者が受け取る。だれが書いたかは運営にも見せない ----
+    ['POST', /^\/api\/suggestions$/, ({ body, me }) => {
+      store.addSuggestion(needLogin(me).id, { topic: body.topic, text: body.text });
+      return [201, { reply: reporterFor(clock()) }];
+    }],
+    // 新聞の座談会「目安箱から」（とりあげた声の要約と運営の答え）。書いた本人にだけ mine
+    ['GET', /^\/api\/suggestions\/talk$/, ({ me }) => store.listSuggestions()
+      .filter((x) => x.status === 'picked')
+      .sort((a, b) => b.picked.at.localeCompare(a.picked.at))
+      .slice(0, TALK_SHOW)
+      .map((x, i) => ({ id: x.id, topic: x.topic, at: x.picked.at, lines: suggestionTalk({ topic: x.topic, ...x.picked }, i), mine: Boolean(me && x.userId === me.id) }))],
+    ['GET', /^\/api\/suggestions$/, ({ me }) => {
+      needAdmin(me);
+      return store.listSuggestions().map((x) => ({ id: x.id, age: x.age, topic: x.topic, text: x.text, status: x.status, picked: x.picked, at: x.createdAt }));
+    }],
+    ['POST', /^\/api\/suggestions\/([\w-]+)\/pick$/, ({ params, body, me }) => {
+      needAdmin(me);
+      const x = store.pickSuggestion(params[0], { summary: body.summary, answer: body.answer });
+      return { id: x.id, status: x.status, picked: x.picked };
+    }],
+    ['POST', /^\/api\/suggestions\/([\w-]+)\/close$/, ({ params, me }) => {
+      needAdmin(me);
+      return { id: store.closeSuggestion(params[0]).id, status: 'done' };
     }],
 
     // ---- やりくり献立との連結（最新の献立の「きょうの晩ごはん」と、画面のアドレス） ----
