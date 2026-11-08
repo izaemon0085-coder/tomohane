@@ -70,6 +70,13 @@
     <!-- ログインしているとき -->
     <section id="account" class="card panel" hidden aria-labelledby="account-title">
       <h1 id="account-title"></h1>
+      <!-- 退会の手続き中（7日のあいだは取り消せる） -->
+      <section id="leaving" class="family leaving" hidden aria-labelledby="leaving-title">
+        <h2 id="leaving-title">🌸 退会の手続き中</h2>
+        <p id="leaving-when"></p>
+        <div id="leaving-lines"></div>
+        <button type="button" class="btn" id="leave-cancel">退会を取り消して、もどる</button>
+      </section>
       <dl class="account-list">
         <dt>ログインID</dt><dd id="acc-login"></dd>
         <dt>年齢の区分</dt><dd id="acc-age"></dd>
@@ -125,6 +132,23 @@
           <button class="btn" type="submit">テーブルを足す</button>
         </form>
       </section>
+      <!-- 退会する（7日たってから消える） -->
+      <details class="family leave-box" id="leave-box">
+        <summary>退会する（アカウントを消す）</summary>
+        <form id="leave-form">
+          <p class="muted small">申しこんでから<strong>7日たつと</strong>、アカウント・投稿・いいね・手紙（QR も開けなくなります）・推しページ・ゲームの記録が<strong>すべて消えて、もどせません</strong>。7日のあいだは、ログインすればここで取り消せます。そのあいだ、投稿はほかの人に見えません。</p>
+          <p class="muted small" id="leave-child-note" hidden>🐕 子ども（12歳まで）は、おうちの人が OK してから7日のカウントが始まるっす。</p>
+          <fieldset class="leave-farewell">
+            <legend>返信してくれた人へのひとこと（返信をもらった投稿があるときに届きます）</legend>
+            <div id="leave-farewell-choices"></div>
+            <label class="field" id="leave-own-box" hidden>自分のことば（50文字まで）<input class="input" name="own" maxlength="50"></label>
+          </fieldset>
+          <label class="field">パスワード（本人か確かめます）<input class="input" name="password" type="password" autocomplete="current-password" required></label>
+          <label class="row"><input type="checkbox" name="sure" required> 7日たつと、すべて消えてもどせないことが分かった</label>
+          <p class="error" role="alert"></p>
+          <button class="btn ghost" type="submit">退会を申しこむ</button>
+        </form>
+      </details>
       <div class="row wrap">
         <a class="btn" id="acc-back" href="/">もどる</a>
         <a class="btn ghost" href="/welcome.html?next=/login.html">🪶 ともはね の案内をもう一度見る</a>

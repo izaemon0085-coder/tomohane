@@ -6,6 +6,7 @@ import { speak } from '/shared/speech.js';
 import { sendPost, getOutbox, flushOutbox } from '/shared/outbox.js';
 import { precheck } from '/shared/precheck.js';
 import { REPORT_REASONS, APOLOGY_CHOICES, MAX_APOLOGY } from '/shared/report.js';
+import { FAREWELL_CHOICES as FAREWELLS } from '/shared/leave.js';
 
 const $ = (sel) => document.querySelector(sel);
 const header = $('#header');
@@ -287,7 +288,6 @@ blockForm.addEventListener('submit', async (e) => {
 });
 
 // ---- 投稿を消す ----
-const FAREWELLS = ['ありがとう', '頑張ります', '応援してください'];
 const deleteDialog = $('#delete-dialog');
 const deleteForm = $('#delete-form');
 let deletePost = null;

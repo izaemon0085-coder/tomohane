@@ -13,6 +13,7 @@ import { precheck, isHarsh } from '../../shared/precheck.js';
 import { createKokotomoClient } from '../kokotomo.js';
 
 let server;
+let app;
 // ゲームセンターの営業時間のための時刻（ふだんはお昼の12時・日本時間。テストで変える）
 const NOON_JST = new Date("2026-11-08T03:00:00Z");
 let arcadeNow = NOON_JST;
@@ -38,7 +39,8 @@ before(async () => {
   });
   videoDir = mkdtempSync(join(tmpdir(), 'letters-'));
   const kokotomo = createKokotomoClient({ baseUrl: 'http://localhost:3100', fetchImpl: fakeKokotomoFetch });
-  server = http.createServer(createApp({ store, sim, videoDir, maxVideoBytes: MAX_TEST_VIDEO, kokotomo, clock: () => arcadeNow }));
+  app = createApp({ store, sim, videoDir, maxVideoBytes: MAX_TEST_VIDEO, kokotomo, clock: () => arcadeNow });
+  server = http.createServer(app);
   await new Promise((r) => server.listen(0, r));
   base = `http://localhost:${server.address().port}`;
 });
@@ -1216,4 +1218,97 @@ test('ゲームセンター：年齢で閉店（こども21時・中高生22時�
   } finally {
     arcadeNow = NOON_JST;
   }
+});
+
+// ---- 退会（7日たってから消える） ----
+const DAY = 86400000;
+const visibleTo = async (who, postId) => (await call('/api/posts', { as: who })).data.some((p) => p.id === postId);
+
+test('退会：パスワードで申しこむ → 7日のあいだは投稿が見えない・取り消せる → 7日たつと全部消える', async () => {
+  const leaver = await signup('退会する人');
+  const fan = await signup('返信した人');
+  const post = (await call('/api/posts', { method: 'POST', as: leaver, body: { text: '推しのライブたのしかった' } })).data;
+  const reply = (await call('/api/posts', { method: 'POST', as: fan, body: { text: 'わたしも行ったよ！', replyTo: post.id } })).data;
+  await call(`/api/posts/${reply.id}/like`, { method: 'POST', as: leaver });
+  const { data: letter } = await makeLetter('退会する人');
+
+  // パスワードがちがう・返信した人へのひとことがない、は申しこめない
+  assert.equal((await call('/api/auth/leave', { method: 'POST', as: leaver, body: { password: 'ちがう', farewell: 'ありがとう' } })).status, 401);
+  assert.equal((await call('/api/auth/leave', { method: 'POST', as: leaver, body: { password: leaver.password } })).status, 400);
+  assert.equal((await call('/api/auth/leave', { method: 'POST', body: { password: 'x' } })).status, 401, 'ログインしていないと申しこめない');
+
+  const r = await call('/api/auth/leave', { method: 'POST', as: leaver, body: { password: leaver.password, farewell: 'ありがとう' } });
+  assert.equal(r.status, 200);
+  const until = Date.parse(r.data.me.leaving.until);
+  assert.ok(Math.abs(until - (Date.now() + 7 * DAY)) < 60000, '7日後に消える');
+  assert.equal((await call('/api/auth/leave', { method: 'POST', as: leaver, body: { password: leaver.password, farewell: 'ありがとう' } })).status, 409);
+
+  // 7日のあいだ：投稿は本人にだけ見える。新しく投稿はできない
+  assert.equal(await visibleTo(fan, post.id), false);
+  assert.equal(await visibleTo(null, post.id), false);
+  assert.equal(await visibleTo(leaver, post.id), true);
+  assert.equal((await call('/api/posts', { method: 'POST', as: leaver, body: { text: 'まだいるよ' } })).status, 409);
+
+  // 取り消すと、もとどおり
+  const back = await call('/api/auth/leave-cancel', { method: 'POST', as: leaver });
+  assert.equal(back.data.me.leaving, null);
+  assert.equal(await visibleTo(fan, post.id), true);
+
+  // もう一度申しこんで、7日たつ前は消えない
+  await call('/api/auth/leave', { method: 'POST', as: leaver, body: { password: leaver.password, farewell: 'ありがとう' } });
+  await app.purgeLeavers(Date.now() + 6 * DAY);
+  assert.equal((await call('/api/auth/me', { as: leaver })).data.name, '退会する人');
+
+  // 7日たつと消える：ログインできない・手紙は開けない・返信した人にひとことが届く
+  await app.purgeLeavers(Date.now() + 7 * DAY + 1000);
+  assert.equal((await call('/api/auth/me', { as: leaver })).data, null, 'ログインのしるしも消える');
+  assert.equal((await call('/api/auth/login', { method: 'POST', body: { loginId: leaver.loginId, password: leaver.password } })).status, 401);
+  assert.equal((await call(`/api/open/${letter.token}`)).status, 404, '手紙も消える');
+  assert.ok(!store.listUsers().some((u) => u.id === leaver.id));
+  assert.ok(!store.listPosts().some((p) => p.authorId === leaver.id));
+  assert.ok(!store.listPosts().some((p) => p.likes.includes(leaver.id)), 'いいねも消える');
+  const fw = (await call('/api/reports/mine', { as: fan })).data.farewells;
+  assert.ok(fw.some((f) => f.from === '退会する人' && f.text === 'ありがとう'), '返信した人へひとことが届く');
+  // 返信は、書いた本人にだけ見える
+  assert.equal(await visibleTo(fan, reply.id), true);
+  assert.equal(await visibleTo(null, reply.id), false);
+  people.delete('退会する人');
+});
+
+test('退会：運営は退会できない。子どもはおうちの人が OK してから7日が始まる', async () => {
+  const admin = [...people.values()].find((p) => p.role === 'admin');
+  assert.ok(admin, '最初に登録した人は運営');
+  assert.equal((await call('/api/auth/leave', { method: 'POST', as: admin, body: { password: admin.password } })).status, 409);
+
+  const dad = await signup('退会のおとうさん');
+  const kid = await signup('退会のこども', { birthdate: '2018-05-05' });
+  const { code } = (await call('/api/guardian/code', { method: 'POST', as: dad })).data;
+  await call('/api/guardian/join', { method: 'POST', as: kid, body: { code } });
+  const kidPost = (await call('/api/posts', { method: 'POST', as: kid, body: { text: 'きょうもたのしかった' } })).data;
+
+  const r = await call('/api/auth/leave', { method: 'POST', as: kid, body: { password: kid.password } });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.me.leaving.needsGuardian, true);
+  assert.equal(r.data.me.leaving.until, null, 'おうちの人の OK まではカウントしない');
+  assert.equal(await visibleTo(null, kidPost.id), true, 'OK を待っているあいだは、ふだんどおり');
+  await app.purgeLeavers(Date.now() + 30 * DAY);
+  assert.equal((await call('/api/auth/me', { as: kid })).data.name, '退会のこども', 'OK がなければ消えない');
+
+  // おうちの人に見える。ほかの大人は答えられない
+  const view = (await call('/api/guardian', { as: dad })).data;
+  assert.equal(view.children.find((c) => c.id === kid.id).leaving.needsGuardian, true);
+  const other = await signup('退会のほかの大人');
+  assert.equal((await call(`/api/guardian/children/${kid.id}/leave`, { method: 'POST', as: other, body: { approve: true } })).status, 404);
+
+  // OK しない → 申しこみはなくなる。もう一度申しこんで OK → 7日が始まる
+  await call(`/api/guardian/children/${kid.id}/leave`, { method: 'POST', as: dad, body: { approve: false } });
+  assert.equal((await call('/api/auth/me', { as: kid })).data.leaving, null);
+  await call('/api/auth/leave', { method: 'POST', as: kid, body: { password: kid.password } });
+  await call(`/api/guardian/children/${kid.id}/leave`, { method: 'POST', as: dad, body: { approve: true } });
+  const me = (await call('/api/auth/me', { as: kid })).data;
+  assert.ok(me.leaving.until && !me.leaving.needsGuardian);
+  assert.equal(await visibleTo(null, kidPost.id), false);
+  await app.purgeLeavers(Date.now() + 8 * DAY);
+  assert.equal((await call('/api/guardian', { as: dad })).data.children.some((c) => c.id === kid.id), false, '消えると、おうちの人の一覧からもいなくなる');
+  people.delete('退会のこども');
 });

@@ -8,6 +8,7 @@ import { DEFAULT_TYPEFACE, TYPEFACE_KEYS } from '../shared/typefaces.js';
 import { precheck } from '../shared/precheck.js';
 import { MAX_VOTE_COMMENT, OFFICIAL_ACCOUNTS } from '../shared/news.js';
 import { findReason, stageOf, MAX_APOLOGY } from '../shared/report.js';
+import { LEAVE_MS } from '../shared/leave.js';
 import {
   FREE_TABLE, GENRE_TABLES, GENRE_IDS, MAX_TABLE_NAME, MAX_TABLE_REQUEST, MAX_OPEN_REQUESTS, normalizeOshi,
 } from '../shared/cafe.js';
@@ -153,7 +154,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
     if (!state.tables.some((x) => x.id === t.id)) state.tables.push({ ...t, createdAt: now() });
   }
   state.tableRequests ??= []; // ジャンルのリクエスト { id, userId, text, createdAt }（運営が見て、テーブルを足す）
-  state.farewells ??= []; // 投稿を消した人から、返信した人へのひとこと { id, toId, fromId, text, at }
+  state.farewells ??= []; // 投稿を消した人（退会した人）から、返信した人へのひとこと { id, toId, fromId, fromName, text, at }
   state.reportSeen ??= []; // 通報された本人が、お知らせを読んだしるし { postId, authorId, at }
   const listeners = new Set();
   const loginFails = new Map(); // ログインID → { count, until }（パスワードの総当たりを防ぐ）
@@ -176,6 +177,8 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
   }
 
   const userById = (id) => state.users.find((u) => u.id === id);
+  // 退会の7日のあいだ（投稿はほかの人に見えない）
+  const isLeaving = (u) => Boolean(u?.leaving?.at);
   const requireUser = (id) => {
     const user = userById(id);
     if (!user) throw new HttpError(404, 'ユーザーが見つかりません');
@@ -202,7 +205,51 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
     return letter;
   };
 
-  return {
+  // 退会した人を、ともはねから消す（倉庫にも入れない）。
+  // 返信してくれた人の返信は、投稿を消したときと同じように、書いた本人にだけ見えるようにする。
+  // 通報した記録は、だれが通報したかだけ消して残す（運営が見るまで止めている投稿があるため）
+  function eraseUser(user) {
+    const id = user.id;
+    const to = store.leaveRepliers(id).filter((x) => !isLeaving(userById(x)));
+    const gone = new Set(state.posts.filter((p) => p.authorId === id).map((p) => p.id));
+    for (let changed = true; changed;) {
+      changed = false;
+      for (const p of state.posts) {
+        if (p.replyTo && (gone.has(p.replyTo)) && !gone.has(p.id)) {
+          gone.add(p.id);
+          changed = true;
+          if (p.authorId !== id) p.orphaned = true;
+        }
+      }
+    }
+    state.posts = state.posts.filter((p) => p.authorId !== id);
+    for (const p of state.posts) p.likes = p.likes.filter((x) => x !== id);
+    const text = user.leaving?.farewell ?? '';
+    if (text) for (const t of to) state.farewells.push({ id: newId('f'), toId: t, fromId: id, fromName: user.name, text, at: now() });
+    for (const m of state.meetings) {
+      m.messages = m.messages.filter((x) => x.authorId !== id);
+      if (m.createdBy === id) m.createdBy = null;
+      if (m.pendingHumanId && !m.messages.some((x) => x.id === m.pendingHumanId)) m.pendingHumanId = null;
+      if (m.speakerId === id) m.speakerId = null;
+    }
+    const letters = state.letters.filter((l) => l.authorId === id);
+    state.letters = state.letters.filter((l) => l.authorId !== id);
+    state.sessions = state.sessions.filter((s) => s.userId !== id);
+    state.blocks = state.blocks.filter((b) => b.userId !== id && b.targetId !== id);
+    state.reports = state.reports.filter((r) => r.authorId !== id);
+    for (const r of state.reports) if (r.reporterId === id) r.reporterId = null;
+    state.reportSeen = state.reportSeen.filter((x) => x.authorId !== id);
+    state.farewells = state.farewells.filter((f) => f.toId !== id);
+    state.gameRecs = state.gameRecs.filter((r) => r.userId !== id);
+    state.newsVotes = state.newsVotes.filter((v) => v.userId !== id);
+    state.tableRequests = state.tableRequests.filter((r) => r.userId !== id);
+    state.extGames = state.extGames.filter((g) => g.ownerId !== id);
+    for (const u of state.users) if (u.guardianIds?.includes(id)) u.guardianIds = u.guardianIds.filter((x) => x !== id);
+    state.users = state.users.filter((u) => u.id !== id);
+    return letters.map((l) => l.video).filter(Boolean);
+  }
+
+  const store = {
     subscribe(fn) {
       listeners.add(fn);
       return () => listeners.delete(fn);
@@ -580,7 +627,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       const name = this.getOshi(userId).name;
       if (!name) return [];
       const friends = new Set(state.users
-        .filter((u) => u.kind === 'human' && u.id !== userId && u.oshi?.name && normalizeOshi(u.oshi.name) === normalizeOshi(name))
+        .filter((u) => u.kind === 'human' && u.id !== userId && !isLeaving(u) && u.oshi?.name && normalizeOshi(u.oshi.name) === normalizeOshi(name))
         .map((u) => u.id));
       return [...state.posts]
         .filter((p) => friends.has(p.authorId))
@@ -688,6 +735,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
     // table：カフェのテーブル（なければ広場）。返信は、元の投稿と同じ場所になる
     createPost({ authorId, text, replyTo = null, thread = false, newsIssueId = null, table = null }) {
       const author = requireUser(authorId);
+      if (isLeaving(author)) throw new HttpError(409, '退会の手続き中です。投稿するには、アカウントのページで退会を取り消してください');
       const clean = cleanText(text, MAX_POST_LENGTH, '投稿');
       rejectBlocked(author, clean);
       const parent = replyTo ? requirePost(replyTo) : null;
@@ -769,7 +817,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       }
       for (const p of replies) p.orphaned = true;
       state.posts.splice(state.posts.indexOf(post), 1);
-      for (const id of to) state.farewells.push({ id: newId('f'), toId: id, fromId: user.id, text, at: now() });
+      for (const id of to) state.farewells.push({ id: newId('f'), toId: id, fromId: user.id, fromName: user.name, text, at: now() });
       emit('post', { id: post.id });
       return { ok: true, told: to.length };
     },
@@ -880,6 +928,8 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       if (post.hidden && post.authorId !== viewerId) return false;
       // 元の投稿が消された返信は、書いた本人にだけ見える
       if (post.orphaned && post.authorId !== viewerId) return false;
+      // 退会の手続き中の人の投稿は、本人にだけ見える
+      if (post.authorId !== viewerId && isLeaving(userById(post.authorId))) return false;
       if (viewerId && state.reports.some((r) => r.postId === post.id && r.reporterId === viewerId)) return false;
       if (viewerId && post.authorId !== viewerId) {
         if (state.blocks.some((b) => b.userId === viewerId && b.targetId === post.authorId)) return false;
@@ -888,6 +938,66 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       if (parent && post.authorId !== viewerId
         && state.blocks.some((b) => b.userId === parent.authorId && b.targetId === post.authorId && (b.kind ?? 'block') === 'block')) return false;
       return true;
+    },
+
+    // ---- 退会（7日たってから消える。それまではログインして取り消せる） ----
+    isLeaving,
+    // 申しこむ：パスワードで本人か確かめる。farewell は、返信をもらっていた投稿があるときに返信した人へ届けるひとこと
+    async requestLeave(userId, { password, farewell = '' } = {}) {
+      const user = requireUser(userId);
+      if (user.kind !== 'human' || !user.passHash) throw new HttpError(400, '退会できるのは、登録した人だけです');
+      if (user.leaving) throw new HttpError(409, 'もう退会の手続き中です');
+      if (user.role === 'admin') throw new HttpError(409, '運営（管理者）は退会できません（β版には、運営をゆずるしくみがまだありません）');
+      if (!(await checkPassword(String(password ?? ''), user.passHash))) throw new HttpError(401, 'パスワードがちがいます');
+      const text = typeof farewell === 'string' && farewell.trim() ? cleanText(farewell, MAX_FAREWELL, '返信した人へのひとこと') : '';
+      if (text) rejectBlocked(user, text);
+      if (!text && store.leaveRepliers(user.id).length) throw new HttpError(400, '返信してくれた人へのひとことを選んでください');
+      // 子どもでおうちの人とつながっていれば、おうちの人の OK を待つ
+      const needsGuardian = ageGroup(user.birthdate, new Date(clockMs())) === 'child' && (user.guardianIds?.length ?? 0) > 0;
+      user.leaving = { requestedAt: now(), at: needsGuardian ? null : now(), farewell: text, needsGuardian };
+      emit('user', user);
+      return user.leaving;
+    },
+    cancelLeave(userId) {
+      const user = requireUser(userId);
+      if (!user.leaving) throw new HttpError(404, '退会の手続きはしていません');
+      delete user.leaving;
+      emit('user', user);
+      return { ok: true };
+    },
+    // おうちの人が、子どもの退会に OK する／しない（しないなら、申しこみはなくなる）
+    answerChildLeave(guardianId, childId, approve) {
+      const child = requireUser(childId);
+      if (!child.guardianIds?.includes(guardianId)) throw new HttpError(404, 'つながっていません');
+      if (!child.leaving?.needsGuardian) throw new HttpError(404, '退会の申しこみはありません');
+      if (approve) Object.assign(child.leaving, { at: now(), needsGuardian: false });
+      else delete child.leaving;
+      emit('user', child);
+      return { ok: true };
+    },
+    // この人の投稿に返信していた人（人間・本人以外。返信の返信もふくむ）
+    leaveRepliers(userId) {
+      const tree = new Set(state.posts.filter((p) => p.authorId === userId).map((p) => p.id));
+      const to = new Set();
+      for (let changed = true; changed;) {
+        changed = false;
+        for (const p of state.posts) {
+          if (p.replyTo && tree.has(p.replyTo) && !tree.has(p.id)) {
+            tree.add(p.id);
+            changed = true;
+            if (p.authorId !== userId && userById(p.authorId)?.kind === 'human') to.add(p.authorId);
+          }
+        }
+      }
+      return [...to];
+    },
+    // 7日たった人を消す。消した手紙のビデオを返す（ファイルはサーバーが消す）
+    purgeLeaving(atMs = clockMs()) {
+      const due = state.users.filter((u) => u.leaving?.at && Date.parse(u.leaving.at) + LEAVE_MS <= atMs);
+      const videos = [];
+      for (const u of due) videos.push(...eraseUser(u));
+      if (due.length) emit('user', { id: null });
+      return { erased: due.length, videos };
     },
 
     // ---- meetings (サブフロント：会議室) ----
@@ -989,4 +1099,5 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       return letter;
     },
   };
+  return store;
 }
