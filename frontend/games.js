@@ -33,8 +33,6 @@ function gameHtml(g, isNew = false) {
     g.soon ? `<strong>${SOON_LABEL}</strong>` : null,
     g.builtin ? 'ともはね' : `🛠️ ${escapeHtml(g.maker)}`,
     AGE[g.minAge],
-    g.ads ? '広告あり' : null,
-    g.purchases ? '課金あり' : null,
   ].filter(Boolean).map((t) => `<span class="game-tag">${t}</span>`).join('');
   return `<li class="card game-card cabinet" style="--cab:${(CABINET[g.id] ?? { color: '#2f9e8f' }).color}">
     <div class="cab-marquee"><h2>${escapeHtml(g.name)}</h2>${isNew ? '<span class="cab-new">NEW</span>' : ''}</div>
@@ -139,8 +137,6 @@ $('#apply').addEventListener('submit', async (e) => {
   const err = f.querySelector('.error');
   err.textContent = '';
   const body = Object.fromEntries(['id', 'name', 'maker', 'url', 'description', 'tags', 'minAge'].map((k) => [k, f.elements[k].value.trim()]));
-  body.ads = f.elements.ads.checked;
-  body.purchases = f.elements.purchases.checked;
   try {
     const r = await api('/games/apply', { method: 'POST', body });
     $('#secret').textContent = r.secret;
@@ -160,7 +156,7 @@ async function loadReview() {
   $('#review').hidden = false;
   $('#review-list').innerHTML = list.map((g) => `<li>
     <strong>${escapeHtml(g.name)}</strong>（${escapeHtml(g.maker)}・申しこみ：${escapeHtml(g.owner)}さん）… ${STATUS[g.status] ?? g.status}<br>
-    <span class="small">${escapeHtml(g.url)}・${AGE[g.minAge]}${g.ads ? '・広告あり' : ''}${g.purchases ? '・課金あり' : ''}<br>${escapeHtml(g.description)}</span>
+    <span class="small">${escapeHtml(g.url)}・${AGE[g.minAge]}<br>${escapeHtml(g.description)}</span>
     <div class="row wrap">
       ${g.status !== 'listed' ? `<button type="button" class="btn" data-status="listed" data-id="${escapeHtml(g.id)}">一覧に出す</button>` : ''}
       ${g.status !== 'rejected' ? `<button type="button" class="btn ghost" data-status="rejected" data-id="${escapeHtml(g.id)}">見送る</button>` : ''}

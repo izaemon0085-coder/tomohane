@@ -28,8 +28,8 @@ export const BUILTIN_GAMES = [
 
 const AGE_ORDER = { child: 0, teen: 1, adult: 2 };
 export const ageAllows = (minAge, group) => AGE_ORDER[group ?? 'adult'] >= AGE_ORDER[minAge ?? 'child'];
-// 子どもには、広告・課金のあるゲームは出さない
-export const visibleFor = (game, group) => ageAllows(game.minAge, group) && !((group === 'child') && (game.ads || game.purchases));
+// ゲームセンターには、広告・課金のあるゲームは置かない（だれにも出さない）。年齢は、ゲームの内容で分ける（minAge）
+export const visibleFor = (game, group) => ageAllows(game.minAge, group) && !game.ads && !game.purchases;
 
 export const SLUG = /^[a-z0-9-]{3,24}$/;
 export const hashSecret = (s) => createHash('sha256').update(String(s)).digest('hex');

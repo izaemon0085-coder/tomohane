@@ -37,7 +37,7 @@
         <a class="btn ghost" href="/kit/tomohane-link.js" download>🧩 つなぐ部品（tomohane-link.js）</a>
         <a class="btn ghost" href="/kit/example-server.js" download>🎲 見本のゲーム（example-server.js）</a>
       </div>
-      <p class="muted small">ともはねから渡すのは「ゲーム用の番号・表示名・年齢の区分」だけ。受け取るのは「遊んだ回数・いちばんの記録」の数だけです。子ども（12歳まで）には、広告・課金のあるゲームは出しません。</p>
+      <p class="muted small">ともはねから渡すのは「ゲーム用の番号・表示名・年齢の区分」だけ。受け取るのは「遊んだ回数・いちばんの記録」の数だけです。ゲームセンターには、広告・課金のあるゲームは置きません。遊べる年齢は、ゲームの内容で分けます。</p>
 
       <p class="note-line" id="apply-login" hidden>申しこみは、ログインした大人（18歳から）だけです。<a href="/login.html?next=/games.html" data-login-link>ログイン</a></p>
       <form id="apply" class="apply-form" hidden>
@@ -48,14 +48,13 @@
         <label class="field">ゲームのアドレス（例：https://example.com）<input class="input" name="url" type="url" required></label>
         <label class="field">ゲームの説明（80文字まで）<input class="input" name="description" maxlength="80" required></label>
         <label class="field">タグ（「、」で区切って4つまで。例：パズル、ひとり）<input class="input" name="tags"></label>
-        <label class="field">遊べる年齢
+        <label class="field">遊べる年齢（ゲームの内容で選んでください。運営も中身を見て決めます）
           <select class="input" name="minAge">
-            <option value="child">だれでも</option>
-            <option value="teen">中高生から（13歳から）</option>
-            <option value="adult">大人だけ（18歳から）</option>
+            <option value="child">だれでも（こわい・らんぼうな表現がない）</option>
+            <option value="teen">中高生から（13歳から。たたかい・少しこわい表現がある）</option>
+            <option value="adult">大人だけ（18歳から。大人向けの内容）</option>
           </select></label>
-        <label class="row"><input type="checkbox" name="ads"> 広告がある</label>
-        <label class="row"><input type="checkbox" name="purchases"> 課金がある</label>
+        <p class="muted small">🦊 キツネ店長より：ともはね のゲームセンターには、<strong>広告や課金のあるゲームは置けない</strong>んだ。広告・課金のない版で申しこんでくれよな！</p>
         <p class="error" role="alert"></p>
         <button class="btn" type="submit">申しこむ</button>
       </form>

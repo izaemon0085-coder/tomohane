@@ -756,7 +756,12 @@ test('ゲームを作っている人へ：キットをダウンロード → 申
   assert.equal((await call('/api/games/apply', { method: 'POST', as: kid, body: {} })).status, 403);
   const bad = await call('/api/games/apply', { method: 'POST', as: maker, body: { id: 'my-game', name: 'x', maker: 'x', url: 'javascript:alert(1)', description: 'x' } });
   assert.equal(bad.status, 400);
-  const body = { id: 'pixel-cat', name: 'ピクセルねこ', maker: 'ねこ工房', url: 'http://localhost:4100/path', description: 'ねこを集めるパズル', tags: 'パズル、ひとり', minAge: 'child', ads: true };
+  // 広告・課金のあるゲームは申しこめない
+  const withAds = { id: 'ad-game', name: 'こうこく', maker: 'x', url: 'http://localhost:4101', description: 'x' };
+  assert.equal((await call('/api/games/apply', { method: 'POST', as: maker, body: { ...withAds, ads: true } })).status, 400);
+  assert.equal((await call('/api/games/apply', { method: 'POST', as: maker, body: { ...withAds, purchases: true } })).status, 400);
+  // 年齢はゲームの内容で分ける（このゲームは中高生から）
+  const body = { id: 'pixel-cat', name: 'ピクセルねこ', maker: 'ねこ工房', url: 'http://localhost:4100/path', description: 'ねこを集めるパズル', tags: 'パズル、ひとり', minAge: 'teen' };
   const applied = await call('/api/games/apply', { method: 'POST', as: maker, body });
   assert.equal(applied.status, 201);
   const { secret } = applied.data;
@@ -772,11 +777,15 @@ test('ゲームを作っている人へ：キットをダウンロード → 申
   assert.equal((await call('/api/games/review', { as: admin })).data.find((g) => g.id === 'pixel-cat').owner, 'インディーの人');
   assert.equal((await call('/api/games/pixel-cat/status', { method: 'POST', as: admin, body: { status: 'listed' } })).status, 200);
 
-  // 広告があるので、子どもとログインしていない人には出ない。大人には出る
+  // 中高生からの内容なので、子どもとログインしていない人には出ない。大人には出る
   assert.ok((await call('/api/games', { as: maker })).data.some((g) => g.id === 'pixel-cat'));
   assert.ok(!(await call('/api/games', { as: kid })).data.some((g) => g.id === 'pixel-cat'));
   assert.ok(!(await call('/api/games')).data.some((g) => g.id === 'pixel-cat'));
   assert.equal((await fetch(`${base}/api/link/x/pixel-cat/start`, { redirect: 'manual', headers: { Cookie: kid.cookie } })).status, 403);
+  // 前に広告ありで登録されたゲームは、大人にも出さない
+  store.extGame('pixel-cat').ads = true;
+  assert.ok(!(await call('/api/games', { as: maker })).data.some((g) => g.id === 'pixel-cat'), '広告のあるゲームは、だれにも出さない');
+  store.extGame('pixel-cat').ads = false;
 
   // ともはねでログイン（キットの部品を使う）
   const { createTomohaneLink } = await import('../../kit/tomohane-link.js');

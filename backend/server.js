@@ -136,6 +136,13 @@ const cleanStr = (v, max, label) => {
   if ([...t].length > max) throw new HttpError(400, `${label}は${max}文字以内にしてください`);
   return t;
 };
+// ともはね のゲームセンターには、広告・課金のあるゲームは置けない
+function noAdsNoPurchases(body) {
+  if (body.ads === true || body.purchases === true) {
+    throw new HttpError(400, 'ともはね のゲームセンターには、広告や課金のあるゲームは置けません（広告・課金のない版で申しこんでください）');
+  }
+  return { ads: false, purchases: false };
+}
 // インディーズ・個人のゲームの申しこみ。アドレスは http(s) だけ
 function cleanGameApply(body) {
   const id = String(body.id ?? '').trim().toLowerCase();
@@ -154,8 +161,7 @@ function cleanGameApply(body) {
     description: cleanStr(body.description, 80, 'ゲームの説明'),
     tags,
     minAge: AGE_KEYS.includes(body.minAge) ? body.minAge : 'child',
-    ads: body.ads === true,
-    purchases: body.purchases === true,
+    ...noAdsNoPurchases(body),
   };
 }
 
