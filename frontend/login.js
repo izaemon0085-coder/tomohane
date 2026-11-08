@@ -302,13 +302,13 @@ $('#family-join').addEventListener('submit', async (e) => {
   renderFamily(await refreshMe());
 });
 
-async function submit(form, path, fields) {
+async function submit(form, path, fields, extra = {}) {
   const err = form.querySelector('.error');
   err.textContent = '';
   const btn = form.querySelector('button[type="submit"]');
   btn.disabled = true;
   try {
-    const body = Object.fromEntries(fields.map((k) => [k, form.elements[k].value.trim()]));
+    const body = { ...Object.fromEntries(fields.map((k) => [k, form.elements[k].value.trim()])), ...extra };
     return await api(path, { method: 'POST', body });
   } catch (e) {
     err.textContent = e.offline ? 'つながっていません。つながってから、もう一度どうぞ' : e.message;
@@ -334,7 +334,7 @@ $('#panel-login').addEventListener('submit', async (e) => {
 let pendingCodes = [];
 $('#panel-register').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const r = await submit(e.target, '/auth/register', ['loginId', 'name', 'password', 'birthdate']);
+  const r = await submit(e.target, '/auth/register', ['loginId', 'name', 'password', 'birthdate'], { agreeTerms: e.target.elements.agreeTerms.checked });
   if (!r) return;
   rememberMe(r.me);
   pendingCodes = r.recoveryCodes;

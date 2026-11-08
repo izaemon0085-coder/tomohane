@@ -102,6 +102,7 @@ function meView(u) {
     korotomo: u.korotomo ?? null,
     soratomo: u.soratomo ?? null,
     leaving: leavingView(u),
+    termsVersion: u.termsAgreed?.version ?? null, // 同意した利用規約の版（新しい版とちがえば、もう一度同意してもらう）
   };
 }
 
@@ -383,7 +384,12 @@ export function createApp({
       .map((x, i) => ({ id: x.id, topic: x.topic, at: x.picked.at, lines: suggestionTalk({ topic: x.topic, ...x.picked }, i), mine: Boolean(me && x.userId === me.id) }))],
     ['GET', /^\/api\/suggestions$/, ({ me }) => {
       needAdmin(me);
-      return store.listSuggestions().map((x) => ({ id: x.id, age: x.age, topic: x.topic, text: x.text, status: x.status, picked: x.picked, at: x.createdAt }));
+      const users = store.usersById();
+      // 「個人情報」（見せて・消して など）だけは、本人と分からないと答えられないので、名前とログインIDを出す
+      return store.listSuggestions().map((x) => ({
+        id: x.id, age: x.age, topic: x.topic, text: x.text, status: x.status, picked: x.picked, at: x.createdAt,
+        ...(x.topic === 'privacy' ? { from: users[x.userId] ? { name: users[x.userId].name, loginId: users[x.userId].loginId } : null } : {}),
+      }));
     }],
     ['POST', /^\/api\/suggestions\/([\w-]+)\/pick$/, ({ params, body, me }) => {
       needAdmin(me);
@@ -610,6 +616,10 @@ export function createApp({
     } else if (action === 'recover') {
       const { user, codesLeft } = await store.recover(body);
       login(user, { codesLeft });
+    } else if (action === 'agree') {
+      // 利用規約・プライバシーに同意する
+      store.agreeTerms(needLogin(me).id, body.version);
+      sendJson(res, 200, { me: meView(store.getUser(me.id)) });
     } else if (action === 'leave') {
       // 退会の申しこみ（7日たってから消える）
       await store.requestLeave(needLogin(me).id, { password: body.password, farewell: body.farewell });

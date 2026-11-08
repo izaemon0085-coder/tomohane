@@ -1,6 +1,7 @@
 // 3つのフロント共通：API 呼び出し、リアルタイム更新、ログインユーザー、表示ヘルパー
 // サーバーにつながらないときのエラーには err.offline = true が付く（ローカル回線の送信待ちで使う）
 import { latestIssueId, publishedIssues } from '/shared/news.js';
+import { TERMS_VERSION, TERMS_PAGE } from '/shared/terms.js';
 
 export async function api(path, { method = 'GET', body, headers = {} } = {}) {
   let res;
@@ -58,6 +59,11 @@ export async function refreshMe() {
   try {
     const user = await api('/auth/me');
     setMeCache(user);
+    // ともはね の約束（利用規約）にまだ同意していない・新しくなったときは、約束のページで同意してもらう
+    if (user && user.termsVersion !== TERMS_VERSION && typeof location !== 'undefined'
+      && ![TERMS_PAGE, '/login.html'].includes(location.pathname)) {
+      location.href = `${TERMS_PAGE}?agree=1&next=${encodeURIComponent(location.pathname + location.search + location.hash)}`;
+    }
     return user;
   } catch (err) {
     if (err.offline) return getMe();

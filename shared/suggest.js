@@ -15,6 +15,7 @@ export const SUGGEST_TOPICS = [
   { id: 'chara', label: '🐾 キャラ' },
   { id: 'safety', label: '🛡️ 安全（通報・ブロックなど）' },
   { id: 'news', label: '📰 新聞' },
+  { id: 'privacy', label: '🔒 個人情報（見せて・直して・消して など）', named: true },
   { id: 'other', label: '💬 そのほか' },
 ];
 export const topicLabel = (id) => SUGGEST_TOPICS.find((t) => t.id === id)?.label ?? '💬 そのほか';

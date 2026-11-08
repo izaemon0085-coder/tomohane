@@ -64,7 +64,7 @@ let seq = 0;
 async function signup(name, { birthdate = '1990-01-01' } = {}) {
   if (people.has(name)) return people.get(name);
   seq += 1;
-  const r = await call('/api/auth/register', { method: 'POST', body: { loginId: `user${seq}`, password: `pass-word-${seq}`, name, birthdate } });
+  const r = await call('/api/auth/register', { method: 'POST', body: { loginId: `user${seq}`, password: `pass-word-${seq}`, name, birthdate, agreeTerms: true } });
   assert.equal(r.status, 200, `${name} の登録: ${r.data.error ?? ''}`);
   const cookie = r.res.headers.get('set-cookie').split(';')[0];
   const person = { ...r.data.me, cookie, loginId: `user${seq}`, password: `pass-word-${seq}`, recoveryCodes: r.data.recoveryCodes };
@@ -111,7 +111,7 @@ test('入力チェック', async () => {
   const me = await signup('チェック');
   assert.equal((await call('/api/posts', { method: 'POST', as: me, body: { text: '   ' } })).status, 400);
   assert.equal((await call('/api/posts', { method: 'POST', as: me, body: { text: 'あ'.repeat(281) } })).status, 400);
-  assert.equal((await call('/api/auth/register', { method: 'POST', body: { loginId: 'neko1', password: 'password-123', name: 'ヤマネコ', birthdate: '2000-01-01' } })).status, 409, 'キャラの名前は使えない');
+  assert.equal((await call('/api/auth/register', { method: 'POST', body: { loginId: 'neko1', password: 'password-123', name: 'ヤマネコ', birthdate: '2000-01-01', agreeTerms: true } })).status, 409, 'キャラの名前は使えない');
   assert.equal((await call('/api/nothing')).status, 404);
 });
 
@@ -517,7 +517,7 @@ test('ログイン：登録 → 本人の情報（パスワードは返さない
   for (const secret of ['passHash', 'recovery']) assert.equal(self[secret], undefined, `${secret} は返さない`);
   assert.equal(me.recoveryCodes.length, 8, '回復コードは8つ');
 
-  const reg = await call('/api/auth/register', { method: 'POST', body: { loginId: 'cookie_check', password: 'long-password', name: 'クッキー', birthdate: '1990-01-01' } });
+  const reg = await call('/api/auth/register', { method: 'POST', body: { loginId: 'cookie_check', password: 'long-password', name: 'クッキー', birthdate: '1990-01-01', agreeTerms: true } });
   assert.match(reg.res.headers.get('set-cookie'), /HttpOnly; SameSite=Lax/, 'JavaScript から読めないクッキー');
 
   await call('/api/auth/logout', { method: 'POST', as: me });
@@ -528,7 +528,7 @@ test('ログイン：登録 → 本人の情報（パスワードは返さない
 });
 
 test('ログイン：入力チェック', async () => {
-  const reg = (body) => call('/api/auth/register', { method: 'POST', body: { loginId: 'check_user', password: 'password-ok', name: 'チェック登録', birthdate: '1990-01-01', ...body } });
+  const reg = (body) => call('/api/auth/register', { method: 'POST', body: { loginId: 'check_user', password: 'password-ok', name: 'チェック登録', birthdate: '1990-01-01', agreeTerms: true, ...body } });
   assert.equal((await reg({ loginId: 'あ' })).status, 400, 'ログインIDは半角英数字');
   assert.equal((await reg({ password: 'short' })).status, 400, 'パスワードは8文字から');
   assert.equal((await reg({ password: 'check_user-123' })).status, 400, 'パスワードにログインIDを入れない');
@@ -864,7 +864,7 @@ test('ともはね新聞：出た号ごとに、新聞社が広場にスレッ�
   assert.equal(news.threadPostId, root.id, '新聞から、その号のスレッドへ行ける');
 
   // 人は新聞社の名前を使えない。人の投稿はスレッドのはじまりにならない
-  const fake = await call('/api/auth/register', { method: 'POST', body: { loginId: 'fake_paper', password: 'long-password', name: 'ともはね新聞社', birthdate: '1990-01-01' } });
+  const fake = await call('/api/auth/register', { method: 'POST', body: { loginId: 'fake_paper', password: 'long-password', name: 'ともはね新聞社', birthdate: '1990-01-01', agreeTerms: true } });
   assert.equal(fake.status, 409);
   const sneaky = await call('/api/posts', { method: 'POST', as: reader, body: { text: 'スレッドにしたい', thread: true } });
   assert.equal(sneaky.data.thread, undefined);
@@ -1373,4 +1373,34 @@ test('目安箱：だれが書いたかは運営にも見せない・運営が�
   await call('/api/suggestions', { method: 'POST', as: writer, body: { topic: 'news', text: '新聞たのしい' } });
   await call('/api/suggestions', { method: 'POST', as: writer, body: { topic: 'chara', text: 'キャラかわいい' } });
   assert.equal((await call('/api/suggestions', { method: 'POST', as: writer, body: { topic: 'other', text: 'もう一通' } })).status, 429);
+});
+
+// ---- 📜 ともはね の約束（利用規約・プライバシー） ----
+test('約束：登録には同意が要る・いまいる人は新しい版に同意する・目安箱の「個人情報」だけ運営に名前が分かる', async () => {
+  const { TERMS_VERSION } = await import('../../shared/terms.js');
+  const no = await call('/api/auth/register', { method: 'POST', body: { loginId: 'no_agree', password: 'long-password', name: '同意しない人', birthdate: '1990-01-01' } });
+  assert.equal(no.status, 400, '同意しないと登録できない');
+
+  const p = await signup('約束を読む人');
+  assert.equal((await call('/api/auth/me', { as: p })).data.termsVersion, TERMS_VERSION, '登録したときに同意した版');
+  // 前からいる人（同意の記録がない）→ 同意すると記録される
+  delete store.getUser(p.id).termsAgreed;
+  assert.equal((await call('/api/auth/me', { as: p })).data.termsVersion, null);
+  assert.equal((await call('/api/auth/agree', { method: 'POST', as: p, body: { version: '1999-01-01' } })).status, 409, '古い版には同意できない');
+  assert.equal((await call('/api/auth/agree', { method: 'POST', body: { version: TERMS_VERSION } })).status, 401);
+  const ok = await call('/api/auth/agree', { method: 'POST', as: p, body: { version: TERMS_VERSION } });
+  assert.equal(ok.data.me.termsVersion, TERMS_VERSION);
+
+  // 目安箱の「個人情報」：運営に名前とログインIDが分かる。新聞にはのせられない
+  const admin = [...people.values()].find((x) => x.role === 'admin');
+  await call('/api/suggestions', { method: 'POST', as: p, body: { topic: 'privacy', text: '推しページの記録を見せてください' } });
+  const item = (await call('/api/suggestions', { as: admin })).data.find((x) => x.topic === 'privacy');
+  assert.deepEqual(item.from, { name: '約束を読む人', loginId: p.loginId });
+  assert.equal((await call(`/api/suggestions/${item.id}/pick`, { method: 'POST', as: admin, body: { summary: 'a', answer: 'b' } })).status, 400);
+  assert.ok((await call('/api/suggestions', { as: admin })).data.filter((x) => x.topic !== 'privacy').every((x) => !('from' in x)), 'ほかのテーマは名前を出さない');
+
+  // 約束のページが配信される
+  const page = await fetch(`${base}/terms.html`);
+  assert.equal(page.status, 200);
+  assert.match(await page.text(), /運営の誓い/);
 });

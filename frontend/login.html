@@ -40,6 +40,7 @@
         <label class="field">生年月日（年齢に合ったページを出すために使います。ほかの人には見えません）
           <input class="input" name="birthdate" type="date" required></label>
         <p class="muted small">前に「名前だけ」で使っていた人は、同じ表示名で登録すると、推しページなどをそのまま引きつげます。</p>
+        <label class="row"><input type="checkbox" name="agreeTerms" required> <span><a href="/terms.html" target="_blank" rel="noopener">ともはね の約束（利用規約・プライバシー）</a>を読んで、同意します</span></label>
         <p class="error" role="alert"></p>
         <button class="btn" type="submit">はじめる</button>
       </form>
@@ -156,6 +157,7 @@
       <div class="row wrap">
         <a class="btn" id="acc-back" href="/">もどる</a>
         <a class="btn ghost" href="/welcome.html?next=/login.html">🪶 ともはね の案内をもう一度見る</a>
+        <a class="btn ghost" href="/terms.html">📜 ともはね の約束（利用規約・プライバシー）</a>
         <button type="button" class="btn ghost" id="logout">ログアウト</button>
         <button type="button" class="btn ghost" id="logout-all">すべての端末からログアウト</button>
       </div>

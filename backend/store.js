@@ -10,6 +10,7 @@ import { MAX_VOTE_COMMENT, OFFICIAL_ACCOUNTS } from '../shared/news.js';
 import { findReason, stageOf, MAX_APOLOGY } from '../shared/report.js';
 import { LEAVE_MS, GUARDIAN_LEAVE_MS, FAMILY_DIARY } from '../shared/leave.js';
 import { MAX_SUGGESTION, MAX_PER_DAY, MAX_SUMMARY, MAX_ANSWER, SUGGEST_TOPICS } from '../shared/suggest.js';
+import { TERMS_VERSION } from '../shared/terms.js';
 import {
   FREE_TABLE, GENRE_TABLES, GENRE_IDS, MAX_TABLE_NAME, MAX_TABLE_REQUEST, MAX_OPEN_REQUESTS, normalizeOshi,
 } from '../shared/cafe.js';
@@ -302,7 +303,8 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
 
     // ---- ログイン ----
     // 登録。今いる「名前だけのユーザー」と同じ名前なら、そのユーザーを引きつぐ（β版の引っ越し）
-    async register({ loginId, password, name, birthdate }) {
+    async register({ loginId, password, name, birthdate, agreeTerms }) {
+      if (agreeTerms !== true) throw new HttpError(400, '利用規約・プライバシーを読んで、同意してください');
       const id = String(loginId ?? '').trim().toLowerCase();
       if (!LOGIN_ID.test(id)) throw new HttpError(400, 'ログインIDは、半角の英小文字・数字・_ で3〜20文字にしてください');
       if (state.users.some((u) => u.loginId === id)) throw new HttpError(409, 'そのログインIDは使われています');
@@ -329,6 +331,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
         passHash: await hashPassword(pw),
         recovery: codes.map(hashCode),
         birthdate,
+        termsAgreed: { version: TERMS_VERSION, at: now() },
         // いちばん最初に登録した人が運営（管理者）。β版を家で動かす人がそのまま管理者になる
         role: state.users.some((u) => u.role === 'admin') ? 'user' : 'admin',
       });
@@ -956,6 +959,15 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       return true;
     },
 
+    // 利用規約・プライバシーに同意する（規約が新しくなったときも）
+    agreeTerms(userId, version) {
+      const user = requireUser(userId);
+      if (version !== TERMS_VERSION) throw new HttpError(409, '利用規約が新しくなっています。ページを開きなおしてください');
+      user.termsAgreed = { version, at: now() };
+      emit('user', user);
+      return user.termsAgreed;
+    },
+
     // ---- 退会（7日たってから消える。それまではログインして取り消せる） ----
     isLeaving,
     // 申しこむ：パスワードで本人か確かめる。farewell は、返信をもらっていた投稿があるときに返信した人へ届けるひとこと
@@ -1043,6 +1055,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
     pickSuggestion(id, { summary, answer }) {
       const item = state.suggestions.find((x) => x.id === id);
       if (!item) throw new HttpError(404, '声が見つかりません');
+      if (item.topic === 'privacy') throw new HttpError(400, '「個人情報」の声は、新聞にはのせません。本人に答えてください');
       item.picked = {
         summary: cleanText(summary, MAX_SUMMARY, '要約'), answer: cleanText(answer, MAX_ANSWER, '運営の答え'), at: now(),
       };

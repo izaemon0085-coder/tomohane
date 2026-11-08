@@ -157,9 +157,10 @@ async function loadMeyasuAdmin() {
   const list = await api('/suggestions');
   $('#meyasu-admin-list').innerHTML = list.length ? list.map((x) => `<li data-id="${escapeHtml(x.id)}">
       <p class="small muted">${escapeHtml(topicLabel(x.topic))}・${escapeHtml(AGE_LABEL[x.age] ?? '')}・${escapeHtml(timeAgo(x.at))}・${STATUS_LABEL[x.status] ?? ''}</p>
+      ${x.from ? `<p class="small">🔒 書いた人：${escapeHtml(x.from.name)}（${escapeHtml(x.from.loginId)}）</p>` : ''}
       <p>${escapeHtml(x.text)}</p>
       ${x.picked ? `<p class="small">要約「${escapeHtml(x.picked.summary)}」／答え「${escapeHtml(x.picked.answer)}」</p>` : ''}
-      ${x.status === 'done' ? '' : `<form class="meyasu-pick">
+      ${x.status === 'done' ? '' : x.topic === 'privacy' ? '<p class="small muted">🔒 本人に答えてから「片づける」。新聞にはのせません。</p><div class="row wrap"><button class="btn ghost" type="button" data-close>片づける</button></div>' : `<form class="meyasu-pick">
         <label class="field">要約（${MAX_SUMMARY}文字まで・本人と分からない言い方で）<input class="input" name="summary" maxlength="${MAX_SUMMARY}" value="${escapeHtml(x.picked?.summary ?? '')}" required></label>
         <label class="field">運営の答え（${MAX_ANSWER}文字まで）<textarea class="input" name="answer" maxlength="${MAX_ANSWER}" rows="2" required>${escapeHtml(x.picked?.answer ?? '')}</textarea></label>
         <div class="row wrap"><button class="btn" type="submit">${x.picked ? '直す' : '新聞でとりあげる'}</button>
