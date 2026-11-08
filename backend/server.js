@@ -102,6 +102,7 @@ function meView(u) {
     korotomo: u.korotomo ?? null,
     soratomo: u.soratomo ?? null,
     leaving: leavingView(u),
+    practice: u.kind === 'human' && ageGroup(u.birthdate) === 'child' && !(u.guardianIds?.length), // 練習モード（おうちの人とつながる前の子ども）
     termsVersion: u.termsAgreed?.version ?? null, // 同意した利用規約の版（新しい版とちがえば、もう一度同意してもらう）
   };
 }
@@ -458,7 +459,7 @@ export function createApp({
     // ---- カフェのテーブル（決まった並び）と、それぞれの投稿の数 ----
     ['GET', /^\/api\/cafe\/tables$/, () => store.listTables().map((t) => ({
       id: t.id, kind: t.kind, name: t.name, emoji: t.emoji, note: t.note ?? '', parent: t.parent ?? null,
-      postCount: store.listPosts().filter((p) => p.table === t.id && !p.hidden && !p.orphaned).length,
+      postCount: store.listPosts().filter((p) => p.table === t.id && !p.hidden && !p.orphaned && !p.practiceOwner).length,
     }))],
     // ユーザーの声：ほしいジャンルのリクエスト（ペンギンが受け取る）→ 運営が見て、テーブルを足す
     ['POST', /^\/api\/cafe\/requests$/, ({ body, me }) => {

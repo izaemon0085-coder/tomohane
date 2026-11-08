@@ -183,6 +183,9 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
   const userById = (id) => state.users.find((u) => u.id === id);
   // 退会の7日のあいだ（投稿はほかの人に見えない）
   const isLeaving = (u) => Boolean(u?.leaving?.at);
+  // 練習モード：おうちの人とつながる前の子ども（12歳まで）。書いたものは、本人とキャラにだけ見える
+  const isPractice = (u) => u?.kind === 'human' && ageGroup(u.birthdate, new Date(clockMs())) === 'child' && !(u.guardianIds?.length);
+  const PRACTICE_MSG = 'おうちの人とつながったら、できるようになるっす！（アカウントのページの「おうちの人とつなぐ」から）';
   // 子ども（おうちの人とつながっている）は、7日で入れなくなる（データは14日まで残して、おうちの人が取り消せる）
   const isClosed = (u) => Boolean(u?.leaving?.guarded) && Date.parse(u.leaving.at) + LEAVE_MS <= clockMs();
   const leaveDueMs = (u) => Date.parse(u.leaving.at) + (u.leaving.guarded ? GUARDIAN_LEAVE_MS : LEAVE_MS);
@@ -411,6 +414,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
         return null;
       }
       const text = typeof comment === 'string' ? comment.trim() : '';
+      if (text && isPractice(user)) throw new HttpError(403, `おすすめのひとことは、みんなに見えるので、${PRACTICE_MSG}（おすすめだけならできるっす）`);
       if ([...text].length > MAX_REC_LENGTH) throw new HttpError(400, `一言は${MAX_REC_LENGTH}文字以内にしてください`);
       if (text) rejectBlocked(user, text);
       const rec = { gameId, userId, comment: text, createdAt: now() };
@@ -649,7 +653,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
         .filter((u) => u.kind === 'human' && u.id !== userId && !isLeaving(u) && u.oshi?.name && normalizeOshi(u.oshi.name) === normalizeOshi(name))
         .map((u) => u.id));
       return [...state.posts]
-        .filter((p) => friends.has(p.authorId))
+        .filter((p) => friends.has(p.authorId) && !p.practiceOwner)
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
         .slice(0, limit);
     },
@@ -758,9 +762,14 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       const clean = cleanText(text, MAX_POST_LENGTH, '投稿');
       rejectBlocked(author, clean);
       const parent = replyTo ? requirePost(replyTo) : null;
+      // 練習モードの投稿には、本人とキャラしか返事できない（ほかの人には見えていない）
+      if (parent?.practiceOwner && author.kind === 'human' && parent.practiceOwner !== author.id) throw new HttpError(404, '投稿が見つかりません');
       const where = parent ? parent.table ?? null : table ? this.getTable(table).id : null;
       const post = { id: newId('p'), authorId, text: clean, replyTo: replyTo || null, likes: [], createdAt: now() };
       if (where) post.table = where;
+      // 練習モードの子どもの投稿と、それへの返事（キャラの返事もふくむ）は、その子にだけ見える
+      const practiceOwner = parent?.practiceOwner ?? (isPractice(author) ? author.id : null);
+      if (practiceOwner) post.practiceOwner = practiceOwner;
       if (thread && author.kind === 'official') Object.assign(post, { thread: true, newsIssueId });
       state.posts.push(post);
       emit('post', post);
@@ -768,7 +777,8 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
     },
     toggleLike(postId, userId) {
       const post = requirePost(postId);
-      requireUser(userId);
+      const liker = requireUser(userId);
+      if (post.practiceOwner && liker.kind === 'human' && post.practiceOwner !== liker.id) throw new HttpError(404, '投稿が見つかりません');
       const i = post.likes.indexOf(userId);
       if (i === -1) post.likes.push(userId);
       else post.likes.splice(i, 1);
@@ -943,6 +953,8 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
 
     // viewerId の人に見せてよい投稿か（ログインしていなければ viewerId は null）
     canSee(post, viewerId) {
+      // 練習モードの投稿は、その子にだけ見える
+      if (post.practiceOwner && post.practiceOwner !== viewerId) return false;
       // 通報で止まっている投稿は、書いた本人にだけ見える。通報した人には、その投稿はもう出さない
       if (post.hidden && post.authorId !== viewerId) return false;
       // 元の投稿が消された返信は、書いた本人にだけ見える
@@ -970,6 +982,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
 
     // ---- 退会（7日たってから消える。それまではログインして取り消せる） ----
     isLeaving,
+    isPractice,
     // 申しこむ：パスワードで本人か確かめる。farewell は、返信をもらっていた投稿があるときに返信した人へ届けるひとこと
     async requestLeave(userId, { password, farewell = '' } = {}) {
       const user = requireUser(userId);
@@ -1080,7 +1093,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
     openMeeting: () => state.meetings.find((m) => m.status === 'open') || null,
     createMeeting({ topic, createdBy, participantIds }) {
       const clean = cleanText(topic, MAX_TOPIC_LENGTH, '議題');
-      if (createdBy) requireUser(createdBy);
+      if (createdBy && isPractice(requireUser(createdBy))) throw new HttpError(403, `会議をひらくのは、${PRACTICE_MSG}`);
       const meeting = {
         id: newId('m'), topic: clean, createdBy: createdBy || null, participantIds,
         status: 'open', turn: 0, pendingHumanId: null, speakerId: null,
@@ -1094,6 +1107,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       const meeting = requireMeeting(meetingId);
       if (meeting.status !== 'open') throw new HttpError(409, 'この会議はすでに終了しています');
       const author = requireUser(authorId);
+      if (isPractice(author)) throw new HttpError(403, `会議室で話すのは、${PRACTICE_MSG}`);
       const msg = { id: newId('mm'), authorId, text: cleanText(text, MAX_POST_LENGTH, '発言'), createdAt: now() };
       rejectBlocked(author, msg.text);
       meeting.messages.push(msg);

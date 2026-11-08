@@ -1404,3 +1404,45 @@ test('約束：登録には同意が要る・いまいる人は新しい版に�
   assert.equal(page.status, 200);
   assert.match(await page.text(), /運営の誓い/);
 });
+
+// ---- 🐾 練習モード（おうちの人とつながる前の子ども） ----
+test('練習モード：つながる前の子どもの投稿は本人とキャラにだけ見える・つながると、新しい投稿はみんなに見える', async () => {
+  const kid = await signup('れんしゅうのこ', { birthdate: '2017-07-07' });
+  const adult = await signup('れんしゅうを見ない大人');
+  assert.equal((await call('/api/auth/me', { as: kid })).data.practice, true);
+  assert.equal((await call('/api/auth/me', { as: adult })).data.practice, false);
+
+  const p = (await call('/api/posts', { method: 'POST', as: kid, body: { text: 'はじめまして！ 推しのうたがすき' } })).data;
+  assert.equal(p.practiceOwner, kid.id);
+  assert.equal(await visibleTo(kid, p.id), true, '本人には見える');
+  assert.equal(await visibleTo(adult, p.id), false, 'ほかの人には見えない');
+  assert.equal(await visibleTo(null, p.id), false);
+
+  // キャラの返事は、その子にだけ見える。家の日記に名前は書かない
+  const reply = sim.respondToHumanPost(store.getPost(p.id));
+  assert.ok(reply, 'キャラが返事をする');
+  assert.equal(reply.practiceOwner, kid.id);
+  assert.equal(await visibleTo(kid, reply.id), true);
+  assert.equal(await visibleTo(adult, reply.id), false);
+  assert.ok(!JSON.stringify(store.getAgent(reply.authorId).diary ?? []).includes('れんしゅうのこ'), '家の日記に名前を書かない');
+
+  // ほかの人は返信・いいねできない。カフェでも同じ
+  assert.equal((await call('/api/posts', { method: 'POST', as: adult, body: { text: 'よろしくね', replyTo: p.id } })).status, 404);
+  assert.equal((await call(`/api/posts/${p.id}/like`, { method: 'POST', as: adult })).status, 404);
+  const c = (await call('/api/posts', { method: 'POST', as: kid, body: { text: 'カフェきたよ', table: 'free' } })).data;
+  assert.equal((await call('/api/posts?table=free', { as: adult })).data.some((x) => x.id === c.id), false);
+
+  // みんなに見える場所（会議室・おすすめのひとこと）は、つながってから
+  assert.equal((await call('/api/meetings', { method: 'POST', as: kid, body: { topic: 'あそびたい' } })).status, 403);
+  assert.equal((await call('/api/games/tomojan/recommend', { method: 'PUT', as: kid, body: { comment: 'たのしい！' } })).status, 403);
+  assert.equal((await call('/api/games/tomojan/recommend', { method: 'PUT', as: kid, body: { comment: '' } })).status, 200, 'おすすめだけならできる');
+
+  // おうちの人とつながると、新しい投稿はみんなに見える（練習の投稿は、その子だけのまま）
+  const mom = await signup('れんしゅうのおかあさん');
+  const { code } = (await call('/api/guardian/code', { method: 'POST', as: mom })).data;
+  await call('/api/guardian/join', { method: 'POST', as: kid, body: { code } });
+  assert.equal((await call('/api/auth/me', { as: kid })).data.practice, false);
+  const q = (await call('/api/posts', { method: 'POST', as: kid, body: { text: 'つながったよ！' } })).data;
+  assert.equal(await visibleTo(adult, q.id), true);
+  assert.equal(await visibleTo(adult, p.id), false, '練習の投稿は、つながったあとも本人だけ');
+});

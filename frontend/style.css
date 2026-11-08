@@ -478,3 +478,7 @@ html[data-oshi-color] .oshi-hero { color: var(--accent-text); }
 .terms-child li { margin: 4px 0; }
 .agree-box:not([hidden]) { display: grid; gap: 10px; margin-bottom: 14px; border: 2px solid var(--accent, #c2410c); }
 .agree-box .say-line img { flex: none; border-radius: 50%; background: var(--surface); }
+
+/* 🐾 練習モード（おうちの人とつながる前の子ども） */
+.practice-note:not([hidden]) { display: flex; background: var(--surface-2); border-radius: 12px; padding: 8px 12px; margin: 8px 0; }
+.practice-note img { flex: none; border-radius: 50%; background: var(--surface); }
