@@ -104,6 +104,26 @@
           </div>
         </section>
 
+        <!-- 挿し絵・表紙の募集 -->
+        <section class="lib-art" id="art" aria-labelledby="art-title">
+          <h3 id="art-title">🎨 挿し絵・表紙を募集する</h3>
+          <p class="small">図書館の「募集の掲示板」に出ます。描いた人が応募してくれたら、あなたが1枚選びます。選んだ絵は、描いた人の名前といっしょに本に載ります。</p>
+          <div id="art-now"></div>
+          <form class="lib-call-form" id="call-form">
+            <div class="lib-two">
+              <label class="field">ほしい絵<select class="input" name="kind" id="call-kind">
+                <option value="cover">表紙</option>
+                <option value="illust">挿し絵</option>
+              </select></label>
+              <label class="field" id="slot-field">挿し絵の番号（1〜20）<input class="input" name="slot" type="number" min="1" max="20" value="1"></label>
+            </div>
+            <p class="muted small" id="slot-help">本文の、絵を入れたいところに <code>［挿絵1］</code> のように1行で書いてください。</p>
+            <label class="field">どんな絵がほしいか（200文字まで）<textarea class="input" name="note" rows="2" maxlength="200" placeholder="例：夜のライブ会場で、水色のペンライトがたくさん光っている表紙"></textarea></label>
+            <button class="btn ghost" type="submit">募集を出す</button>
+          </form>
+          <ul class="lib-calls mine-calls" id="my-calls"></ul>
+        </section>
+
         <!-- 運営に手伝ってもらう -->
         <details class="lib-help" id="help">
           <summary>🦉 ネズミではむずかしいとき：運営に手伝ってもらう</summary>

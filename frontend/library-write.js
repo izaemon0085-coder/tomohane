@@ -103,8 +103,10 @@ function renderBook() {
   $('#tidy').hidden = true;
   $('#help').hidden = !b;
   $('#publish').hidden = !b;
+  $('#art').hidden = !b;
   if (!b) return;
   if (b.kind === 'manga') renderPages();
+  renderArt();
   renderTidy();
   renderHelp();
   renderPublish();
@@ -161,6 +163,77 @@ $('#page-files').addEventListener('change', async (e) => {
   await loadMine();
 });
 
+// ---- 挿し絵・表紙の募集 ----
+const callLabel = (c) => (c.kind === 'cover' ? '📕 表紙' : `🖼️ 挿絵${c.slot}`);
+const CALL_STATUS = { open: '募集中', closed: 'しめきり', adopted: '選びました' };
+function renderArt() {
+  const b = current;
+  const novel = b.kind === 'novel';
+  $('#call-kind').querySelector('[value=illust]').disabled = !novel;
+  if (!novel) $('#call-kind').value = 'cover';
+  syncCallKind();
+  const credit = (role) => b.credits.find((c) => c.role === role)?.name;
+  const now = [
+    ...(b.art.cover ? [{ role: '表紙', url: b.art.cover, path: 'cover' }] : []),
+    ...Object.entries(b.art.illust).map(([slot, url]) => ({ role: `挿絵${slot}`, url, path: `illust/${slot}` })),
+  ];
+  $('#art-now').innerHTML = now.length ? `<p class="small">いま本に入っている絵：</p><ul class="lib-entries">${now.map((a) => `<li class="lib-entry adopted">
+      <img src="${escapeHtml(a.url)}" alt="${escapeHtml(a.role)}"><span class="small"><strong>${escapeHtml(a.role)}</strong>：${escapeHtml(credit(a.role) ?? '？')}さん</span>
+      <button class="btn ghost small" type="button" data-unart="${escapeHtml(a.path)}">本から外す</button></li>`).join('')}</ul>` : '';
+  $('#my-calls').innerHTML = b.calls.map((c) => `<li class="lib-call card panel">
+    <p class="call-kind">${callLabel(c)}・${CALL_STATUS[c.status]}</p>
+    <p class="call-note">「${escapeHtml(c.note)}」</p>
+    <ul class="lib-entries">${c.entries.map((e) => `<li class="lib-entry${c.adoptedEntryId === e.id ? ' adopted' : ''}">
+      <img src="${escapeHtml(e.image)}" alt="${escapeHtml(e.name)}さんの絵" loading="lazy">
+      <span class="small"><strong>${escapeHtml(e.name)}</strong>さん${c.adoptedEntryId === e.id ? ' 🏅' : ''}</span>
+      ${e.comment ? `<span class="small">${escapeHtml(e.comment)}</span>` : ''}
+      ${c.adoptedEntryId === e.id ? '' : `<button class="btn small" type="button" data-adopt="${escapeHtml(e.id)}" data-call="${escapeHtml(c.id)}">この絵を選ぶ</button>`}
+    </li>`).join('') || '<li class="muted small">まだ応募はありません。掲示板に出ています。</li>'}</ul>
+    <div class="row wrap">
+      <a class="btn ghost small" href="/library-board.html#call-${escapeHtml(c.id)}">掲示板で見る</a>
+      ${c.status === 'open' ? `<button class="btn ghost small" type="button" data-close-call="${escapeHtml(c.id)}">しめきる</button>` : ''}
+      <button class="btn ghost small danger" type="button" data-remove-call="${escapeHtml(c.id)}">募集を消す</button>
+    </div></li>`).join('');
+}
+function syncCallKind() {
+  const illust = $('#call-kind').value === 'illust';
+  $('#slot-field').hidden = !illust;
+  $('#slot-help').hidden = !illust;
+}
+$('#call-kind').addEventListener('change', syncCallKind);
+$('#call-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  try {
+    await api(`/library/books/${current.id}/calls`, { method: 'POST', body: { kind: f.kind.value, slot: Number(f.slot.value), note: f.note.value } });
+    f.note.value = '';
+    toast('🐢 掲示板に募集を出したよ');
+    await loadMine();
+  } catch (err) { toast(`🐭 ${err.message}`, 5000); }
+});
+$('#art').addEventListener('click', async (e) => {
+  const adopt = e.target.closest('[data-adopt]');
+  const close = e.target.closest('[data-close-call]');
+  const remove = e.target.closest('[data-remove-call]');
+  const unart = e.target.closest('[data-unart]');
+  try {
+    if (adopt) {
+      if (!confirm('この絵を選びますか？ 本に、描いた人の名前といっしょに載ります。')) return;
+      await api(`/library/calls/${adopt.dataset.call}/adopt`, { method: 'POST', body: { entryId: adopt.dataset.adopt } });
+      toast('🐢 絵を本に入れたよ');
+    } else if (close) {
+      await api(`/library/calls/${close.dataset.closeCall}/close`, { method: 'POST' });
+    } else if (remove) {
+      if (!confirm('この募集を消しますか？ 選ばなかった応募の絵も消えます。')) return;
+      await api(`/library/calls/${remove.dataset.removeCall}`, { method: 'DELETE' });
+    } else if (unart) {
+      if (!confirm('この絵を本から外しますか？')) return;
+      await api(`/library/books/${current.id}/art/${unart.dataset.unart}`, { method: 'DELETE' });
+    } else return;
+    await loadMine();
+  } catch (err) { toast(`🐭 ${err.message}`, 5000); }
+});
+
 // ---- ネズミのまとめた案 ----
 function renderTidy() {
   const s = current.tidy.nezumi;
@@ -173,8 +246,9 @@ function renderTidy() {
   $('#tidy-novel').hidden = !novel;
   $('#tidy-manga').hidden = novel;
   if (novel) {
-    $('#cmp-before').innerHTML = formatNovel(current.text);
-    $('#cmp-after').innerHTML = formatNovel(s.text);
+    const opt = { illust: current.art.illust, showEmpty: true };
+    $('#cmp-before').innerHTML = formatNovel(current.text, opt);
+    $('#cmp-after').innerHTML = formatNovel(s.text, opt);
     $('#ruby-box').hidden = !s.ruby.length;
     $('#ruby-list').innerHTML = s.ruby.map((r) => `<label class="row ruby-pick"><input type="checkbox" value="${escapeHtml(r.kanji)}" checked>
       <span><ruby>${escapeHtml(r.kanji)}<rt>${escapeHtml(r.reading)}</rt></ruby> <span class="muted small">${escapeHtml(r.context)}</span></span></label>`).join('');

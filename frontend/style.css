@@ -558,3 +558,27 @@ html[data-oshi-color] .oshi-hero { color: var(--accent-text); }
 .small-input { max-width: 260px; min-height: 36px; }
 .back-link-text { text-decoration: none; font-weight: 700; }
 .library-page [hidden] { display: none !important; }
+/* 図書館（3段目）：挿し絵・表紙の募集の掲示板・本の中の挿し絵 */
+.lib-calls { list-style: none; padding: 0; margin: 0 0 16px; display: grid; gap: 12px; }
+.lib-call-head { display: flex; gap: 12px; align-items: flex-start; }
+.lib-call-head .book-cover { width: 56px; }
+.lib-call-head h2 { margin: 0; font-size: 1.1rem; }
+.lib-call-head p { margin: 0 0 2px; }
+.call-kind { margin: 0 0 4px; font-size: .8rem; font-weight: 800; color: #2f4a26; }
+.call-note { margin: 8px 0; padding: 8px 12px; background: var(--surface-2); border-radius: 10px; }
+.lib-entries { list-style: none; padding: 0; margin: 8px 0; display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+.lib-entry { display: grid; gap: 4px; align-content: start; padding: 6px; border: 1px solid var(--border); border-radius: 10px; }
+.lib-entry img { width: 100%; aspect-ratio: 3 / 4; object-fit: contain; background: var(--surface-2); border-radius: 6px; }
+.lib-entry.adopted { border: 2px solid #c9a227; background: #fffbe8; }
+.lib-apply { display: grid; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); justify-items: start; }
+.lib-art { margin-top: 16px; padding-top: 12px; border-top: 1px dashed var(--border); }
+.lib-art h3 { margin: 0 0 4px; }
+.lib-call-form { margin: 8px 0; }
+.mine-calls .lib-call { padding: 12px; }
+.novel-body figure.illust { margin: 1.2em 0; text-align: center; }
+.novel-body figure.illust img { max-width: 100%; max-height: 70vh; border-radius: 4px; }
+.novel-body.vertical figure.illust { margin: 0 1.2em; writing-mode: horizontal-tb; align-self: center; }
+.novel-body.vertical figure.illust img { max-height: 60vh; max-width: 40vw; }
+.illust-empty { color: #8a7d72; font-size: .85em; text-indent: 0 !important; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .lib-entry.adopted { background: #3a321c; } }
+:root[data-theme="dark"] .lib-entry.adopted { background: #3a321c; }

@@ -79,18 +79,52 @@ export function createLibraryApi({ store, dir, sendJson, maxPageBytes = MAX_PAGE
   const needAdmin = (me) => { if (!isAdmin(needLogin(me))) throw new HttpError(403, '運営（管理者）だけができます'); return me; };
   const authorName = (b) => { try { return store.getUser(b.authorId).name; } catch { return '？'; } };
 
+  const userName = (id) => { try { return store.getUser(id).name; } catch { return '？'; } };
+  const artOf = (b) => b.art ?? { cover: null, illust: {} };
+  // 表紙・挿し絵を描いた人（本に名前を出す）
+  const credits = (b) => {
+    const a = artOf(b);
+    return [
+      ...(a.cover ? [{ role: '表紙', name: userName(a.cover.by) }] : []),
+      ...Object.keys(a.illust).sort((x, y) => x - y).map((slot) => ({ role: `挿絵${slot}`, name: userName(a.illust[slot].by) })),
+    ];
+  };
   // 棚に並べる情報（本文・ページは入れない）
   const card = (b) => ({
     id: b.id, kind: b.kind, title: b.title, genre: b.genre, minAge: b.minAge, blurb: b.blurb, cover: b.cover,
-    coverImage: b.kind === 'manga' && b.coverPage != null ? `/api/library/books/${b.id}/pages/${b.coverPage}` : null,
-    author: authorName(b), sample: false, publishedAt: b.publishedAt,
+    coverImage: artOf(b).cover ? `/api/library/books/${b.id}/art/cover`
+      : b.kind === 'manga' && b.coverPage != null ? `/api/library/books/${b.id}/pages/${b.coverPage}` : null,
+    author: authorName(b), sample: false, publishedAt: b.publishedAt, credits: credits(b),
     length: b.kind === 'novel' ? novelLength(b.text) : b.pages.length,
   });
+  const illustUrls = (b) => Object.fromEntries(Object.keys(artOf(b).illust).map((s) => [s, `/api/library/books/${b.id}/art/illust/${s}`]));
+  // 募集（掲示板で見せる形）。応募した人の名前・ひとこと・絵
+  const callView = (c, me) => {
+    const b = store.getBook(c.bookId);
+    return {
+      id: c.id, kind: c.kind, slot: c.slot, note: c.note, status: c.status, createdAt: c.createdAt, adoptedEntryId: c.adoptedEntryId,
+      mine: Boolean(me && c.authorId === me.id),
+      book: { id: b.id, title: b.title, kind: b.kind, genre: b.genre, minAge: b.minAge, blurb: b.blurb, cover: b.cover, author: authorName(b), status: b.status },
+      entries: c.entries.map((e) => ({
+        id: e.id, name: userName(e.userId), comment: e.comment, at: e.at, mine: Boolean(me && e.userId === me.id),
+        image: `/api/library/calls/${c.id}/entries/${e.id}/image`,
+      })),
+    };
+  };
+  // 募集が見える人：本が取り下げられていなくて、年齢の棚が合う人・作者・運営
+  function canSeeCall(c, me) {
+    const b = store.getBook(c.bookId);
+    if (me && (c.authorId === me.id || isAdmin(me))) return true;
+    return b.status !== 'hidden' && shelfAllows(b.minAge, groupOf(me));
+  }
+  const dropFiles = (images) => Promise.all(images.filter(Boolean).map((img) => removePage(dir, img)));
   // 作者が見る情報（下書き・ネズミの案・運営の返事）
   const ownerView = (b) => ({
     ...card(b), status: b.status, hiddenReason: b.hiddenReason, text: b.text, consentAt: b.consentAt,
     pages: b.pages.map((p, i) => ({ n: i, name: p.name, size: p.size, url: `/api/library/books/${b.id}/pages/${i}` })),
     coverPage: b.coverPage, tidy: b.tidy, createdAt: b.createdAt, updatedAt: b.updatedAt,
+    art: { cover: artOf(b).cover ? card(b).coverImage : null, illust: illustUrls(b) },
+    calls: store.callsOf(b.id).map((c) => callView(c, { id: b.authorId })),
   });
   // 読める人：出ていて年齢が合う人・作者・運営
   function canRead(b, me) {
@@ -121,7 +155,7 @@ export function createLibraryApi({ store, dir, sendJson, maxPageBytes = MAX_PAGE
         if (b.status !== 'published') throw new HttpError(404, 'その本は見つかりません');
         throw new HttpError(403, 'この本は、年齢の棚が合わないので読めません');
       }
-      return { ...card(b), text: b.kind === 'novel' ? b.text : undefined, pageCount: b.pages.length };
+      return { ...card(b), text: b.kind === 'novel' ? b.text : undefined, pageCount: b.pages.length, illust: illustUrls(b) };
     }],
 
     // ---- 作者 ----
@@ -132,7 +166,9 @@ export function createLibraryApi({ store, dir, sendJson, maxPageBytes = MAX_PAGE
       const book = isAdmin(me) && store.getBook(params[0]).authorId !== me.id
         ? store.removeBook(params[0])
         : store.removeBook(params[0], { authorId: needLogin(me).id });
-      await Promise.all(book.pages.map((p) => removePage(dir, p)));
+      const a = artOf(book);
+      const freed = store.removeCallsOf(book.id);
+      await dropFiles([...book.pages, ...freed, a.cover, ...Object.values(a.illust)]);
       return { ok: true };
     }],
     ['PUT', /^\/api\/library\/books\/([\w-]+)\/order$/, ({ me, params, body }) => ownerView(store.setPageOrder(needLogin(me).id, params[0], body.order))],
@@ -146,6 +182,41 @@ export function createLibraryApi({ store, dir, sendJson, maxPageBytes = MAX_PAGE
     ['DELETE', /^\/api\/library\/books\/([\w-]+)\/help$/, ({ me, params }) => ownerView(store.cancelHelp(needLogin(me).id, params[0]))],
     ['POST', /^\/api\/library\/books\/([\w-]+)\/publish$/, ({ me, params, body }) => ownerView(store.publishBook(needLogin(me).id, params[0], body.consent))],
     ['POST', /^\/api\/library\/books\/([\w-]+)\/unpublish$/, ({ me, params }) => ownerView(store.unpublishBook(needLogin(me).id, params[0]))],
+
+    // ---- 挿し絵・表紙の募集スレッド ----
+    ['GET', /^\/api\/library\/calls$/, ({ me }) => store.listCalls()
+      .filter((c) => (c.status === 'open' || (me && c.authorId === me.id)) && canSeeCall(c, me))
+      .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+      .map((c) => callView(c, me))],
+    ['GET', /^\/api\/library\/calls\/([\w-]+)$/, ({ me, params }) => {
+      const c = store.getCall(params[0]);
+      if (!canSeeCall(c, me)) throw new HttpError(404, 'その募集は見つかりません');
+      return callView(c, me);
+    }],
+    ['POST', /^\/api\/library\/books\/([\w-]+)\/calls$/, ({ me, params, body }) => callView(store.openCall(needLogin(me).id, params[0], body), me)],
+    ['POST', /^\/api\/library\/calls\/([\w-]+)\/close$/, ({ me, params }) => callView(store.closeCall(needLogin(me).id, params[0]), me)],
+    ['DELETE', /^\/api\/library\/calls\/([\w-]+)$/, async ({ me, params }) => {
+      const c = store.getCall(params[0]);
+      const freed = isAdmin(me) && c.authorId !== me.id ? store.removeCall(c.id) : store.removeCall(c.id, { authorId: needLogin(me).id });
+      await dropFiles(freed);
+      return { ok: true };
+    }],
+    ['DELETE', /^\/api\/library\/calls\/([\w-]+)\/entries\/([\w-]+)$/, async ({ me, params }) => {
+      needLogin(me);
+      const freed = store.removeEntry(params[0], params[1], isAdmin(me) ? {} : { userId: me.id });
+      await dropFiles([freed]);
+      return callView(store.getCall(params[0]), me);
+    }],
+    ['POST', /^\/api\/library\/calls\/([\w-]+)\/adopt$/, async ({ me, params, body }) => {
+      const { book, freed } = store.adoptEntry(needLogin(me).id, params[0], String(body.entryId ?? ''));
+      await dropFiles([freed]);
+      return ownerView(book);
+    }],
+    ['DELETE', /^\/api\/library\/books\/([\w-]+)\/art\/(cover|illust)(?:\/(\d+))?$/, async ({ me, params }) => {
+      const freed = store.removeArt(needLogin(me).id, params[0], { kind: params[1], slot: params[2] });
+      await dropFiles([freed]);
+      return ownerView(store.getBook(params[0]));
+    }],
 
     // ---- 運営 ----
     ['GET', /^\/api\/library\/admin$/, ({ me }) => {
@@ -190,6 +261,49 @@ export function createLibraryApi({ store, dir, sendJson, maxPageBytes = MAX_PAGE
       const path = join(dir, page.file);
       try { await stat(path); } catch { throw new HttpError(404, 'ページが見つかりません'); }
       res.writeHead(200, { 'Content-Type': page.type, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' });
+      await pipeline(createReadStream(path), res).catch(() => {});
+      return true;
+    }
+
+    // 募集への応募（絵そのものを受け取る。ひとことと同意はヘッダーで）
+    const entryUp = pathname.match(/^\/api\/library\/calls\/([\w-]+)\/entries$/);
+    if (entryUp && req.method === 'POST') {
+      needLogin(me);
+      const call = store.getCall(entryUp[1]);
+      if (!canSeeCall(call, me)) throw new HttpError(404, 'その募集は見つかりません');
+      if (call.status !== 'open') throw new HttpError(400, 'この募集は、もう閉まっています');
+      if (req.headers['x-consent'] !== 'yes') throw new HttpError(400, '「選ばれたら、この本に載せてもいい」に同意してください');
+      let comment = '';
+      try { comment = decodeURIComponent(String(req.headers['x-comment'] ?? '')); } catch { throw new HttpError(400, 'ひとことが読めませんでした'); }
+      const image = await savePage(req, { dir, bookId: call.id, maxBytes: maxPageBytes });
+      try {
+        store.addEntry(me.id, call.id, { image, comment, consent: true });
+      } catch (err) {
+        await removePage(dir, image);
+        throw err;
+      }
+      sendJson(res, 200, callView(store.getCall(call.id), me));
+      return true;
+    }
+    // 応募の絵・本の表紙と挿し絵を見る
+    const entryImg = pathname.match(/^\/api\/library\/calls\/([\w-]+)\/entries\/([\w-]+)\/image$/);
+    const artImg = pathname.match(/^\/api\/library\/books\/([\w-]+)\/art\/(cover|illust)(?:\/(\d+))?$/);
+    if ((entryImg || artImg) && req.method === 'GET') {
+      let img = null;
+      try {
+        if (entryImg) {
+          const call = store.getCall(entryImg[1]);
+          if (canSeeCall(call, me)) img = call.entries.find((e) => e.id === entryImg[2])?.image;
+        } else {
+          const book = store.getBook(artImg[1]);
+          const a = artOf(book);
+          if (canRead(book, me)) img = artImg[2] === 'cover' ? a.cover : a.illust[artImg[3]];
+        }
+      } catch { /* 見つからない */ }
+      if (!img || !PAGE_FILE.test(img.file)) throw new HttpError(404, '絵が見つかりません');
+      const path = join(dir, img.file);
+      try { await stat(path); } catch { throw new HttpError(404, '絵が見つかりません'); }
+      res.writeHead(200, { 'Content-Type': img.type, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' });
       await pipeline(createReadStream(path), res).catch(() => {});
       return true;
     }

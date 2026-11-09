@@ -1396,3 +1396,77 @@ test('図書館：ネズミでむずかしいときは運営が手伝う（案�
   assert.equal(again.status, 403);
   assert.match(again.data.error, /約束に合わない内容/);
 });
+
+// ---- 図書館（3段目）：挿し絵・表紙の募集スレッド ----
+async function putEntry(who, callId, body, { comment = '', consent = true, type = 'image/png' } = {}) {
+  const res = await fetch(`${base}/api/library/calls/${callId}/entries`, {
+    method: 'POST', body,
+    headers: { Cookie: who.cookie, 'Content-Type': type, 'X-Comment': encodeURIComponent(comment), 'X-Consent': consent ? 'yes' : 'no' },
+  });
+  return { status: res.status, data: await res.json() };
+}
+
+test('図書館：表紙・挿し絵の募集 → 同意して応募 → 作者が選ぶと本に載り、描いた人の名前が出る', async () => {
+  const author = await signup('募集する作家');
+  const artist = await signup('絵を描く人');
+  const other = await signup('もうひとりの絵描き');
+  const book = (await call('/api/library/books', { method: 'POST', as: author, body: {
+    kind: 'novel', title: '絵がほしい小説', genre: 'idol', minAge: 'child', text: '◆ 一\nはじまり。\n［挿絵1］\nおわり。',
+  } })).data;
+
+  assert.equal((await call(`/api/library/books/${book.id}/calls`, { method: 'POST', as: artist, body: { kind: 'cover', note: 'のっとり' } })).status, 403, '作者だけが募集できる');
+  assert.equal((await call(`/api/library/books/${book.id}/calls`, { method: 'POST', as: author, body: { kind: 'cover', note: '' } })).status, 400, 'どんな絵がほしいかが必要');
+  const cover = (await call(`/api/library/books/${book.id}/calls`, { method: 'POST', as: author, body: { kind: 'cover', note: '夜空の表紙' } })).data;
+  const illust = (await call(`/api/library/books/${book.id}/calls`, { method: 'POST', as: author, body: { kind: 'illust', slot: 1, note: 'はじまりの場面' } })).data;
+  assert.equal((await call(`/api/library/books/${book.id}/calls`, { method: 'POST', as: author, body: { kind: 'cover', note: 'もう一回' } })).status, 400, '同じ募集は2つ出せない');
+
+  const board = (await call('/api/library/calls', { as: artist })).data;
+  assert.ok(board.some((c) => c.id === cover.id && c.book.title === '絵がほしい小説'), '下書きの本の募集も掲示板に出る');
+
+  assert.equal((await putEntry(artist, cover.id, PNG(1), { consent: false })).status, 400, '同意がないと応募できない');
+  assert.equal((await putEntry(artist, cover.id, Buffer.from('<svg>'))).status, 415);
+  const after = (await putEntry(artist, cover.id, PNG(1), { comment: '星をたくさん描きました' })).data;
+  assert.equal(after.entries[0].name, '絵を描く人');
+  assert.equal(after.entries[0].comment, '星をたくさん描きました');
+  for (let i = 0; i < 3; i += 1) await putEntry(other, cover.id, PNG(2 + i));
+  assert.equal((await putEntry(other, cover.id, PNG(9))).status, 400, '1人3枚まで');
+  const ill = (await putEntry(artist, illust.id, PNG(7))).data;
+
+  const entryId = after.entries[0].id;
+  assert.equal((await call(`/api/library/calls/${cover.id}/adopt`, { method: 'POST', as: artist, body: { entryId } })).status, 403, '選ぶのは作者だけ');
+  let mine = (await call(`/api/library/calls/${cover.id}/adopt`, { method: 'POST', as: author, body: { entryId } })).data;
+  mine = (await call(`/api/library/calls/${illust.id}/adopt`, { method: 'POST', as: author, body: { entryId: ill.entries[0].id } })).data;
+  assert.deepEqual(mine.credits, [{ role: '表紙', name: '絵を描く人' }, { role: '挿絵1', name: '絵を描く人' }]);
+  assert.match(mine.coverImage, /\/art\/cover$/);
+  assert.equal((await putEntry(other, cover.id, PNG(3))).status, 400, '選んだあとの募集には応募できない');
+  assert.equal((await call(`/api/library/calls/${cover.id}/entries/${entryId}`, { method: 'DELETE', as: artist })).status, 400, '選ばれた絵は、描いた人だけでは取り下げられない');
+
+  await call(`/api/library/books/${book.id}/publish`, { method: 'POST', as: author, body: { consent: true } });
+  const read = (await call(`/api/library/books/${book.id}`, { as: other })).data;
+  assert.equal(read.illust['1'], `/api/library/books/${book.id}/art/illust/1`);
+  const img = await fetch(`${base}${read.coverImage}`, { headers: { Cookie: other.cookie } });
+  assert.equal(img.status, 200);
+  assert.equal(img.headers.get('content-type'), 'image/png');
+
+  // 本を消すと、募集と絵もいっしょに消える
+  await call(`/api/library/books/${book.id}`, { method: 'DELETE', as: author });
+  assert.equal((await call(`/api/library/calls/${cover.id}`, { as: author })).status, 404);
+  assert.equal(readdirSync(libraryDir).filter((f) => f.startsWith(cover.id) || f.startsWith(illust.id)).length, 0, '絵のファイルも残さない');
+});
+
+test('図書館：募集は年齢の棚が合う人にだけ見せる。小説の［挿絵1］に絵が入る', async () => {
+  const teenAuthor = await signup('中高生の作家', { birthdate: '2010-01-01' });
+  const kid = await signup('図書館のこども', { birthdate: '2018-01-01' });
+  const book = (await call('/api/library/books', { method: 'POST', as: teenAuthor, body: { kind: 'manga', title: '中高生の募集', genre: 'game', minAge: 'teen' } })).data;
+  assert.equal((await call(`/api/library/books/${book.id}/calls`, { method: 'POST', as: teenAuthor, body: { kind: 'illust', slot: 1, note: 'x' } })).status, 400, '挿し絵の募集は小説だけ');
+  const c = (await call(`/api/library/books/${book.id}/calls`, { method: 'POST', as: teenAuthor, body: { kind: 'cover', note: '表紙をお願いします' } })).data;
+  assert.ok(!(await call('/api/library/calls', { as: kid })).data.some((x) => x.id === c.id), 'こどもには中高生の本の募集を見せない');
+  assert.equal((await putEntry(kid, c.id, PNG())).status, 404);
+
+  const { formatNovel } = await import('../../shared/library.js');
+  const html = formatNovel('はじめ。\n［挿絵１］\n[挿絵2]', { illust: { 1: '/api/library/books/b_x/art/illust/1' } });
+  assert.ok(html.includes('<figure class="illust"><img src="/api/library/books/b_x/art/illust/1" alt="挿絵1"'));
+  assert.ok(!html.includes('挿絵2'), 'まだ絵のない挿し絵は、読む人には出さない');
+  assert.ok(formatNovel('[挿絵2]', { showEmpty: true }).includes('まだ絵がありません'), '作者には、まだ絵がないことを見せる');
+  assert.ok(!formatNovel('［挿絵1］', { illust: { 1: 'javascript:alert(1)' } }).includes('javascript'), 'へんなアドレスは入れない');
+});

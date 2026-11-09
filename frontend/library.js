@@ -146,12 +146,13 @@ async function openBook(id, { push = true } = {}) {
   $('#book-cover').style.setProperty('--cover', book.cover.color);
   $('#book-cover').innerHTML = coverHtml(book, true);
   $('#book-title').textContent = book.title;
-  $('#book-meta').textContent = `${book.author}${book.sample ? '' : 'さん'}・${book.kind === 'novel' ? '小説' : '漫画'}・${g.emoji} ${g.name}・${shelfName(book.minAge)}`;
+  const credits = (book.credits ?? []).map((c) => `${c.role}：${c.name}さん`).join('・');
+  $('#book-meta').textContent = `${book.author}${book.sample ? '' : 'さん'}・${book.kind === 'novel' ? '小説' : '漫画'}・${g.emoji} ${g.name}・${shelfName(book.minAge)}${credits ? `（${credits}）` : ''}`;
   $('#book-blurb').textContent = book.blurb;
   $('#novel').hidden = book.kind !== 'novel';
   $('#novel-tools').hidden = book.kind !== 'novel';
   $('#manga').hidden = book.kind !== 'manga';
-  if (book.kind === 'novel') $('#novel').innerHTML = formatNovel(book.text);
+  if (book.kind === 'novel') $('#novel').innerHTML = formatNovel(book.text, { illust: book.illust ?? {} });
   else renderPage();
   document.title = `${book.title} | 図書館 | ともはね β版`;
   showReader(true);

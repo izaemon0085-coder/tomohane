@@ -29,12 +29,26 @@ function ruby(line) {
     .replace(/[|｜]([^|｜《]+)《([^》]+)》/g, '<ruby>$1<rt>$2</rt></ruby>')
     .replace(/([一-鿿々〆ヶ]+)《([^》]+)》/g, '<ruby>$1<rt>$2</rt></ruby>');
 }
-export function formatNovel(text) {
+//   ［挿絵1］     … 挿し絵を入れるところ（募集で選んだ絵が入る。まだ絵がなければ、読む人には何も出ない）
+export const ILLUST_MARK = /^[［[]挿絵\s*([0-9０-９]{1,2})[］\]]$/;
+export function formatNovel(text, { illust = {}, showEmpty = false } = {}) {
   const out = [];
   let gap = false;
   for (const raw of String(text ?? '').replace(/\r\n?/g, '\n').split('\n')) {
     const line = raw.trim();
     if (!line) { gap = out.length > 0; continue; }
+    const mark = ILLUST_MARK.exec(line);
+    if (mark) {
+      const slot = String(Number(mark[1].normalize('NFKC')));
+      const url = illust[slot];
+      if (url && /^\/api\/library\/books\/[\w-]+\/art\/illust\/\d+$/.test(url)) {
+        out.push(`<figure class="illust"><img src="${escapeHtml(url)}" alt="挿絵${slot}" loading="lazy"></figure>`);
+      } else if (showEmpty) {
+        out.push(`<p class="illust-empty">（挿絵${slot}：まだ絵がありません）</p>`);
+      }
+      gap = false;
+      continue;
+    }
     if (/^[◆◇]/.test(line)) { out.push(`<h3>${ruby(line.replace(/^[◆◇]\s*/, ''))}</h3>`); gap = false; continue; }
     const cls = [/^[「『（]/.test(line) ? 'talk' : '', gap ? 'scene' : ''].filter(Boolean).join(' ');
     gap = false;
@@ -43,7 +57,7 @@ export function formatNovel(text) {
   return out.join('\n');
 }
 // ルビや記号をのぞいた文字の数（本の長さの目安）
-export const novelLength = (text) => [...String(text ?? '').replace(/《[^》]*》|[|｜◆◇\s]/g, '')].length;
+export const novelLength = (text) => [...String(text ?? '').replace(/[［[]挿絵\s*[0-9０-９]{1,2}[］\]]|《[^》]*》|[|｜◆◇\s]/g, '')].length;
 
 // ---- サンプルの本（運営が置いた見本） ----
 // 漫画のサンプルは、絵のファイルではなくコマのデータ（4コマ）。ユーザーの漫画は、あとで画像を貼る形にする
