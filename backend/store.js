@@ -15,6 +15,7 @@ import {
   FREE_TABLE, GENRE_TABLES, GENRE_IDS, MAX_TABLE_NAME, MAX_TABLE_REQUEST, MAX_OPEN_REQUESTS, normalizeOshi,
 } from '../shared/cafe.js';
 import { createLibraryStore } from './library-store.js';
+import { createInviteStore } from './invites.js';
 
 export const MAX_POST_LENGTH = 280;
 export const MAX_NAME_LENGTH = 20;
@@ -262,6 +263,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
     state.reportSeen = state.reportSeen.filter((x) => x.authorId !== id);
     state.farewells = state.farewells.filter((f) => f.toId !== id);
     state.notices = state.notices.filter((n) => n.userId !== id);
+    state.invites = state.invites.filter((i) => i.by !== id || i.usedBy); // 出したまま使われていない招待状は消す
     state.gameRecs = state.gameRecs.filter((r) => r.userId !== id);
     state.newsVotes = state.newsVotes.filter((v) => v.userId !== id);
     state.tableRequests = state.tableRequests.filter((r) => r.userId !== id);
@@ -294,8 +296,15 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
     ageGroupOf: (u) => (u?.birthdate ? ageGroup(u.birthdate) : 'child'),
   });
 
+  // ✉️ 招待状（クローズドβ）
+  const invites = createInviteStore({
+    state, now, clockMs, emit, newId, userById, notify, hashCode, newCode: newRecoveryCode,
+    isPractice: (u) => isPractice(u), ageGroupOf: (u) => (u?.birthdate ? ageGroup(u.birthdate, new Date(clockMs())) : 'child'),
+  });
+
   const store = {
     ...library,
+    ...invites,
     notify,
     listNotices: (userId) => state.notices.filter((n) => n.userId === userId).reverse(),
     unreadNotices: (userId) => state.notices.filter((n) => n.userId === userId && !n.readAt).length,
@@ -349,7 +358,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
 
     // ---- ログイン ----
     // 登録。今いる「名前だけのユーザー」と同じ名前なら、そのユーザーを引きつぐ（β版の引っ越し）
-    async register({ loginId, password, name, birthdate, agreeTerms }) {
+    async register({ loginId, password, name, birthdate, agreeTerms, inviteCode }) {
       if (agreeTerms !== true) throw new HttpError(400, '利用規約・プライバシーを読んで、同意してください');
       const id = String(loginId ?? '').trim().toLowerCase();
       if (!LOGIN_ID.test(id)) throw new HttpError(400, 'ログインIDは、半角の英小文字・数字・_ で3〜20文字にしてください');
@@ -367,6 +376,8 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
 
       let user = state.users.find((u) => u.kind === 'human' && u.name === clean);
       if (user?.passHash) throw new HttpError(409, 'その表示名は使われています');
+      // 招待状モードなら、招待コードと人数の上限を確かめる（いちばん最初の人＝運営は、コードなしで登録できる）
+      const invite = invites.checkInviteForRegister(inviteCode, { firstUser: !state.users.some((u) => u.role === 'admin') });
       if (!user) {
         user = { id: newId('u'), kind: 'human', name: clean, handle: clean, emoji: null, createdAt: now() };
         state.users.push(user);
@@ -381,6 +392,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
         // いちばん最初に登録した人が運営（管理者）。β版を家で動かす人がそのまま管理者になる
         role: state.users.some((u) => u.role === 'admin') ? 'user' : 'admin',
       });
+      invites.useInvite(invite, user);
       emit('user', user);
       return { user, recoveryCodes: codes };
     },

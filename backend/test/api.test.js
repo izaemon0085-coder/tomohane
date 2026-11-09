@@ -1916,3 +1916,69 @@ test('さがす：投稿・本・人・#タグ。見てよいものだけ（ブ�
   assert.deepEqual(tagsOf('たのしい #ライブ！ #推し活、また'), ['らいぶ', '推し活']);
   assert.ok(linkifyTags('&lt;b&gt; #ライブ').includes('<a class="tag-link" href="/search.html?q=%23%E3%83%A9%E3%82%A4%E3%83%96">#ライブ</a>'));
 });
+
+// ---- ✉️ 招待状（クローズドβ）：招待コード＋人数の上限 ----
+test('招待状：モードがオフならだれでも登録できる。オンにすると招待コードが要り、上限の人数まで', async () => {
+  // テストのデータには運営がいないことがあるので、運営を用意する
+  const admin = await signup('招待状の運営');
+  store.getUser(admin.id).role = 'admin';
+  const reg = (loginId, name, extra = {}) => call('/api/auth/register', { method: 'POST', body: { loginId, password: 'invite-pass-2026', name, birthdate: '1995-05-05', agreeTerms: true, ...extra } });
+
+  assert.deepEqual((await call('/api/invites/status')).data, { on: false, full: false });
+  assert.equal((await call('/api/invites', { method: 'POST', as: admin })).status, 403, 'オフのときは出さない');
+  assert.equal((await call('/api/invites/settings', { method: 'PUT', as: (await signup('招待状のふつうの人')), body: { on: true } })).status, 403, '切りかえは運営だけ');
+
+  // いまの人数 + 2人 を上限にして、オンにする
+  const now = (await call('/api/invites', { as: admin })).data.members;
+  const s = (await call('/api/invites/settings', { method: 'PUT', as: admin, body: { on: true, limit: now + 2 } })).data;
+  assert.equal(s.on, true);
+  try {
+    assert.equal((await reg('inv_nocode', '招待なしの人')).status, 400, '招待コードが要る');
+    assert.equal((await reg('inv_badcode', 'まちがいコードの人', { inviteCode: 'XXXX-XXXX' })).status, 403);
+
+    const first = (await call('/api/invites', { method: 'POST', as: admin })).data;
+    assert.match(first.code, /\S{4,}/, 'コードはこのときだけ見せる');
+    const a = await reg('inv_a', '招待で来た人A', { inviteCode: first.code });
+    assert.equal(a.status, 200);
+    assert.equal((await reg('inv_again', 'もう一回使う人', { inviteCode: first.code })).status, 403, '1回だけ');
+    const n = (await call('/api/notices', { as: admin })).data.items[0];
+    assert.match(n.text, /あなたの招待状で、招待で来た人Aさんが ともはね に来たよ/);
+
+    // 入った人は1人1枚
+    const aCookie = a.res.headers.get('set-cookie').split(';')[0];
+    const asA = { cookie: aCookie };
+    const fromA = await call('/api/invites', { method: 'POST', as: asA });
+    assert.equal(fromA.status, 200);
+    assert.equal((await call('/api/invites', { method: 'POST', as: asA })).status, 403, '1人1枚まで');
+    assert.equal((await call('/api/invites', { method: 'POST', as: admin })).status, 403, '席がいっぱい（使われていない招待状もふくめて）');
+    const b = await reg('inv_b', '招待で来た人B', { inviteCode: fromA.data.code });
+    assert.equal(b.status, 200);
+    assert.deepEqual((await call('/api/invites/status')).data, { on: true, full: true });
+    assert.equal((await reg('inv_c', 'いっぱいのときの人', { inviteCode: 'XXXX-XXXX' })).status, 403, '上限の人数になったら登録できない');
+
+    // 子どもは招待状を出せない（でも人数には数える）
+    const summary = (await call('/api/invites', { as: admin })).data;
+    assert.equal(summary.seatsLeft, 0);
+  } finally {
+    await call('/api/invites/settings', { method: 'PUT', as: admin, body: { on: false, limit: 50 } });
+  }
+  assert.equal((await reg('inv_open', 'オフにもどしたあとの人')).status, 200, 'オフにもどすと、また登録できる');
+});
+
+test('招待状：子ども（12歳まで）は出せない・出した招待状は取り消せる', async () => {
+  const admin = await signup('招待状の運営');
+  store.getUser(admin.id).role = 'admin';
+  const kid = await signup('招待状の子', { birthdate: '2017-07-07' });
+  await call('/api/invites/settings', { method: 'PUT', as: admin, body: { on: true, limit: 500 } });
+  try {
+    const r = await call('/api/invites', { method: 'POST', as: kid });
+    assert.equal(r.status, 403);
+    assert.match(r.data.error, /13歳から/);
+    const inv = (await call('/api/invites', { method: 'POST', as: admin })).data;
+    assert.equal((await call(`/api/invites/${inv.id}`, { method: 'DELETE', as: admin })).data.ok, true);
+    const gone = await call('/api/auth/register', { method: 'POST', body: { loginId: 'inv_cancel', password: 'pw-cancel-12345', name: '取り消されたコードの人', birthdate: '1995-05-05', agreeTerms: true, inviteCode: inv.code } });
+    assert.equal(gone.status, 403, '取り消した招待状は使えない');
+  } finally {
+    await call('/api/invites/settings', { method: 'PUT', as: admin, body: { on: false, limit: 50 } });
+  }
+});
