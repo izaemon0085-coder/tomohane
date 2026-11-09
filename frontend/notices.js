@@ -5,7 +5,7 @@ import { api, refreshMe, headerHtml, escapeHtml, timeAgo, toast, refreshNoticeCo
 const $ = (s) => document.querySelector(s);
 document.querySelector('#header').innerHTML = headerHtml('notices');
 
-const KIND = { library: { icon: '📚', label: '図書館' }, family: { icon: '🏠', label: 'おうちの人' }, suggest: { icon: '📮', label: '目安箱' } };
+const KIND = { invite: { icon: '✉️', label: '招待状' }, library: { icon: '📚', label: '図書館' }, family: { icon: '🏠', label: 'おうちの人' }, suggest: { icon: '📮', label: '目安箱' } };
 // ハトのひとこと（まだ読んでいない数で変わる）
 const hatoLine = (unread) => (unread
   ? `クルックー！ まだ読んでいないお知らせが ${unread}通 あるよ。`

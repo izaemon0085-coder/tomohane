@@ -33,6 +33,11 @@
       </form>
 
       <form id="panel-register" class="card panel" role="tabpanel" aria-labelledby="tab-register" hidden>
+        <div id="invite-need" hidden>
+          <p class="note-line small" id="invite-note">✉️ いまは招待状がある人だけ登録できます（クローズドβ）。</p>
+          <label class="field">招待コード（招待状にあるもの。例：abcd-2345）
+            <input class="input" name="inviteCode" autocomplete="off" autocapitalize="none"></label>
+        </div>
         <label class="field">ログインID（半角の英小文字・数字・_ で3〜20文字。ログインのときだけ使う）
           <input class="input" name="loginId" autocomplete="username" autocapitalize="none" pattern="[a-z0-9_]{3,20}" required></label>
         <label class="field">表示名（広場に出る名前）<input class="input" name="name" maxlength="20" autocomplete="nickname" required></label>
@@ -135,6 +140,27 @@
           <label class="field">絵文字<input class="input" name="emoji" maxlength="4" placeholder="🎭" style="width:5em"></label>
           <label class="field">テーブルの名前（12文字まで）<input class="input" name="name" maxlength="12" required></label>
           <button class="btn" type="submit">テーブルを足す</button>
+        </form>
+      </section>
+      <!-- ✉️ 招待状（クローズドβ）：運営は席が残っているぶん、入った人は1人1枚。子どもは出せない -->
+      <section class="family" id="invite-box" hidden aria-labelledby="invite-title">
+        <h2 id="invite-title">✉️ 招待状</h2>
+        <p class="small" id="invite-state"></p>
+        <div class="row wrap">
+          <button class="btn" type="button" id="invite-issue">招待状を出す</button>
+          <span class="muted small" id="invite-why"></span>
+        </div>
+        <div class="note-line" id="invite-new" hidden>
+          <p><strong>招待コード（いまだけ表示します）</strong>：<code id="invite-code"></code>
+            <button class="btn ghost small" type="button" id="invite-copy">コピー</button></p>
+          <p class="small">招待したい人に、このコードを伝えてください。1回だけ使えて、14日で切れます。使われたら 🔔 でお知らせします。</p>
+        </div>
+        <ul class="family-list" id="invite-list"></ul>
+        <!-- 運営だけ：招待状モードの切りかえ・人数の上限 -->
+        <form class="row wrap" id="invite-settings" hidden>
+          <label class="row"><input type="checkbox" name="on"> 招待状モード（クローズドβ）：登録には招待コードが要る</label>
+          <label class="field">人数の上限<input class="input" name="limit" type="number" min="1" max="500" style="width:6em"></label>
+          <button class="btn ghost" type="submit">保存</button>
         </form>
       </section>
       <!-- パスワードを変える（ログイン中）。ほかの端末のログインは切れる -->

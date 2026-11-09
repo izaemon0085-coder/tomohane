@@ -288,6 +288,13 @@ export function createApp({
     // ---- ゲームセンターの営業時間（見る人の年齢で、閉店の時間がちがう） ----
     ['GET', /^\/api\/arcade$/, ({ me }) => arcadeFor(me)],
 
+    // ---- ✉️ 招待状（クローズドβ）：招待コード＋人数の上限 ----
+    ['GET', /^\/api\/invites\/status$/, () => store.inviteStatus()], // 登録の画面用（ログインしていなくても見られる）
+    ['GET', /^\/api\/invites$/, ({ me }) => store.inviteSummary(needLogin(me).id)],
+    ['POST', /^\/api\/invites$/, ({ me }) => store.issueInvite(needLogin(me).id)],
+    ['DELETE', /^\/api\/invites\/([\w-]+)$/, ({ me, params }) => store.cancelInvite(needLogin(me).id, params[0])],
+    ['PUT', /^\/api\/invites\/settings$/, ({ me, body }) => store.setInviteSettings(needLogin(me).id, body)],
+
     // ---- 🔍 さがす：投稿・図書館の本・人・#タグ。見てよいものだけ ----
     // ・投稿は store.canSee（練習モード・止めた投稿・ブロックなど）を通ったものだけ
     // ・本は見る人の年齢の棚に合うものだけ。人は子ども（12歳まで）と退会中の人を出さない

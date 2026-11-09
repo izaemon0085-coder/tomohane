@@ -52,7 +52,61 @@ function render(me) {
   renderBlocks();
   renderReportAdmin(me);
   renderCafeAdmin(me);
+  renderInvites(me);
 }
+
+// ---- ✉️ 招待状（クローズドβ） ----
+async function renderInvites(me) {
+  let s;
+  try { s = await api('/invites'); } catch { $('#invite-box').hidden = true; return; }
+  const admin = me.role === 'admin';
+  $('#invite-box').hidden = !s.on && !admin;
+  $('#invite-settings').hidden = !admin;
+  if (admin) {
+    $('#invite-settings').elements.on.checked = s.on;
+    $('#invite-settings').elements.limit.value = s.limit;
+  }
+  $('#invite-state').textContent = s.on
+    ? `いまはクローズドβ：${s.limit}人まで（いま${s.members}人・のこり${s.seatsLeft}席・まだ使われていない招待状${s.pending}枚）`
+    : 'いまは招待状モードではありません。だれでも登録できます。';
+  $('#invite-issue').hidden = !s.on;
+  $('#invite-issue').disabled = !s.canIssue;
+  $('#invite-why').textContent = s.on && !s.canIssue ? s.reason : '';
+  const dateJa = (iso) => new Date(iso).toLocaleDateString('ja-JP', { month: 'long', day: 'numeric' });
+  $('#invite-list').innerHTML = s.mine.map((i) => `<li class="row wrap">
+    <span>${i.used ? `✅ ${escapeHtml(i.usedName)}さんが使いました` : i.expired ? '⌛ 切れました' : `📨 まだ使われていません（${dateJa(i.expiresAt)}まで）`}</span>
+    ${!i.used && !i.expired ? `<button class="btn ghost small" type="button" data-invite-cancel="${escapeHtml(i.id)}">取り消す</button>` : ''}</li>`).join('');
+}
+$('#invite-issue').addEventListener('click', async () => {
+  try {
+    const r = await api('/invites', { method: 'POST' });
+    $('#invite-code').textContent = r.code;
+    $('#invite-new').hidden = false;
+    renderInvites(await refreshMe());
+  } catch (err) { toast(err.message, 5000); }
+});
+$('#invite-copy').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText($('#invite-code').textContent); toast('コピーしました'); } catch { toast('コピーできませんでした。手で書き写してください'); }
+});
+$('#invite-list').addEventListener('click', async (e) => {
+  const id = e.target.closest('[data-invite-cancel]')?.dataset.inviteCancel;
+  if (!id || !confirm('この招待状を取り消しますか？（もう使えなくなります）')) return;
+  try { await api(`/invites/${id}`, { method: 'DELETE' }); renderInvites(await refreshMe()); } catch (err) { toast(err.message, 5000); }
+});
+$('#invite-settings').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = e.target.elements;
+  try {
+    await api('/invites/settings', { method: 'PUT', body: { on: f.on.checked, limit: Number(f.limit.value) } });
+    toast(f.on.checked ? '✉️ 招待状モードにしました' : '招待状モードをやめました（だれでも登録できます）');
+    renderInvites(await refreshMe());
+  } catch (err) { toast(err.message, 5000); }
+});
+// 登録の画面：招待状モードなら、招待コードの欄を出す
+api('/invites/status').then((st) => {
+  $('#invite-need').hidden = !st.on;
+  if (st.full) $('#invite-note').textContent = '✉️ いまはクローズドβの人数がいっぱいです。席があいたら、また来てください。';
+}).catch(() => {});
 
 // ---- 退会（7日たってから消える。それまではここで取り消せる） ----
 const sayLine = (l) => `<div class="say-line"><img src="/shared/avatars/${l.face}.svg" alt="" width="40" height="40"><p><strong>${escapeHtml(l.name)}</strong>：${escapeHtml(l.text)}</p></div>`;
@@ -354,7 +408,7 @@ $('#panel-login').addEventListener('submit', async (e) => {
 let pendingCodes = [];
 $('#panel-register').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const r = await submit(e.target, '/auth/register', ['loginId', 'name', 'password', 'birthdate'], { agreeTerms: e.target.elements.agreeTerms.checked });
+  const r = await submit(e.target, '/auth/register', ['loginId', 'name', 'password', 'birthdate', 'inviteCode'], { agreeTerms: e.target.elements.agreeTerms.checked });
   if (!r) return;
   rememberMe(r.me);
   pendingCodes = r.recoveryCodes;
