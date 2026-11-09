@@ -115,8 +115,8 @@ test('入力チェック', async () => {
 
 test('サイドフロント：エージェントの家とノック', async () => {
   const { data: agents } = await call('/api/agents');
-  assert.equal(agents.length, 10);
-  assert.deepEqual(agents.map((a) => a.name), ['ヤマネコ', 'ウサギ', 'フクロウ', 'シバ', 'クルマ', 'モグ', 'タヌキ', 'ペンギン', 'キツネ', 'カエル']);
+  assert.equal(agents.length, 12);
+  assert.deepEqual(agents.map((a) => a.name), ['ヤマネコ', 'ウサギ', 'フクロウ', 'シバ', 'クルマ', 'モグ', 'タヌキ', 'ペンギン', 'キツネ', 'カエル', 'カメ', 'ネズミ']);
   const id = agents[0].id;
   store.updateAgent(id, { status: 'sleeping' });
   const { data } = await call(`/api/agents/${id}/knock`, { method: 'POST' });
@@ -193,7 +193,7 @@ test('保存データに新しいキャラが自動で引っ越してくる', as
   const state = { users: old.listAgents().slice(0, 2), posts: [], meetings: [] };
   writeFileSync(file, JSON.stringify(state));
   const loaded = createStore({ file });
-  assert.equal(loaded.listAgents().length, 10);
+  assert.equal(loaded.listAgents().length, 12);
   assert.deepEqual(loaded.listTables().map((t) => t.id), ['free', 'idol', 'anime', 'game', 'vtuber', 'sports', 'other'], 'カフェのテーブルも用意される');
   rmSync(dir, { recursive: true, force: true });
 });
@@ -1216,4 +1216,53 @@ test('ゲームセンター：年齢で閉店（こども21時・中高生22時�
   } finally {
     arcadeNow = NOON_JST;
   }
+});
+
+test('図書館：地図に建物・館長のカメと司書のネズミ・サンプルの小説3冊と漫画3冊', async () => {
+  const index = await (await fetch(`${base}/`)).text();
+  assert.match(index, /library-spot/);
+  const page = await (await fetch(`${base}/library.html`)).text();
+  assert.match(page, /data-quiet/, '図書館の中は、しずかに（キャラが話さない）');
+  assert.ok(!/<textarea|<form/.test(page), '本のページに、おしゃべりの場所は置かない（感想はカフェで）');
+  const agents = (await call('/api/agents')).data;
+  assert.deepEqual(agents.filter((a) => a.place === 'library').map((a) => [a.name, a.roleLabel]),
+    [['カメ', '図書館の館長'], ['ネズミ', '図書館の司書']]);
+  assert.equal((await call('/api/posts')).data.some((p) => ['agent-kame', 'agent-nezumi'].includes(p.authorId)), false, '広場には出ない');
+
+  const adult = await signup('図書館の大人');
+  const lib = (await call('/api/library', { as: adult })).data;
+  const count = (kind) => lib.books.filter((b) => b.kind === kind).length;
+  assert.deepEqual([count('novel'), count('manga')], [3, 3]);
+  assert.ok(lib.books.every((b) => b.sample && !('text' in b) && !('pages' in b)), '棚には本文を入れない');
+  assert.ok(lib.books.every((b) => lib.genres.some((g) => g.id === b.genre)), 'ジャンルはカフェのテーブルと同じ');
+  const novel = (await call('/api/library/books/sample-penlight', { as: adult })).data;
+  assert.match(novel.text, /◆/);
+  const manga = (await call('/api/library/books/sample-rainy-cafe', { as: adult })).data;
+  assert.equal(manga.pages[0].panels.length, 4, '4コマ');
+  assert.equal((await call('/api/library/books/nai-hon')).status, 404);
+});
+
+test('図書館：年齢の棚（だれでも／中高生から／大人だけ）。合わない本は棚にも出さず、読めない', async () => {
+  const kid = await signup('図書館のこども', { birthdate: '2018-01-01' });
+  const teen = await signup('図書館の中高生', { birthdate: '2011-01-01' });
+  const shelf = async (who) => (await call('/api/library', who ? { as: who } : {})).data;
+  const kidLib = await shelf(kid);
+  assert.deepEqual(kidLib.shelves.map((s) => s.id), ['child']);
+  assert.ok(kidLib.books.every((b) => b.minAge === 'child'));
+  assert.deepEqual((await shelf(teen)).shelves.map((s) => s.id), ['child', 'teen']);
+  assert.ok((await shelf(teen)).books.some((b) => b.minAge === 'teen'));
+  assert.deepEqual((await shelf()).shelves.map((s) => s.id), ['child'], 'ログインしていない人は、こどもと同じ');
+  assert.equal((await call('/api/library/books/sample-savepoint', { as: kid })).status, 403);
+  assert.equal((await call('/api/library/books/sample-savepoint')).status, 403);
+  assert.equal((await call('/api/library/books/sample-savepoint', { as: teen })).status, 200);
+});
+
+test('図書館：小説をきれいにまとめる（見出し・字下げ・会話・場面の間・ルビ）。HTML は入れられない', async () => {
+  const { formatNovel } = await import('../../shared/library.js');
+  const html = formatNovel(['◆ 一 はじまり', '朝が来た。', '「おはよう」', '', '|推《お》しの名前と、親指《おやゆび》。', '<script>alert(1)</script>'].join('\n'));
+  assert.ok(html.includes('<h3>一 はじまり</h3>'));
+  assert.ok(html.includes('<p>朝が来た。</p>'));
+  assert.ok(html.includes('<p class="talk">「おはよう」</p>'));
+  assert.ok(html.includes('<p class="scene"><ruby>推<rt>お</rt></ruby>しの名前と、<ruby>親指<rt>おやゆび</rt></ruby>。</p>'));
+  assert.ok(!html.includes('<script>'), '書いた文字はそのまま文字として出す');
 });

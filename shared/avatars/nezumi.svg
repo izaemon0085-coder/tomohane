@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="ネズミ">
+  <circle cx="22" cy="30" r="18" fill="#9da2b5"/>
+  <circle cx="78" cy="30" r="18" fill="#9da2b5"/>
+  <circle cx="22" cy="30" r="11" fill="#f2c6cf"/>
+  <circle cx="78" cy="30" r="11" fill="#f2c6cf"/>
+  <path d="M18 58 Q20 30 50 30 Q80 30 82 58 Q80 86 50 90 Q20 86 18 58Z" fill="#b4b8c8"/>
+  <circle cx="38" cy="56" r="4.5" fill="#1f2433"/>
+  <circle cx="62" cy="56" r="4.5" fill="#1f2433"/>
+  <circle cx="39.4" cy="54.6" r="1.4" fill="#fff"/>
+  <circle cx="63.4" cy="54.6" r="1.4" fill="#fff"/>
+  <ellipse cx="50" cy="68" rx="4" ry="3" fill="#e58a9b"/>
+  <path d="M45 74 Q50 77 55 74" fill="none" stroke="#5a5d6b" stroke-width="2" stroke-linecap="round"/>
+  <path d="M30 68 L14 64 M30 72 L14 74 M70 68 L86 64 M70 72 L86 74" stroke="#7c8092" stroke-width="1.6" stroke-linecap="round"/>
+  <rect x="58" y="78" width="22" height="14" rx="2" fill="#c0504d" transform="rotate(-10 69 85)"/>
+  <rect x="61" y="80" width="16" height="10" rx="1" fill="#fbf3e8" transform="rotate(-10 69 85)"/>
+</svg>

@@ -9,6 +9,7 @@ import { publishedIssues, findPoll, pollTalk } from '../shared/news.js';
 import { lanAddresses } from './net.js';
 import { REPORT_REASONS, STAGES, findReason, stageOf } from '../shared/report.js';
 import { ARCADE_APPS, arcadeStatus } from '../shared/arcade.js';
+import { AGE_SHELVES, LIBRARY_GENRES, SAMPLE_BOOKS, bookCard, findBook, kameLine, shelfAllows } from '../shared/library.js';
 import { MAX_VIDEO_BYTES, removeVideo, saveVideo, serveVideo } from './letters.js';
 import { createKokotomoClient } from './kokotomo.js';
 import { createGameLink, GHOST_URL, MISETOMO_URL, KOROTOMO_URL, SORATOMO_URL } from './gamelink.js';
@@ -256,6 +257,22 @@ export function createApp({
 
     // ---- ゲームセンターの営業時間（見る人の年齢で、閉店の時間がちがう） ----
     ['GET', /^\/api\/arcade$/, ({ me }) => arcadeFor(me)],
+
+    // ---- 図書館（小説・漫画。ジャンル別・年齢別の棚。見る人の年齢に合う本だけを出す） ----
+    ['GET', /^\/api\/library$/, ({ me }) => {
+      const group = me ? ageGroup(me.birthdate) : 'child';
+      return {
+        ageGroup: group, kame: kameLine(group), genres: LIBRARY_GENRES,
+        shelves: AGE_SHELVES.filter((s) => shelfAllows(s.id, group)),
+        books: SAMPLE_BOOKS.filter((b) => shelfAllows(b.minAge, group)).map(bookCard),
+      };
+    }],
+    ['GET', /^\/api\/library\/books\/([\w-]+)$/, ({ params, me }) => {
+      const book = findBook(params[0]);
+      if (!book) throw new HttpError(404, 'その本は見つかりません');
+      if (!shelfAllows(book.minAge, me ? ageGroup(me.birthdate) : 'child')) throw new HttpError(403, 'この本は、年齢の棚が合わないので読めません');
+      return { ...bookCard(book), text: book.text, pages: book.pages };
+    }],
 
     // ---- ゲーム一覧（もとからある4つ＋一覧に出たインディーズ・個人のゲーム）・おすすめ ----
     ['GET', /^\/api\/games$/, ({ me }) => {
