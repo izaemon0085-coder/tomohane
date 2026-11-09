@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>図書館 | ともはね β版</title>
+  <link rel="stylesheet" href="/shared/base.css">
+  <link rel="stylesheet" href="/shared/playground.css">
+  <link rel="stylesheet" href="/shared/customize.css">
+  <link rel="stylesheet" href="/shared/network.css">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body class="library-page" data-quiet>
+  <header class="site-header" id="header"></header>
+  <main class="page">
+    <!-- 棚（本をえらぶ） -->
+    <div id="lobby">
+      <h1>📚 図書館</h1>
+
+      <!-- 館長のカメと、司書のネズミ。図書館の中は「しずかに」 -->
+      <section class="card panel library-staff" aria-live="polite">
+        <p class="quiet-sign" aria-label="図書館の中では、しずかに">🤫 しずかに</p>
+        <div class="say-line"><img src="/shared/avatars/kame.svg" alt="" width="48" height="48">
+          <div><p class="muted small">館長のカメ</p><p id="kame-say">しーっ。ゆっくり読んでいってね。</p></div></div>
+        <div class="say-line"><img src="/shared/avatars/nezumi.svg" alt="" width="48" height="48">
+          <div><p class="muted small">司書のネズミ</p><p id="nezumi-say">（ちいさな声で）いらっしゃいませ。本はジャンルの棚に並んでいます。</p></div></div>
+      </section>
+
+      <div class="lib-filters">
+        <div class="lib-chips" id="shelves" role="group" aria-label="年齢の棚"></div>
+        <div class="lib-chips" id="kinds" role="group" aria-label="小説・漫画"></div>
+        <div class="lib-chips" id="genres" role="group" aria-label="ジャンル"></div>
+      </div>
+
+      <!-- 年齢の棚に入る前の同意 -->
+      <section class="card panel lib-consent" id="consent" hidden aria-labelledby="consent-title">
+        <div class="say-line"><img src="/shared/avatars/kame.svg" alt="" width="40" height="40">
+          <div><h2 id="consent-title">この棚に入る前に</h2>
+            <p id="consent-text"></p></div></div>
+        <label class="row"><input type="checkbox" id="consent-check"> わかりました。この棚の本を読みます</label>
+        <div class="row wrap">
+          <button class="btn" type="button" id="consent-yes" disabled>棚に入る</button>
+          <button class="btn ghost" type="button" id="consent-no">やめておく</button>
+        </div>
+      </section>
+
+      <ul class="lib-shelf" id="books" aria-label="本の棚"></ul>
+      <p class="muted small" id="empty" hidden>この棚には、まだ本がありません。</p>
+
+      <section class="card panel lib-soon">
+        <h2>✍️ 本を出したい人へ</h2>
+        <p>小説・漫画を図書館に出せます。「きれいにまとめてほしい」ときは、司書のネズミが案を出します（むずかしいときは運営も手伝います）。</p>
+        <div class="row wrap">
+          <a class="btn" href="/library-write.html">✍️ 作家の机へ</a>
+          <a class="btn ghost" href="/library-board.html">🎨 挿し絵・表紙の募集の掲示板</a>
+        </div>
+        <p class="muted small">絵を描く人は、掲示板から作者さんの募集に応募できます。選ばれた絵は、名前といっしょに本に載ります。</p>
+      </section>
+    </div>
+
+    <!-- 本を読むページ。ここでは、おしゃべりしない（感想はカフェで） -->
+    <article class="lib-reader" id="reader" hidden aria-labelledby="book-title">
+      <div class="reader-bar">
+        <button class="btn ghost" type="button" id="back">‹ 棚にもどる</button>
+        <div class="reader-tools" id="novel-tools">
+          <button class="btn ghost small" type="button" id="dir" aria-pressed="false">縦書きにする</button>
+          <button class="btn ghost small" type="button" id="size">字を大きく</button>
+        </div>
+      </div>
+      <header class="book-head">
+        <div class="book-cover big" id="book-cover" aria-hidden="true"></div>
+        <div>
+          <h1 id="book-title"></h1>
+          <p class="muted small" id="book-meta"></p>
+          <p id="book-blurb"></p>
+        </div>
+      </header>
+      <div class="novel-body" id="novel" hidden></div>
+      <div class="manga-body" id="manga" hidden>
+        <div class="manga-page" id="manga-page"></div>
+        <nav class="manga-nav" aria-label="ページをめくる">
+          <button class="btn" type="button" id="next">次のページ ‹</button>
+          <span class="muted small" id="page-no"></span>
+          <button class="btn ghost" type="button" id="prev">› 前のページ</button>
+        </nav>
+        <p class="muted small center">漫画は右から左へ読みます。キーボードの ← で次のページ、→ で前のページ。</p>
+      </div>
+      <footer class="book-end card panel">
+        <div class="say-line"><img src="/shared/avatars/kame.svg" alt="" width="40" height="40">
+          <p>しーっ。ここは静かに読む場所だからね。感想は、カフェで聞かせておくれ。</p></div>
+        <a class="btn" href="/cafe.html">☕ カフェで感想を話す</a>
+      </footer>
+    </article>
+  </main>
+  <script type="module" src="/library.js"></script>
+  <script type="module" src="/shared/customize.js"></script>
+  <script type="module" src="/shared/network.js"></script>
+  <script type="module" src="/shared/playground.js"></script>
+</body>
+</html>

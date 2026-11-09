@@ -14,6 +14,7 @@ import { TERMS_VERSION } from '../shared/terms.js';
 import {
   FREE_TABLE, GENRE_TABLES, GENRE_IDS, MAX_TABLE_NAME, MAX_TABLE_REQUEST, MAX_OPEN_REQUESTS, normalizeOshi,
 } from '../shared/cafe.js';
+import { createLibraryStore } from './library-store.js';
 
 export const MAX_POST_LENGTH = 280;
 export const MAX_NAME_LENGTH = 20;
@@ -222,8 +223,9 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
   // 退会した人を、ともはねから消す（倉庫にも入れない）。
   // 返信してくれた人の返信は、投稿を消したときと同じように、書いた本人にだけ見えるようにする。
   // 通報した記録は、だれが通報したかだけ消して残す（運営が見るまで止めている投稿があるため）
-  function eraseUser(user) {
+  function eraseUser(user, images = []) {
     const id = user.id;
+    images.push(...library.eraseUserLibrary(id)); // 図書館の本・応募した絵（ファイルはサーバーが消す）
     if (user.guardianIds?.length) writeFamilyDiary(user, FAMILY_DIARY.gone(user.name));
     state.familyDiary = state.familyDiary.filter((d) => d.guardianId !== id);
     const to = store.leaveRepliers(id).filter((x) => !isLeaving(userById(x)));
@@ -267,7 +269,14 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
     return letters.map((l) => l.video).filter(Boolean);
   }
 
+  // 図書館の本（ユーザーの小説・漫画）
+  const library = createLibraryStore({
+    state, now, emit, newId, userById, rejectBlocked, isPractice: (u) => isPractice(u),
+    ageGroupOf: (u) => (u?.birthdate ? ageGroup(u.birthdate) : 'child'),
+  });
+
   const store = {
+    ...library,
     subscribe(fn) {
       listeners.add(fn);
       return () => listeners.delete(fn);
@@ -1042,9 +1051,10 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
     purgeLeaving(atMs = clockMs()) {
       const due = state.users.filter((u) => u.leaving?.at && leaveDueMs(u) <= atMs);
       const videos = [];
-      for (const u of due) videos.push(...eraseUser(u));
+      const images = [];
+      for (const u of due) videos.push(...eraseUser(u, images));
       if (due.length) emit('user', { id: null });
-      return { erased: due.length, videos };
+      return { erased: due.length, videos, images };
     },
 
     // ---- 目安箱（だれが書いたかは運営にも見せない） ----

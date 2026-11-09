@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>募集の掲示板 | 図書館 | ともはね β版</title>
+  <link rel="stylesheet" href="/shared/base.css">
+  <link rel="stylesheet" href="/shared/playground.css">
+  <link rel="stylesheet" href="/shared/customize.css">
+  <link rel="stylesheet" href="/shared/network.css">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body class="library-page" data-quiet>
+  <header class="site-header" id="header"></header>
+  <main class="page">
+    <p><a class="back-link-text" href="/library.html">‹ 図書館の棚にもどる</a></p>
+    <h1>🎨 挿し絵・表紙の募集</h1>
+
+    <section class="card panel library-staff">
+      <div class="say-line"><img src="/shared/avatars/kame.svg" alt="" width="48" height="48">
+        <div><p class="muted small">館長のカメ</p>
+        <p>作者さんが、表紙や挿し絵を描いてくれる人をさがしているよ。描いた絵とひとことを置いていっておくれ。選ばれた絵は、本に名前といっしょに載るからね。</p></div></div>
+      <div class="say-line"><img src="/shared/avatars/nezumi.svg" alt="" width="48" height="48">
+        <div><p class="muted small">司書のネズミ</p>
+        <p>（ちいさな声で）ここは掲示板なので、おしゃべりの返事はありません。応募は、ひとつの募集に1人3枚までです。</p></div></div>
+    </section>
+
+    <p class="note-line" id="need-login" hidden>応募するには、ログインしてください。<a href="/login.html?next=/library-board.html">ログイン</a></p>
+    <ul class="lib-calls" id="calls"></ul>
+    <p class="muted" id="empty" hidden>いまは、募集がありません。作者さんは「作家の机」から募集を出せます。</p>
+  </main>
+  <script type="module" src="/library-board.js"></script>
+  <script type="module" src="/shared/customize.js"></script>
+  <script type="module" src="/shared/network.js"></script>
+  <script type="module" src="/shared/playground.js"></script>
+</body>
+</html>

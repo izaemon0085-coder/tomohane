@@ -11,6 +11,7 @@ import { REPORT_REASONS, STAGES, findReason, stageOf } from '../shared/report.js
 import { ARCADE_APPS, arcadeStatus } from '../shared/arcade.js';
 import { LEAVE_MS, GUARDIAN_LEAVE_MS } from '../shared/leave.js';
 import { reporterFor, suggestionTalk, TALK_SHOW } from '../shared/suggest.js';
+import { createLibraryApi, MAX_PAGE_BYTES, removeLibraryFiles } from './library.js';
 import { MAX_VIDEO_BYTES, removeVideo, saveVideo, serveVideo } from './letters.js';
 import { createKokotomoClient } from './kokotomo.js';
 import { createGameLink, GHOST_URL, MISETOMO_URL, KOROTOMO_URL, SORATOMO_URL } from './gamelink.js';
@@ -220,6 +221,7 @@ function self(me, userId) {
 export function createApp({
   store, sim, port = Number(process.env.PORT) || 3000,
   videoDir = join(ROOT, 'data', 'letters', 'videos'), maxVideoBytes = MAX_VIDEO_BYTES,
+  libraryDir = join(ROOT, 'data', 'library', 'pages'), maxPageBytes = MAX_PAGE_BYTES,
   kokotomo = createKokotomoClient(),
   gameLink = createGameLink(),
   ghostLink = createGameLink({ app: 'ghost', gameUrl: GHOST_URL }),
@@ -229,6 +231,7 @@ export function createApp({
   clock = () => new Date(), // ゲームセンターの営業時間に使う（テストでは時刻を決められる）
 }) {
   // ゲームセンターが閉まっていたら、ゲームセンターの画面にもどす（キツネが「閉店！」と言う）
+  const handleLibrary = createLibraryApi({ store, dir: libraryDir, sendJson, maxPageBytes });
   const arcadeFor = (me) => arcadeStatus(me ? ageGroup(me.birthdate) : 'child', clock());
   function closedRedirect(res) {
     res.writeHead(302, { Location: '/games.html?closed=1', 'Cache-Control': 'no-store' });
@@ -282,6 +285,8 @@ export function createApp({
 
     // ---- ゲームセンターの営業時間（見る人の年齢で、閉店の時間がちがう） ----
     ['GET', /^\/api\/arcade$/, ({ me }) => arcadeFor(me)],
+
+    // ---- 図書館は backend/library.js（小説の本文が長いので、受け取れる大きさがちがう） ----
 
     // ---- ゲーム一覧（もとからある4つ＋一覧に出たインディーズ・個人のゲーム）・おすすめ ----
     ['GET', /^\/api\/games$/, ({ me }) => {
@@ -823,8 +828,9 @@ export function createApp({
 
   // 退会して7日たった人を消す（手紙のビデオのファイルも）
   async function purgeLeavers(atMs) {
-    const { erased, videos } = store.purgeLeaving(atMs);
+    const { erased, videos, images = [] } = store.purgeLeaving(atMs);
     for (const v of videos) await removeVideo(videoDir, v);
+    await removeLibraryFiles(libraryDir, images); // 図書館の漫画のページ・絵
     return erased;
   }
 
@@ -846,6 +852,7 @@ export function createApp({
         if (await handleGameLink(req, res, pathname, me)) return;
         if (await handleExtLink(req, res, pathname, me)) return;
         if (await handleVideo(req, res, pathname)) return;
+        if (await handleLibrary(req, res, pathname, me)) return;
         for (const [method, pattern, fn] of routes) {
           const m = pathname.match(pattern);
           if (!m || method !== req.method) continue;
