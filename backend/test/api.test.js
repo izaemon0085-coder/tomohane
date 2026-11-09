@@ -1880,3 +1880,39 @@ test('プロフィール：ひとこと・推し・図書館の本・最近の�
   assert.equal((await call(`/api/users/${fan.id}/profile`, { as: viewer })).status, 404);
   assert.equal((await call('/api/users/agent-shiba/profile')).status, 404);
 });
+
+// ---- ベータ版の🟡：さがす（投稿・図書館の本・人・#タグ） ----
+test('さがす：投稿・本・人・#タグ。見てよいものだけ（ブロック・練習モード・年齢の棚・子どもの名前）', async () => {
+  const writer = await signup('さがされる書き手');
+  const seeker = await signup('さがす人');
+  const kid = await signup('さがされる子', { birthdate: '2018-03-03' });
+  await call('/api/posts', { method: 'POST', as: writer, body: { text: 'きのうのライブ、ペンライトが最高だった #ライブ #推し活' } });
+  await call('/api/posts', { method: 'POST', as: kid, body: { text: 'ペンライトのれんしゅう（練習モード）' } });
+  const book = (await call('/api/library/books', { method: 'POST', as: writer, body: { kind: 'novel', title: 'ペンライトの夜', genre: 'idol', minAge: 'teen', text: 'はじまり' } })).data;
+  await call(`/api/library/books/${book.id}/publish`, { method: 'POST', as: writer, body: { consent: true } });
+
+  const r = (await call(`/api/search?q=${encodeURIComponent('ぺんらいと')}`, { as: seeker })).data;
+  assert.ok(r.posts.some((p) => p.text.includes('ライブ、ペンライト')), 'カタカナ／ひらがなのちがいは気にしない');
+  assert.ok(!r.posts.some((p) => p.text.includes('れんしゅう')), '練習モードの投稿は出ない');
+  assert.ok(r.books.some((b) => b.title === 'ペンライトの夜'));
+  assert.ok(r.books.some((b) => b.title === 'はじめてのペンライト' && b.sample), 'サンプルの本も');
+  assert.deepEqual((await call(`/api/search?q=${encodeURIComponent('ペンライトの夜')}`)).data.books, [], 'ログインしていない人には、中高生からの本は出さない');
+
+  const people = (await call(`/api/search?q=${encodeURIComponent('さがされる')}`, { as: seeker })).data.people.map((u) => u.name);
+  assert.ok(people.includes('さがされる書き手'));
+  assert.ok(!people.includes('さがされる子'), '子どもの名前は出さない');
+
+  const tag = (await call(`/api/search?q=${encodeURIComponent('#ライブ')}`, { as: seeker })).data;
+  assert.equal(tag.tag, 'らいぶ');
+  assert.ok(tag.posts.some((p) => p.text.includes('#ライブ')));
+  assert.equal((await call(`/api/search?q=${encodeURIComponent('#ライ')}`, { as: seeker })).data.posts.length, 0, 'タグはぴったり同じものだけ');
+
+  await call(`/api/blocks/${writer.id}`, { method: 'PUT', as: seeker, body: { kind: 'block' } });
+  const after = (await call(`/api/search?q=${encodeURIComponent('ペンライト')}`, { as: seeker })).data;
+  assert.ok(!after.posts.some((p) => p.authorId === writer.id), 'ブロックした人の投稿は出ない');
+  assert.equal((await call(`/api/search?q=${'あ'.repeat(31)}`)).status, 400, '30文字まで');
+
+  const { linkifyTags, tagsOf } = await import('../../shared/search.js');
+  assert.deepEqual(tagsOf('たのしい #ライブ！ #推し活、また'), ['らいぶ', '推し活']);
+  assert.ok(linkifyTags('&lt;b&gt; #ライブ').includes('<a class="tag-link" href="/search.html?q=%23%E3%83%A9%E3%82%A4%E3%83%96">#ライブ</a>'));
+});

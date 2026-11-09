@@ -12,7 +12,8 @@ import { ARCADE_APPS, arcadeStatus } from '../shared/arcade.js';
 import { LEAVE_MS, GUARDIAN_LEAVE_MS } from '../shared/leave.js';
 import { reporterFor, suggestionTalk, TALK_SHOW } from '../shared/suggest.js';
 import { createLibraryApi, MAX_PAGE_BYTES, removeLibraryFiles } from './library.js';
-import { shelfAllows } from '../shared/library.js';
+import { shelfAllows, SAMPLE_BOOKS } from '../shared/library.js';
+import { MAX_QUERY, LIMITS, normalizeText, tagsOf } from '../shared/search.js';
 import { MAX_VIDEO_BYTES, removeVideo, saveVideo, serveVideo } from './letters.js';
 import { createKokotomoClient } from './kokotomo.js';
 import { createGameLink, GHOST_URL, MISETOMO_URL, KOROTOMO_URL, SORATOMO_URL } from './gamelink.js';
@@ -286,6 +287,38 @@ export function createApp({
 
     // ---- ゲームセンターの営業時間（見る人の年齢で、閉店の時間がちがう） ----
     ['GET', /^\/api\/arcade$/, ({ me }) => arcadeFor(me)],
+
+    // ---- 🔍 さがす：投稿・図書館の本・人・#タグ。見てよいものだけ ----
+    // ・投稿は store.canSee（練習モード・止めた投稿・ブロックなど）を通ったものだけ
+    // ・本は見る人の年齢の棚に合うものだけ。人は子ども（12歳まで）と退会中の人を出さない
+    ['GET', /^\/api\/search$/, ({ me, query }) => {
+      const raw = String(query.get('q') ?? '').trim();
+      if (!raw) return { q: '', tag: null, posts: [], books: [], people: [] };
+      if ([...raw].length > MAX_QUERY) throw new HttpError(400, `さがすことばは${MAX_QUERY}文字までにしてください`);
+      const tagMatch = /^[#＃](.+)$/.exec(raw);
+      const tag = tagMatch ? normalizeText(tagMatch[1]) : null;
+      const q = normalizeText(raw);
+      const viewer = me?.id ?? null;
+      const users = store.usersById();
+      const posts = store.listPosts()
+        .filter((p) => (tag ? tagsOf(p.text).includes(tag) : normalizeText(p.text).includes(q)) && store.canSee(p, viewer))
+        .slice(0, LIMITS.posts)
+        .map((p) => ({ ...postView(p, users), threadId: store.threadRootOf(p)?.id ?? null }));
+      if (tag) return { q: raw, tag, posts, books: [], people: [] };
+      const group = me ? ageGroup(me.birthdate) : 'child';
+      const hit = (...xs) => xs.some((x) => normalizeText(x).includes(q));
+      const books = [
+        ...store.listPublishedBooks().filter((b) => shelfAllows(b.minAge, group) && hit(b.title, b.blurb, users[b.authorId]?.name ?? ''))
+          .map((b) => ({ id: b.id, title: b.title, kind: b.kind, genre: b.genre, cover: b.cover, author: users[b.authorId]?.name ?? '？', sample: false })),
+        ...SAMPLE_BOOKS.filter((b) => shelfAllows(b.minAge, group) && hit(b.title, b.blurb))
+          .map((b) => ({ id: b.id, title: b.title, kind: b.kind, genre: b.genre, cover: b.cover, author: b.author, sample: true })),
+      ].slice(0, LIMITS.books);
+      const people = Object.values(users)
+        .filter((u) => u.kind === 'human' && u.id !== viewer && ageGroup(u.birthdate) !== 'child'
+          && !store.isLeavingUser(u.id) && !store.isBlockedBy(viewer, u.id) && hit(u.name))
+        .slice(0, LIMITS.people).map((u) => ({ id: u.id, name: u.name, bio: u.bio ?? '' }));
+      return { q: raw, tag: null, posts, books, people };
+    }],
 
     // ---- プロフィール（その人のページ）。生年月日・年齢は出さない ----
     // ・子ども（12歳まで）は、本人とおうちの人のほかには名前だけ

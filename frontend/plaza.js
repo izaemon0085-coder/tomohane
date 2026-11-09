@@ -3,6 +3,7 @@ import {
   api, onServerEvents, refreshMe, escapeHtml, timeAgo, avatarHtml, headerHtml, toast,
 } from '/shared/api.js';
 import { speak } from '/shared/speech.js';
+import { linkifyTags } from '/shared/search.js';
 import { sendPost, getOutbox, flushOutbox } from '/shared/outbox.js';
 import { precheck } from '/shared/precheck.js';
 import { REPORT_REASONS, APOLOGY_CHOICES, MAX_APOLOGY } from '/shared/report.js';
@@ -63,7 +64,7 @@ function bubbleHtml(post) {
       ${mine ? '' : `<span class="msg-name">${name}</span>`}
       <div class="bubble">
         ${parent ? `<span class="quote">↩ ${escapeHtml(parent.author.name)}「${escapeHtml(snippet(parent.text))}」</span>` : ''}
-        <p>${escapeHtml(post.text)}</p>
+        <p>${linkifyTags(escapeHtml(post.text))}</p>
         ${threadLink}
         ${mine && post.practiceOwner ? '<span class="held-note">🐾 練習モード：きみとキャラたちにだけ見えています</span>' : ''}
         ${mine && post.orphaned ? '<span class="held-note">↩ 元の投稿は消えました（あなたにだけ見えています）</span>' : ''}

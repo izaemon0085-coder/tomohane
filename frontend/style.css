@@ -653,3 +653,14 @@ html[data-oshi-color] .oshi-hero { color: var(--accent-text); }
 .profile-page [hidden] { display: none !important; }
 /* 古い投稿を読む */
 .older-row { list-style: none; display: flex; justify-content: center; padding: 4px 0 8px; }
+/* 🔍 さがす */
+.search-row { margin-top: 4px; }
+.search-row .input { flex: 1; min-width: 0; }
+.search-page h2 { margin: 0 0 8px; font-size: 1.05rem; }
+.search-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.search-list a:not(.small), .search-post { display: grid; gap: 2px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; color: var(--text); text-decoration: none; background: var(--surface); }
+.search-list a:not(.small):hover { border-color: var(--accent); }
+.search-post .small { justify-self: end; }
+.tag-link { font-weight: 700; text-decoration: none; }
+.tag-link:hover { text-decoration: underline; }
+.search-page [hidden] { display: none !important; }
