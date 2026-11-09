@@ -28,6 +28,7 @@ export const MAX_BLOCK_REASON = 100;
 export const MAX_BLOCKS = 500;
 export const BLOCK_KINDS = ['mute', 'block'];
 export const MAX_FAREWELL = 50;
+export const MAX_BIO = 60; // プロフィールのひとこと
 export const MAX_NOTICES = 100; // 🔔 お知らせは1人100件まで（古いものから消す）
 
 // 手紙の合言葉。サーバーには「ハッシュ」だけを残し、合言葉そのものは作った人のブラウザだけが持つ
@@ -665,6 +666,21 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
     },
 
     // ---- 推しの情報（わたしの推しページ） ----
+    // プロフィールのひとこと（60文字まで・空にもできる）。送る前のチェックを通す
+    setBio(userId, text) {
+      const user = requireUser(userId);
+      if (user.kind !== 'human') throw new HttpError(400, 'ひとことを書けるのは人間のユーザーだけです');
+      const t = String(text ?? '').trim();
+      if ([...t].length > MAX_BIO) throw new HttpError(400, `ひとことは${MAX_BIO}文字以内にしてください`);
+      if (t) rejectBlocked(user, t);
+      user.bio = t;
+      emit('user', { id: user.id });
+      return user;
+    },
+    // その人が、相手からブロックされているか（プロフィールを見せない）
+    isBlockedBy: (viewerId, targetId) => Boolean(viewerId)
+      && state.blocks.some((b) => b.userId === targetId && b.targetId === viewerId && (b.kind ?? 'block') === 'block'),
+    isLeavingUser: (id) => isLeaving(userById(id)),
     getOshi(userId) {
       const user = requireUser(userId);
       if (user.kind !== 'human') throw new HttpError(400, '推しを登録できるのは人間のユーザーだけです');

@@ -12,6 +12,7 @@ import { ARCADE_APPS, arcadeStatus } from '../shared/arcade.js';
 import { LEAVE_MS, GUARDIAN_LEAVE_MS } from '../shared/leave.js';
 import { reporterFor, suggestionTalk, TALK_SHOW } from '../shared/suggest.js';
 import { createLibraryApi, MAX_PAGE_BYTES, removeLibraryFiles } from './library.js';
+import { shelfAllows } from '../shared/library.js';
 import { MAX_VIDEO_BYTES, removeVideo, saveVideo, serveVideo } from './letters.js';
 import { createKokotomoClient } from './kokotomo.js';
 import { createGameLink, GHOST_URL, MISETOMO_URL, KOROTOMO_URL, SORATOMO_URL } from './gamelink.js';
@@ -261,8 +262,8 @@ export function createApp({
     ['POST', /^\/api\/users\/([\w-]+)\/oshi\/goods$/, ({ params, body, me }) => [201, store.addGoods(self(me, params[0]), body.name)]],
     ['DELETE', /^\/api\/users\/([\w-]+)\/oshi\/goods\/([\w-]+)$/, ({ params, me }) => store.removeGoods(self(me, params[0]), params[1])],
     ['GET', /^\/api\/users\/([\w-]+)\/oshi\/friends$/, ({ params, me }) => {
-      const users = store.usersById();
       const blocked = new Set(store.blocksOf(self(me, params[0])).map((b) => b.targetId));
+      const users = store.usersById();
       return store.oshiFriendsPosts(me.id, 5 + blocked.size).filter((p) => !blocked.has(p.authorId) && store.canSee(p, me.id))
         .slice(0, 5).map((p) => postView(p, users));
     }],
@@ -285,6 +286,28 @@ export function createApp({
 
     // ---- ゲームセンターの営業時間（見る人の年齢で、閉店の時間がちがう） ----
     ['GET', /^\/api\/arcade$/, ({ me }) => arcadeFor(me)],
+
+    // ---- プロフィール（その人のページ）。生年月日・年齢は出さない ----
+    // ・子ども（12歳まで）は、本人とおうちの人のほかには名前だけ
+    // ・相手にブロックされている人・退会の手続き中の人のページは見せない
+    ['GET', /^\/api\/users\/([\w-]+)\/profile$/, ({ me, params }) => {
+      let u;
+      try { u = store.getUser(params[0]); } catch { throw new HttpError(404, 'その人は見つかりません'); }
+      if (u.kind !== 'human') throw new HttpError(404, 'その人は見つかりません');
+      const self = me?.id === u.id;
+      if (!self && (store.isLeavingUser(u.id) || store.isBlockedBy(me?.id, u.id))) throw new HttpError(404, 'その人は見つかりません');
+      const base = { id: u.id, name: u.name, self };
+      const family = self || Boolean(me && u.guardianIds?.includes(me.id));
+      if (ageGroup(u.birthdate) === 'child' && !family) return { ...base, limited: true };
+      const group = me ? ageGroup(me.birthdate) : 'child';
+      const oshi = u.oshi?.name ? { name: u.oshi.name, genre: u.oshi.genre || null } : null;
+      const posts = store.listPosts().filter((p) => p.authorId === u.id && store.canSee(p, me?.id ?? null)).slice(0, 10)
+        .map((p) => ({ id: p.id, text: p.text, createdAt: p.createdAt, table: p.table ?? null, thread: store.threadRootOf(p)?.id ?? null, likeCount: p.likes.length }));
+      const books = store.listPublishedBooks().filter((b) => b.authorId === u.id && shelfAllows(b.minAge, group))
+        .map((b) => ({ id: b.id, title: b.title, kind: b.kind, genre: b.genre, cover: b.cover }));
+      return { ...base, limited: false, bio: u.bio ?? '', oshi, posts, books };
+    }],
+    ['POST', /^\/api\/profile\/bio$/, ({ me, body }) => ({ bio: store.setBio(needLogin(me).id, body.bio).bio })],
 
     // ---- 🔔 お知らせ（ハトの郵便屋さん）：図書館・おうちの人・目安箱のこと。本人だけが見る ----
     ['GET', /^\/api\/notices$/, ({ me }) => {

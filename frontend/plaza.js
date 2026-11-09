@@ -48,7 +48,8 @@ function bubbleHtml(post) {
   const parent = post.replyTo && posts.find((p) => p.id === post.replyTo);
   const name = a.kind === 'agent'
     ? `<a href="${a.place === 'cafe' ? '/cafe.html' : `/side/#${a.id}`}">${escapeHtml(a.name)}</a>`
-    : a.kind === 'official' ? `<a href="/news.html">${escapeHtml(a.name)}</a> <span class="official-badge">公式</span>` : escapeHtml(a.name);
+    : a.kind === 'official' ? `<a href="/news.html">${escapeHtml(a.name)}</a> <span class="official-badge">公式</span>`
+      : `<a href="/profile.html?id=${encodeURIComponent(a.id)}">${escapeHtml(a.name)}</a>`; // 人の名前を押すと、その人のプロフィール
   // 広場の一覧では、スレッドのはじまりに「スレッドを開く」を出す（スレッドの中の返信は一覧に出さない）
   const threadLink = post.thread && !threadId
     ? `<a class="thread-link" href="?thread=${encodeURIComponent(post.id)}">💬 スレッドを読む・話す（${post.replyCount ?? 0}件）</a>` : '';

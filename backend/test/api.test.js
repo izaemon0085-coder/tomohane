@@ -1843,3 +1843,40 @@ test('パスワードを変える：いまのパスワードを確かめる・�
   for (let i = 0; i < 6; i += 1) last = await call('/api/auth/password', { method: 'POST', as: t, body: { current: 'ちがう', next: 'new-password-2' } });
   assert.equal(last.status, 429);
 });
+
+// ---- ベータ版の🟡：プロフィール ----
+test('プロフィール：ひとこと・推し・図書館の本・最近の投稿。生年月日は出さない。子どもは名前だけ', async () => {
+  const fan = await signup('プロフィールの人');
+  const viewer = await signup('プロフィールを見る人');
+  await call(`/api/users/${fan.id}/oshi`, { method: 'PUT', as: fan, body: { name: 'ほしのアイ', genre: 'idol' } });
+  assert.equal((await call('/api/profile/bio', { method: 'POST', as: fan, body: { bio: 'あ'.repeat(61) } })).status, 400, '60文字まで');
+  assert.equal((await call('/api/profile/bio', { method: 'POST', as: fan, body: { bio: 'ライブの話をしたいです' } })).status, 200);
+  await call('/api/posts', { method: 'POST', as: fan, body: { text: 'プロフィールのための投稿' } });
+  const book = (await call('/api/library/books', { method: 'POST', as: fan, body: { kind: 'novel', title: 'プロフィールの本', genre: 'idol', minAge: 'teen', text: 'はじまり' } })).data;
+  await call(`/api/library/books/${book.id}/publish`, { method: 'POST', as: fan, body: { consent: true } });
+
+  const p = (await call(`/api/users/${fan.id}/profile`, { as: viewer })).data;
+  assert.equal(p.bio, 'ライブの話をしたいです');
+  assert.deepEqual(p.oshi, { name: 'ほしのアイ', genre: 'idol' });
+  assert.ok(p.posts.some((x) => x.text === 'プロフィールのための投稿'));
+  assert.deepEqual(p.books.map((b) => b.title), ['プロフィールの本']);
+  assert.ok(!JSON.stringify(p).includes('1990'), '生年月日は出さない');
+  assert.equal(p.self, false);
+  assert.deepEqual((await call(`/api/users/${fan.id}/profile`)).data.books, [], 'ログインしていない人には、中高生からの本は出さない');
+
+  // 子どもは、ほかの人には名前だけ。本人とおうちの人には見える
+  const guardian = await signup('プロフィールのおうちの人');
+  const kid = await signup('プロフィールの子', { birthdate: '2018-02-02' });
+  await call('/api/profile/bio', { method: 'POST', as: kid, body: { bio: 'ねこがすき' } });
+  const { code } = (await call('/api/guardian/code', { method: 'POST', as: guardian })).data;
+  await call('/api/guardian/join', { method: 'POST', as: kid, body: { code } });
+  const other = (await call(`/api/users/${kid.id}/profile`, { as: viewer })).data;
+  assert.deepEqual(other, { id: kid.id, name: 'プロフィールの子', self: false, limited: true });
+  assert.equal((await call(`/api/users/${kid.id}/profile`, { as: guardian })).data.bio, 'ねこがすき', 'おうちの人には見える');
+  assert.equal((await call(`/api/users/${kid.id}/profile`, { as: kid })).data.self, true);
+
+  // ブロックされている人には見せない。キャラはプロフィールなし
+  await call(`/api/blocks/${viewer.id}`, { method: 'PUT', as: fan, body: { kind: 'block' } });
+  assert.equal((await call(`/api/users/${fan.id}/profile`, { as: viewer })).status, 404);
+  assert.equal((await call('/api/users/agent-shiba/profile')).status, 404);
+});
