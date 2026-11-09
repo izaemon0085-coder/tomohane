@@ -97,6 +97,26 @@ $('#leave-form').addEventListener('submit', async (e) => {
     err.textContent = ex.offline ? 'つながっていません。つながってから、もう一度どうぞ' : ex.message;
   }
 });
+// パスワードを変える（ログイン中）。ほかの端末のログインは切れる
+$('#password-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = e.target.elements;
+  const err = e.target.querySelector('.error');
+  err.textContent = '';
+  if (f.next.value !== f.again.value) {
+    err.textContent = '新しいパスワードが、2回で同じになっていません';
+    return;
+  }
+  try {
+    const r = await api('/auth/password', { method: 'POST', body: { current: f.current.value, next: f.next.value } });
+    e.target.reset();
+    $('#password-box').open = false;
+    rememberMe(r.me);
+    toast('🔑 パスワードを変えました。ほかの端末のログインは切れました', 5000);
+  } catch (ex) {
+    err.textContent = ex.offline ? 'つながっていません。つながってから、もう一度どうぞ' : ex.message;
+  }
+});
 $('#leave-cancel').addEventListener('click', async () => {
   try {
     const r = await api('/auth/leave-cancel', { method: 'POST' });

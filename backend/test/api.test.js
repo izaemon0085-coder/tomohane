@@ -1814,3 +1814,32 @@ test('お知らせ：おうちの人とつながった・目安箱の声が新�
   const page = await (await fetch(`${base}/notices.html`)).text();
   assert.match(page, /hato\.svg/);
 });
+
+// ---- ベータ版の🟡：ログイン中にパスワードを変える ----
+test('パスワードを変える：いまのパスワードを確かめる・ほかの端末のログインは切れて、この端末は続けて使える', async () => {
+  const user = await signup('パスワードを変える人');
+  // もう1台の端末でもログインしておく
+  const other = await call('/api/auth/login', { method: 'POST', body: { loginId: user.loginId, password: user.password } });
+  const otherCookie = other.res.headers.get('set-cookie').split(';')[0];
+
+  assert.equal((await call('/api/auth/password', { method: 'POST', body: { current: 'x', next: 'new-password-1' } })).status, 401, 'ログインが必要');
+  const wrong = await call('/api/auth/password', { method: 'POST', as: user, body: { current: 'ちがうパスワード', next: 'new-password-1' } });
+  assert.equal(wrong.status, 401);
+  assert.equal((await call('/api/auth/password', { method: 'POST', as: user, body: { current: user.password, next: 'short' } })).status, 400, '8文字から');
+  assert.equal((await call('/api/auth/password', { method: 'POST', as: user, body: { current: user.password, next: user.password } })).status, 400, '同じものにはできない');
+
+  const ok = await call('/api/auth/password', { method: 'POST', as: user, body: { current: user.password, next: 'new-password-1' } });
+  assert.equal(ok.status, 200);
+  const newCookie = ok.res.headers.get('set-cookie').split(';')[0];
+  assert.equal((await call('/api/auth/me', { as: { cookie: newCookie } })).data.name, 'パスワードを変える人', 'この端末は続けて使える');
+  assert.equal((await call('/api/auth/me', { as: { cookie: otherCookie } })).data, null, 'ほかの端末のログインは切れる');
+  assert.equal((await call('/api/auth/login', { method: 'POST', body: { loginId: user.loginId, password: user.password } })).status, 401, '前のパスワードでは入れない');
+  assert.equal((await call('/api/auth/login', { method: 'POST', body: { loginId: user.loginId, password: 'new-password-1' } })).status, 200, '新しいパスワードで入れる');
+  people.set('パスワードを変える人', { ...user, cookie: newCookie, password: 'new-password-1' });
+
+  // まちがいが続くと、しばらく止まる
+  const t = await signup('パスワードをまちがえる人');
+  let last;
+  for (let i = 0; i < 6; i += 1) last = await call('/api/auth/password', { method: 'POST', as: t, body: { current: 'ちがう', next: 'new-password-2' } });
+  assert.equal(last.status, 429);
+});

@@ -418,6 +418,27 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       save();
       return { user, codesLeft: user.recovery.length };
     },
+    // ログイン中にパスワードを変える。いまのパスワードを確かめてから。
+    // 変えたら、ほかの端末のログインは全部切る（この端末は、サーバーが新しくログインしなおす）
+    async changePassword(userId, { current, next }) {
+      const user = requireUser(userId);
+      const failKey = `password:${user.id}`;
+      const fail = loginFails.get(failKey);
+      if (fail?.until > clockMs()) throw new HttpError(429, 'まちがいが続いたので、5分ほど待ってからもう一度どうぞ');
+      if (!user.passHash || !(await checkPassword(String(current ?? ''), user.passHash))) {
+        const count = (fail?.count ?? 0) + 1;
+        loginFails.set(failKey, { count, until: count >= LOCK_AFTER_FAILS ? clockMs() + LOCK_MS : 0 });
+        throw new HttpError(401, 'いまのパスワードがちがいます');
+      }
+      const pw = String(next ?? '');
+      if ([...pw].length < 8 || [...pw].length > 64) throw new HttpError(400, '新しいパスワードは8〜64文字にしてください');
+      if (pw === String(current)) throw new HttpError(400, '新しいパスワードは、いまのものとちがうものにしてください');
+      loginFails.delete(failKey);
+      user.passHash = await hashPassword(pw);
+      this.endAllSessions(user.id);
+      save();
+      return user;
+    },
     // ログインのしるし（セッション）。トークンそのものは保存せず、ハッシュだけを持つ
     startSession(userId) {
       requireUser(userId);

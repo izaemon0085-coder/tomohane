@@ -635,6 +635,9 @@ export function createApp({
     } else if (action === 'recover') {
       const { user, codesLeft } = await store.recover(body);
       login(user, { codesLeft });
+    } else if (action === 'password') {
+      // ログイン中にパスワードを変える（ほかの端末のログインは切れる。この端末はそのまま使える）
+      login(await store.changePassword(needLogin(me).id, { current: body.current, next: body.next }));
     } else if (action === 'agree') {
       // 利用規約・プライバシーに同意する
       store.agreeTerms(needLogin(me).id, body.version);
