@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>プロフィール | ともはね β版</title>
+  <link rel="stylesheet" href="/shared/base.css">
+  <link rel="stylesheet" href="/shared/playground.css">
+  <link rel="stylesheet" href="/shared/customize.css">
+  <link rel="stylesheet" href="/shared/network.css">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body class="profile-page">
+  <header class="site-header" id="header"></header>
+  <main class="page">
+    <section class="card panel profile-head">
+      <div class="profile-face" id="face" aria-hidden="true"></div>
+      <div>
+        <h1 id="name">プロフィール</h1>
+        <p id="bio" class="profile-bio"></p>
+      </div>
+    </section>
+
+    <!-- 自分のページのときだけ：ひとことを書く -->
+    <form class="card panel" id="bio-form" hidden>
+      <label class="field">ひとこと（60文字まで。みんなに見えます）<input class="input" name="bio" maxlength="60" placeholder="例：〇〇推し歴3年です。ライブの話をしたいです"></label>
+      <p class="error" role="alert"></p>
+      <div class="row wrap"><button class="btn" type="submit">ひとことを保存</button>
+        <a class="btn ghost" href="/oshi.html">💖 推しを登録・変える</a></div>
+    </form>
+
+    <p class="note-line" id="limited" hidden>🐕 この人のページは、名前だけ見られるっす。</p>
+
+    <div id="more" hidden>
+      <section class="card panel" aria-labelledby="oshi-title">
+        <h2 id="oshi-title">💖 推し</h2>
+        <p id="oshi"></p>
+      </section>
+      <section class="card panel" aria-labelledby="books-title">
+        <h2 id="books-title">📚 図書館に出した本</h2>
+        <ul class="profile-books" id="books"></ul>
+      </section>
+      <section class="card panel" aria-labelledby="posts-title">
+        <h2 id="posts-title">💬 最近の投稿</h2>
+        <ul class="profile-posts" id="posts"></ul>
+      </section>
+    </div>
+  </main>
+  <script type="module" src="/profile.js"></script>
+  <script type="module" src="/shared/customize.js"></script>
+  <script type="module" src="/shared/network.js"></script>
+  <script type="module" src="/shared/playground.js"></script>
+</body>
+</html>

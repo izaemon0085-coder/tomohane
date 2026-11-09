@@ -28,6 +28,7 @@ export const MAX_BLOCK_REASON = 100;
 export const MAX_BLOCKS = 500;
 export const BLOCK_KINDS = ['mute', 'block'];
 export const MAX_FAREWELL = 50;
+export const MAX_BIO = 60; // プロフィールのひとこと
 export const MAX_NOTICES = 100; // 🔔 お知らせは1人100件まで（古いものから消す）
 
 // 手紙の合言葉。サーバーには「ハッシュ」だけを残し、合言葉そのものは作った人のブラウザだけが持つ
@@ -418,6 +419,27 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       save();
       return { user, codesLeft: user.recovery.length };
     },
+    // ログイン中にパスワードを変える。いまのパスワードを確かめてから。
+    // 変えたら、ほかの端末のログインは全部切る（この端末は、サーバーが新しくログインしなおす）
+    async changePassword(userId, { current, next }) {
+      const user = requireUser(userId);
+      const failKey = `password:${user.id}`;
+      const fail = loginFails.get(failKey);
+      if (fail?.until > clockMs()) throw new HttpError(429, 'まちがいが続いたので、5分ほど待ってからもう一度どうぞ');
+      if (!user.passHash || !(await checkPassword(String(current ?? ''), user.passHash))) {
+        const count = (fail?.count ?? 0) + 1;
+        loginFails.set(failKey, { count, until: count >= LOCK_AFTER_FAILS ? clockMs() + LOCK_MS : 0 });
+        throw new HttpError(401, 'いまのパスワードがちがいます');
+      }
+      const pw = String(next ?? '');
+      if ([...pw].length < 8 || [...pw].length > 64) throw new HttpError(400, '新しいパスワードは8〜64文字にしてください');
+      if (pw === String(current)) throw new HttpError(400, '新しいパスワードは、いまのものとちがうものにしてください');
+      loginFails.delete(failKey);
+      user.passHash = await hashPassword(pw);
+      this.endAllSessions(user.id);
+      save();
+      return user;
+    },
     // ログインのしるし（セッション）。トークンそのものは保存せず、ハッシュだけを持つ
     startSession(userId) {
       requireUser(userId);
@@ -644,6 +666,21 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
     },
 
     // ---- 推しの情報（わたしの推しページ） ----
+    // プロフィールのひとこと（60文字まで・空にもできる）。送る前のチェックを通す
+    setBio(userId, text) {
+      const user = requireUser(userId);
+      if (user.kind !== 'human') throw new HttpError(400, 'ひとことを書けるのは人間のユーザーだけです');
+      const t = String(text ?? '').trim();
+      if ([...t].length > MAX_BIO) throw new HttpError(400, `ひとことは${MAX_BIO}文字以内にしてください`);
+      if (t) rejectBlocked(user, t);
+      user.bio = t;
+      emit('user', { id: user.id });
+      return user;
+    },
+    // その人が、相手からブロックされているか（プロフィールを見せない）
+    isBlockedBy: (viewerId, targetId) => Boolean(viewerId)
+      && state.blocks.some((b) => b.userId === targetId && b.targetId === viewerId && (b.kind ?? 'block') === 'block'),
+    isLeavingUser: (id) => isLeaving(userById(id)),
     getOshi(userId) {
       const user = requireUser(userId);
       if (user.kind !== 'human') throw new HttpError(400, '推しを登録できるのは人間のユーザーだけです');

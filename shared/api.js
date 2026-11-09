@@ -186,6 +186,7 @@ export function headerHtml(current) {
       ${link('/news.html', `📰 新聞${current !== 'news' && hasUnreadNews() ? newsMark() : ''}`, 'news')}
       ${link('/side/', '🏡 家', 'side')}
       ${link('/sub/', '🗣️ 会議室', 'sub')}
+      ${link('/search.html', '🔍 さがす', 'search')}
     </nav>
     <button type="button" class="net-chip" data-open-network data-net-chip title="ローカル回線のようす">📶</button>
     <button type="button" class="kisekae-btn" data-open-customize title="推しカラーや飾りで画面をきせかえ">🎨 きせかえ</button>

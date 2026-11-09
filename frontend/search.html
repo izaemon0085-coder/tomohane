@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>さがす | ともはね β版</title>
+  <link rel="stylesheet" href="/shared/base.css">
+  <link rel="stylesheet" href="/shared/playground.css">
+  <link rel="stylesheet" href="/shared/customize.css">
+  <link rel="stylesheet" href="/shared/network.css">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body class="search-page">
+  <header class="site-header" id="header"></header>
+  <main class="page">
+    <h1>🔍 さがす</h1>
+    <form class="card panel search-form" id="search-form" role="search">
+      <label class="field">投稿・図書館の本・人をさがす（#ライブ のように書くと、タグでさがせます）
+        <span class="row search-row">
+          <input class="input" name="q" maxlength="30" autocomplete="off" placeholder="例：ペンライト／#ライブ" required>
+          <button class="btn" type="submit">さがす</button>
+        </span>
+      </label>
+      <p class="muted small">見てよいものだけが出ます。子どもの名前は、人のさがすには出ません。</p>
+    </form>
+
+    <p class="muted" id="state" aria-live="polite"></p>
+
+    <section class="card panel" id="sec-people" hidden aria-labelledby="people-title">
+      <h2 id="people-title">🙂 人</h2>
+      <ul class="search-list" id="people"></ul>
+    </section>
+    <section class="card panel" id="sec-books" hidden aria-labelledby="books-title">
+      <h2 id="books-title">📚 図書館の本</h2>
+      <ul class="profile-books" id="books"></ul>
+    </section>
+    <section class="card panel" id="sec-posts" hidden aria-labelledby="posts-title">
+      <h2 id="posts-title">💬 投稿</h2>
+      <ul class="search-list" id="posts"></ul>
+    </section>
+  </main>
+  <script type="module" src="/search.js"></script>
+  <script type="module" src="/shared/customize.js"></script>
+  <script type="module" src="/shared/network.js"></script>
+  <script type="module" src="/shared/playground.js"></script>
+</body>
+</html>

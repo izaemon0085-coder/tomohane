@@ -1814,3 +1814,105 @@ test('お知らせ：おうちの人とつながった・目安箱の声が新�
   const page = await (await fetch(`${base}/notices.html`)).text();
   assert.match(page, /hato\.svg/);
 });
+
+// ---- ベータ版の🟡：ログイン中にパスワードを変える ----
+test('パスワードを変える：いまのパスワードを確かめる・ほかの端末のログインは切れて、この端末は続けて使える', async () => {
+  const user = await signup('パスワードを変える人');
+  // もう1台の端末でもログインしておく
+  const other = await call('/api/auth/login', { method: 'POST', body: { loginId: user.loginId, password: user.password } });
+  const otherCookie = other.res.headers.get('set-cookie').split(';')[0];
+
+  assert.equal((await call('/api/auth/password', { method: 'POST', body: { current: 'x', next: 'new-password-1' } })).status, 401, 'ログインが必要');
+  const wrong = await call('/api/auth/password', { method: 'POST', as: user, body: { current: 'ちがうパスワード', next: 'new-password-1' } });
+  assert.equal(wrong.status, 401);
+  assert.equal((await call('/api/auth/password', { method: 'POST', as: user, body: { current: user.password, next: 'short' } })).status, 400, '8文字から');
+  assert.equal((await call('/api/auth/password', { method: 'POST', as: user, body: { current: user.password, next: user.password } })).status, 400, '同じものにはできない');
+
+  const ok = await call('/api/auth/password', { method: 'POST', as: user, body: { current: user.password, next: 'new-password-1' } });
+  assert.equal(ok.status, 200);
+  const newCookie = ok.res.headers.get('set-cookie').split(';')[0];
+  assert.equal((await call('/api/auth/me', { as: { cookie: newCookie } })).data.name, 'パスワードを変える人', 'この端末は続けて使える');
+  assert.equal((await call('/api/auth/me', { as: { cookie: otherCookie } })).data, null, 'ほかの端末のログインは切れる');
+  assert.equal((await call('/api/auth/login', { method: 'POST', body: { loginId: user.loginId, password: user.password } })).status, 401, '前のパスワードでは入れない');
+  assert.equal((await call('/api/auth/login', { method: 'POST', body: { loginId: user.loginId, password: 'new-password-1' } })).status, 200, '新しいパスワードで入れる');
+  people.set('パスワードを変える人', { ...user, cookie: newCookie, password: 'new-password-1' });
+
+  // まちがいが続くと、しばらく止まる
+  const t = await signup('パスワードをまちがえる人');
+  let last;
+  for (let i = 0; i < 6; i += 1) last = await call('/api/auth/password', { method: 'POST', as: t, body: { current: 'ちがう', next: 'new-password-2' } });
+  assert.equal(last.status, 429);
+});
+
+// ---- ベータ版の🟡：プロフィール ----
+test('プロフィール：ひとこと・推し・図書館の本・最近の投稿。生年月日は出さない。子どもは名前だけ', async () => {
+  const fan = await signup('プロフィールの人');
+  const viewer = await signup('プロフィールを見る人');
+  await call(`/api/users/${fan.id}/oshi`, { method: 'PUT', as: fan, body: { name: 'ほしのアイ', genre: 'idol' } });
+  assert.equal((await call('/api/profile/bio', { method: 'POST', as: fan, body: { bio: 'あ'.repeat(61) } })).status, 400, '60文字まで');
+  assert.equal((await call('/api/profile/bio', { method: 'POST', as: fan, body: { bio: 'ライブの話をしたいです' } })).status, 200);
+  await call('/api/posts', { method: 'POST', as: fan, body: { text: 'プロフィールのための投稿' } });
+  const book = (await call('/api/library/books', { method: 'POST', as: fan, body: { kind: 'novel', title: 'プロフィールの本', genre: 'idol', minAge: 'teen', text: 'はじまり' } })).data;
+  await call(`/api/library/books/${book.id}/publish`, { method: 'POST', as: fan, body: { consent: true } });
+
+  const p = (await call(`/api/users/${fan.id}/profile`, { as: viewer })).data;
+  assert.equal(p.bio, 'ライブの話をしたいです');
+  assert.deepEqual(p.oshi, { name: 'ほしのアイ', genre: 'idol' });
+  assert.ok(p.posts.some((x) => x.text === 'プロフィールのための投稿'));
+  assert.deepEqual(p.books.map((b) => b.title), ['プロフィールの本']);
+  assert.ok(!JSON.stringify(p).includes('1990'), '生年月日は出さない');
+  assert.equal(p.self, false);
+  assert.deepEqual((await call(`/api/users/${fan.id}/profile`)).data.books, [], 'ログインしていない人には、中高生からの本は出さない');
+
+  // 子どもは、ほかの人には名前だけ。本人とおうちの人には見える
+  const guardian = await signup('プロフィールのおうちの人');
+  const kid = await signup('プロフィールの子', { birthdate: '2018-02-02' });
+  await call('/api/profile/bio', { method: 'POST', as: kid, body: { bio: 'ねこがすき' } });
+  const { code } = (await call('/api/guardian/code', { method: 'POST', as: guardian })).data;
+  await call('/api/guardian/join', { method: 'POST', as: kid, body: { code } });
+  const other = (await call(`/api/users/${kid.id}/profile`, { as: viewer })).data;
+  assert.deepEqual(other, { id: kid.id, name: 'プロフィールの子', self: false, limited: true });
+  assert.equal((await call(`/api/users/${kid.id}/profile`, { as: guardian })).data.bio, 'ねこがすき', 'おうちの人には見える');
+  assert.equal((await call(`/api/users/${kid.id}/profile`, { as: kid })).data.self, true);
+
+  // ブロックされている人には見せない。キャラはプロフィールなし
+  await call(`/api/blocks/${viewer.id}`, { method: 'PUT', as: fan, body: { kind: 'block' } });
+  assert.equal((await call(`/api/users/${fan.id}/profile`, { as: viewer })).status, 404);
+  assert.equal((await call('/api/users/agent-shiba/profile')).status, 404);
+});
+
+// ---- ベータ版の🟡：さがす（投稿・図書館の本・人・#タグ） ----
+test('さがす：投稿・本・人・#タグ。見てよいものだけ（ブロック・練習モード・年齢の棚・子どもの名前）', async () => {
+  const writer = await signup('さがされる書き手');
+  const seeker = await signup('さがす人');
+  const kid = await signup('さがされる子', { birthdate: '2018-03-03' });
+  await call('/api/posts', { method: 'POST', as: writer, body: { text: 'きのうのライブ、ペンライトが最高だった #ライブ #推し活' } });
+  await call('/api/posts', { method: 'POST', as: kid, body: { text: 'ペンライトのれんしゅう（練習モード）' } });
+  const book = (await call('/api/library/books', { method: 'POST', as: writer, body: { kind: 'novel', title: 'ペンライトの夜', genre: 'idol', minAge: 'teen', text: 'はじまり' } })).data;
+  await call(`/api/library/books/${book.id}/publish`, { method: 'POST', as: writer, body: { consent: true } });
+
+  const r = (await call(`/api/search?q=${encodeURIComponent('ぺんらいと')}`, { as: seeker })).data;
+  assert.ok(r.posts.some((p) => p.text.includes('ライブ、ペンライト')), 'カタカナ／ひらがなのちがいは気にしない');
+  assert.ok(!r.posts.some((p) => p.text.includes('れんしゅう')), '練習モードの投稿は出ない');
+  assert.ok(r.books.some((b) => b.title === 'ペンライトの夜'));
+  assert.ok(r.books.some((b) => b.title === 'はじめてのペンライト' && b.sample), 'サンプルの本も');
+  assert.deepEqual((await call(`/api/search?q=${encodeURIComponent('ペンライトの夜')}`)).data.books, [], 'ログインしていない人には、中高生からの本は出さない');
+
+  const people = (await call(`/api/search?q=${encodeURIComponent('さがされる')}`, { as: seeker })).data.people.map((u) => u.name);
+  assert.ok(people.includes('さがされる書き手'));
+  assert.ok(!people.includes('さがされる子'), '子どもの名前は出さない');
+
+  const tag = (await call(`/api/search?q=${encodeURIComponent('#ライブ')}`, { as: seeker })).data;
+  assert.equal(tag.tag, 'らいぶ');
+  assert.ok(tag.posts.some((p) => p.text.includes('#ライブ')));
+  assert.equal((await call(`/api/search?q=${encodeURIComponent('#ライ')}`, { as: seeker })).data.posts.length, 0, 'タグはぴったり同じものだけ');
+
+  await call(`/api/blocks/${writer.id}`, { method: 'PUT', as: seeker, body: { kind: 'block' } });
+  const after = (await call(`/api/search?q=${encodeURIComponent('ペンライト')}`, { as: seeker })).data;
+  assert.ok(!after.posts.some((p) => p.authorId === writer.id), 'ブロックした人の投稿は出ない');
+  assert.equal((await call(`/api/search?q=${'あ'.repeat(31)}`)).status, 400, '30文字まで');
+
+  const { linkifyTags, tagsOf } = await import('../../shared/search.js');
+  assert.deepEqual(tagsOf('たのしい #ライブ！ #推し活、また'), ['らいぶ', '推し活']);
+  assert.ok(linkifyTags('&lt;b&gt; #ライブ').includes('<a class="tag-link" href="/search.html?q=%23%E3%83%A9%E3%82%A4%E3%83%96">#ライブ</a>'));
+});

@@ -137,6 +137,18 @@
           <button class="btn" type="submit">テーブルを足す</button>
         </form>
       </section>
+      <!-- パスワードを変える（ログイン中）。ほかの端末のログインは切れる -->
+      <details class="family" id="password-box">
+        <summary>🔑 パスワードを変える</summary>
+        <form id="password-form">
+          <p class="muted small">変えると、<strong>ほかの端末のログインは切れます</strong>（この端末はそのまま使えます）。回復コードはそのまま使えます。</p>
+          <label class="field">いまのパスワード<input class="input" name="current" type="password" autocomplete="current-password" required></label>
+          <label class="field">新しいパスワード（8〜64文字）<input class="input" name="next" type="password" autocomplete="new-password" minlength="8" maxlength="64" required></label>
+          <label class="field">新しいパスワード（もう一度）<input class="input" name="again" type="password" autocomplete="new-password" minlength="8" maxlength="64" required></label>
+          <p class="error" role="alert"></p>
+          <button class="btn" type="submit">パスワードを変える</button>
+        </form>
+      </details>
       <!-- 退会する（7日たってから消える） -->
       <details class="family leave-box" id="leave-box">
         <summary>退会する（アカウントを消す）</summary>
@@ -156,6 +168,7 @@
       </details>
       <div class="row wrap">
         <a class="btn" id="acc-back" href="/">もどる</a>
+        <a class="btn ghost" href="/profile.html">🙂 わたしのプロフィール（ひとこと）</a>
         <a class="btn ghost" href="/welcome.html?next=/login.html">🪶 ともはね の案内をもう一度見る</a>
         <a class="btn ghost" href="/terms.html">📜 ともはね の約束（利用規約・プライバシー）</a>
         <button type="button" class="btn ghost" id="logout">ログアウト</button>
