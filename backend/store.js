@@ -28,6 +28,7 @@ export const MAX_BLOCK_REASON = 100;
 export const MAX_BLOCKS = 500;
 export const BLOCK_KINDS = ['mute', 'block'];
 export const MAX_FAREWELL = 50;
+export const MAX_NOTICES = 100; // 🔔 お知らせは1人100件まで（古いものから消す）
 
 // 手紙の合言葉。サーバーには「ハッシュ」だけを残し、合言葉そのものは作った人のブラウザだけが持つ
 const randomToken = () => randomBytes(18).toString('base64url');
@@ -159,6 +160,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
   state.tableRequests ??= []; // ジャンルのリクエスト { id, userId, text, createdAt }（運営が見て、テーブルを足す）
   state.farewells ??= []; // 投稿を消した人（退会した人）から、返信した人へのひとこと { id, toId, fromId, fromName, text, at }
   state.familyDiary ??= []; // おうちの人に届くシバの日記 { id, guardianId, childId, text, at }
+  state.notices ??= []; // 🔔 お知らせ（ハトの郵便屋さんが届ける）{ id, userId, kind, text, link, at, readAt }
   state.suggestions ??= []; // 目安箱 { id, userId（運営にも見せない）, age, topic, text, status（new/picked/done）, picked: { summary, answer, at }, createdAt }
   state.reportSeen ??= []; // 通報された本人が、お知らせを読んだしるし { postId, authorId, at }
   const listeners = new Set();
@@ -258,6 +260,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
     for (const r of state.reports) if (r.reporterId === id) r.reporterId = null;
     state.reportSeen = state.reportSeen.filter((x) => x.authorId !== id);
     state.farewells = state.farewells.filter((f) => f.toId !== id);
+    state.notices = state.notices.filter((n) => n.userId !== id);
     state.gameRecs = state.gameRecs.filter((r) => r.userId !== id);
     state.newsVotes = state.newsVotes.filter((v) => v.userId !== id);
     state.tableRequests = state.tableRequests.filter((r) => r.userId !== id);
@@ -269,14 +272,44 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
     return letters.map((l) => l.video).filter(Boolean);
   }
 
+  // 🔔 お知らせを出す。1人 MAX_NOTICES 件まで（古いものから消す）
+  function notify(userId, { kind, text, link = null }) {
+    const user = userById(userId);
+    if (!user || user.kind !== 'human') return null;
+    const n = { id: newId('n'), userId, kind, text: String(text).slice(0, 200), link, at: now(), readAt: null };
+    state.notices.push(n);
+    const mine = state.notices.filter((x) => x.userId === userId);
+    if (mine.length > MAX_NOTICES) {
+      const drop = new Set(mine.slice(0, mine.length - MAX_NOTICES).map((x) => x.id));
+      state.notices = state.notices.filter((x) => !drop.has(x.id));
+    }
+    emit('notice', { id: n.id });
+    return n;
+  }
+
   // 図書館の本（ユーザーの小説・漫画）
   const library = createLibraryStore({
-    state, now, emit, newId, userById, rejectBlocked, isPractice: (u) => isPractice(u),
+    state, now, emit, newId, userById, rejectBlocked, notify, isPractice: (u) => isPractice(u),
     ageGroupOf: (u) => (u?.birthdate ? ageGroup(u.birthdate) : 'child'),
   });
 
   const store = {
     ...library,
+    notify,
+    listNotices: (userId) => state.notices.filter((n) => n.userId === userId).reverse(),
+    unreadNotices: (userId) => state.notices.filter((n) => n.userId === userId && !n.readAt).length,
+    // 読んだしるし（ids がなければ、ぜんぶ）
+    markNoticesRead(userId, ids = null) {
+      const want = Array.isArray(ids) ? new Set(ids.map(String)) : null;
+      let count = 0;
+      for (const n of state.notices) {
+        if (n.userId !== userId || n.readAt || (want && !want.has(n.id))) continue;
+        n.readAt = now();
+        count += 1;
+      }
+      if (count) emit('notice', { id: null });
+      return { read: count };
+    },
     subscribe(fn) {
       listeners.add(fn);
       return () => listeners.delete(fn);
@@ -524,8 +557,11 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       guardianCodes.delete(h);
       loginFails.delete(failKey);
       child.guardianIds.push(entry.guardianId);
+      const guardian = requireUser(entry.guardianId);
+      notify(child.id, { kind: 'family', text: `${guardian.name}さんと、おうちの人としてつながったよ。広場やカフェ・図書館で、みんなとお話しできるようになったよ`, link: '/login.html' });
+      notify(guardian.id, { kind: 'family', text: `${child.name}さんと、おうちの人としてつながったよ。アカウントのページで見守れるよ`, link: '/login.html' });
       save();
-      return requireUser(entry.guardianId);
+      return guardian;
     },
     unlinkChild(guardianId, childId) {
       const child = requireUser(childId);
@@ -1083,6 +1119,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
         summary: cleanText(summary, MAX_SUMMARY, '要約'), answer: cleanText(answer, MAX_ANSWER, '運営の答え'), at: now(),
       };
       item.status = 'picked';
+      if (item.userId) notify(item.userId, { kind: 'suggest', text: '目安箱に入れてくれた声が、新聞の「目安箱から」にのったよ。運営の答えも書いてあるよ', link: '/news.html' });
       emit('news', { id: item.id });
       return item;
     },

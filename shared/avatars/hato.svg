@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="ハト">
+  <path d="M22 70 Q14 92 40 90 L70 86 Q90 80 84 62Z" fill="#c9d6e8"/>
+  <path d="M30 72 Q50 60 78 66 Q66 84 40 84Z" fill="#a9bcd6"/>
+  <ellipse cx="50" cy="44" rx="28" ry="27" fill="#dfe7f2"/>
+  <path d="M30 56 Q50 70 70 56 Q66 66 50 68 Q34 66 30 56Z" fill="#8fc5b8" opacity=".8"/>
+  <path d="M74 42 L90 46 L74 50Z" fill="#e8a35a"/>
+  <circle cx="60" cy="40" r="4.5" fill="#1f2433"/>
+  <circle cx="61.4" cy="38.6" r="1.4" fill="#fff"/>
+  <circle cx="40" cy="40" r="4.5" fill="#1f2433"/>
+  <circle cx="41.4" cy="38.6" r="1.4" fill="#fff"/>
+  <circle cx="34" cy="52" r="4" fill="#f7c3d3" opacity=".6"/>
+  <circle cx="66" cy="52" r="4" fill="#f7c3d3" opacity=".6"/>
+  <path d="M28 22 L44 14 L46 30Z" fill="#3b6fb0"/>
+  <rect x="26" y="24" width="22" height="7" rx="2" fill="#3b6fb0"/>
+  <rect x="60" y="74" width="22" height="15" rx="2" fill="#fff" stroke="#c0504d" stroke-width="2"/>
+  <path d="M60 74 L71 83 L82 74" fill="none" stroke="#c0504d" stroke-width="2"/>
+</svg>

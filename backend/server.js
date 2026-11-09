@@ -286,6 +286,13 @@ export function createApp({
     // ---- ゲームセンターの営業時間（見る人の年齢で、閉店の時間がちがう） ----
     ['GET', /^\/api\/arcade$/, ({ me }) => arcadeFor(me)],
 
+    // ---- 🔔 お知らせ（ハトの郵便屋さん）：図書館・おうちの人・目安箱のこと。本人だけが見る ----
+    ['GET', /^\/api\/notices$/, ({ me }) => {
+      const id = needLogin(me).id;
+      return { unread: store.unreadNotices(id), items: store.listNotices(id) };
+    }],
+    ['POST', /^\/api\/notices\/read$/, ({ me, body }) => store.markNoticesRead(needLogin(me).id, body.ids ?? null)],
+
     // ---- 図書館は backend/library.js（小説の本文が長いので、受け取れる大きさがちがう） ----
 
     // ---- ゲーム一覧（もとからある4つ＋一覧に出たインディーズ・個人のゲーム）・おすすめ ----

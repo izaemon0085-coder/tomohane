@@ -32,7 +32,10 @@ const chars = (s) => [...String(s ?? '')].length;
 // 棚に出す・募集を出す・応募する（ほかの人に見えること）は、つながってから
 export const PRACTICE_LIBRARY_MSG = 'おうちの人とつながったら、図書館に出せるようになるっす！（アカウントのページの「おうちの人とつなぐ」から）';
 
-export function createLibraryStore({ state, now, emit, newId, userById, ageGroupOf, rejectBlocked, isPractice = () => false }) {
+export function createLibraryStore({ state, now, emit, newId, userById, ageGroupOf, rejectBlocked, isPractice = () => false, notify = () => null }) {
+  // 🔔 お知らせ（ハトの郵便屋さん）で使う
+  const callName = (c) => (c.kind === 'cover' ? '表紙' : `挿絵${c.slot}`);
+  const deskLink = (bookId) => `/library-write.html?book=${encodeURIComponent(bookId)}`;
   const notPractice = (user) => { if (isPractice(user)) throw new HttpError(403, PRACTICE_LIBRARY_MSG); };
   state.books ??= [];
   state.calls ??= []; // 挿し絵・表紙の募集 { id, bookId, authorId, kind, slot, note, status, entries: [{ id, userId, image, comment, consentAt, at }], adoptedEntryId }
@@ -219,6 +222,7 @@ export function createLibraryStore({ state, now, emit, newId, userById, ageGroup
       if (book.kind === 'manga' && Number.isInteger(cover) && cover >= 0 && cover < book.pages.length) reply.cover = cover;
       if (!reply.note && !reply.text && !reply.order) throw new HttpError(400, 'ひとことか、直した案を入れてください');
       book.tidy.help.reply = reply;
+      notify(book.authorId, { kind: 'library', text: `「${book.title}」の手伝いについて、運営から返事がきたよ`, link: deskLink(book.id) });
       return touch(book);
     },
 
@@ -254,6 +258,7 @@ export function createLibraryStore({ state, now, emit, newId, userById, ageGroup
       if (!r) throw new HttpError(400, '取り下げる理由を書いてください（作者に見せます）');
       book.status = 'hidden';
       book.hiddenReason = r.slice(0, MAX_HIDE_REASON);
+      notify(book.authorId, { kind: 'library', text: `「${book.title}」は、運営が棚から取り下げたよ（理由：${book.hiddenReason}）`, link: deskLink(book.id) });
       return touch(book);
     },
     restoreBook(id) {
@@ -261,6 +266,7 @@ export function createLibraryStore({ state, now, emit, newId, userById, ageGroup
       if (book.status !== 'hidden') throw new HttpError(400, '取り下げていない本です');
       book.status = 'draft';
       book.hiddenReason = null;
+      notify(book.authorId, { kind: 'library', text: `「${book.title}」が下書きにもどったよ。なおしたら、また図書館に出せるよ`, link: deskLink(book.id) });
       return touch(book);
     },
 
@@ -324,6 +330,7 @@ export function createLibraryStore({ state, now, emit, newId, userById, ageGroup
       }
       const entry = { id: newId('e'), userId, image, comment: text, consentAt: now(), at: now() };
       call.entries.push(entry);
+      notify(call.authorId, { kind: 'library', text: `「${book.title}」の${callName(call)}の募集に、${user.name}さんが応募してくれたよ`, link: deskLink(book.id) });
       emit('call', call);
       return entry;
     },
@@ -351,6 +358,10 @@ export function createLibraryStore({ state, now, emit, newId, userById, ageGroup
       if (call.kind === 'cover') { old = book.art.cover; book.art.cover = art; } else { old = book.art.illust[call.slot]; book.art.illust[call.slot] = art; }
       call.status = 'adopted';
       call.adoptedEntryId = entryId;
+      notify(entry.userId, {
+        kind: 'library', text: `あなたの絵が「${book.title}」の${callName(call)}に選ばれたよ！ 本にあなたの名前が載るよ`,
+        link: book.status === 'published' ? `/library.html?book=${encodeURIComponent(book.id)}` : '/library-board.html',
+      });
       touch(book);
       emit('call', call);
       return { book, freed: old && !fileUsed(old.file) ? old : null };
