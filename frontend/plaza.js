@@ -25,6 +25,10 @@ const cafeMode = document.body.hasAttribute('data-cafe');
 let table = cafeMode ? (new URLSearchParams(location.search).get('table') || 'free') : null;
 let tables = [];
 let posts = [];
+// 古い投稿を読む：はじめは新しい PAGE 件。「もっと前を読む」で PAGE 件ずつ前へ
+const PAGE = 100;
+let allPosts = [];
+let shown = PAGE;
 let agentsById = {};
 let checkedText = null; // キャラたちが声をかけたあと「このまま送る」を選んだ文面
 
@@ -94,7 +98,9 @@ function render() {
   const nearBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
   // 会話なので、古い順に上から並べる
   const ordered = [...posts].reverse();
-  log.innerHTML = (ordered.length ? ordered.map(bubbleHtml).join('') : '<li class="empty">まだだれも話していません</li>')
+  const older = allPosts.length - posts.length;
+  log.innerHTML = (older > 0 ? `<li class="older-row"><button type="button" class="btn ghost small" data-older>⬆ もっと前を読む（あと${older}件）</button></li>` : '')
+    + (ordered.length ? ordered.map(bubbleHtml).join('') : '<li class="empty">まだだれも話していません</li>')
     + pendingHtml();
   if (nearBottom || !render.done) log.scrollTop = log.scrollHeight;
   render.done = true;
@@ -103,13 +109,16 @@ function render() {
 async function loadPosts() {
   try {
     if (cafeMode) {
-      posts = (await api(`/posts?table=${encodeURIComponent(table)}`)).slice(0, 100);
+      allPosts = await api(`/posts?table=${encodeURIComponent(table)}`);
+      posts = allPosts.slice(0, shown);
     } else if (threadId) {
       const t = await api(`/threads/${encodeURIComponent(threadId)}`);
-      posts = [...t.posts].reverse(); // 画面は新しい順の配列を古い順に並べなおして出す
+      allPosts = [...t.posts].reverse(); // 画面は新しい順の配列を古い順に並べなおして出す
+      posts = allPosts; // スレッドは、ぜんぶ出す
     } else {
       // オフラインなら、この端末に保存しておいた投稿が返る
-      posts = (await api('/posts')).filter((p) => !p.threadId || p.thread).slice(0, 100);
+      allPosts = (await api('/posts')).filter((p) => !p.threadId || p.thread);
+      posts = allPosts.slice(0, shown);
     }
   } catch (err) {
     if (err.status === 404 && threadId) {
@@ -502,6 +511,15 @@ noticeBox.addEventListener('submit', (e) => {
 });
 
 log.addEventListener('click', async (e) => {
+  // もっと前を読む：読んでいた場所がずれないように、下からの距離を保つ
+  if (e.target.closest('[data-older]')) {
+    const fromBottom = log.scrollHeight - log.scrollTop;
+    shown += PAGE;
+    posts = allPosts.slice(0, shown);
+    render();
+    log.scrollTop = log.scrollHeight - fromBottom;
+    return;
+  }
   const speakBtn = e.target.closest('[data-speak]');
   if (speakBtn) {
     const post = posts.find((p) => p.id === speakBtn.dataset.speak);

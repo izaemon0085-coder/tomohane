@@ -651,3 +651,5 @@ html[data-oshi-color] .oshi-hero { color: var(--accent-text); }
 .profile-posts a { display: grid; gap: 2px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; color: var(--text); text-decoration: none; background: var(--surface); }
 .profile-posts a:hover { border-color: var(--accent); }
 .profile-page [hidden] { display: none !important; }
+/* 古い投稿を読む */
+.older-row { list-style: none; display: flex; justify-content: center; padding: 4px 0 8px; }

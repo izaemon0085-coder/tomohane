@@ -3,7 +3,7 @@
 // ・つながっているときは、いつも最新をサーバーから取る（ネットワーク優先）
 // ・つながらないときは、保存しておいたものを見せる（前に見た投稿が見られる）
 // ※ Service Worker は「安全な接続」（localhost か https）のときだけ動く
-const CACHE = 'tomohane-v25';
+const CACHE = 'tomohane-v26';
 
 const SHELL = [
   '/', '/style.css', '/map.js', '/plaza.html', '/plaza.js', '/cafe.html', '/oshi.html', '/oshi.js',
