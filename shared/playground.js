@@ -149,8 +149,12 @@ function createChar(agent) {
   return c;
 }
 
+// 図書館など「しずかに」の場所（body に data-quiet）：キャラは話さず、声も出さない
+const QUIET = document.body.hasAttribute('data-quiet');
+
 function say(c, text, ms = 3500) {
   const bubble = c.el.querySelector('.pg-bubble');
+  if (QUIET) text = '🤫';
   const t = [...text].length > 34 ? `${[...text].slice(0, 34).join('')}…` : text;
   bubble.textContent = t;
   bubble.hidden = false;
@@ -174,14 +178,14 @@ function onClick(c) {
   if (c.agent.status === 'sleeping') {
     const line = SLEEP_TALK[c.agent.id] || 'zzz…';
     say(c, line);
-    speak(line, c.agent, c.el);
+    if (!QUIET) speak(line, c.agent, c.el);
     return;
   }
   const line = pick(LINES[c.agent.id]?.click || ['こんにちは！']);
   jump(c);
   setAction(c, 'idle', 1800);
   say(c, line);
-  speak(line, c.agent, c.el);
+  if (!QUIET) speak(line, c.agent, c.el);
 }
 
 // 次に何をするか決める
