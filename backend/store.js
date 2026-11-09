@@ -11,6 +11,7 @@ import { findReason, stageOf, MAX_APOLOGY } from '../shared/report.js';
 import {
   FREE_TABLE, GENRE_TABLES, GENRE_IDS, MAX_TABLE_NAME, MAX_TABLE_REQUEST, MAX_OPEN_REQUESTS, normalizeOshi,
 } from '../shared/cafe.js';
+import { createLibraryStore } from './library-store.js';
 
 export const MAX_POST_LENGTH = 280;
 export const MAX_NAME_LENGTH = 20;
@@ -202,7 +203,14 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
     return letter;
   };
 
+  // 図書館の本（ユーザーの小説・漫画）
+  const library = createLibraryStore({
+    state, now, emit, newId, userById, rejectBlocked,
+    ageGroupOf: (u) => (u?.birthdate ? ageGroup(u.birthdate) : 'child'),
+  });
+
   return {
+    ...library,
     subscribe(fn) {
       listeners.add(fn);
       return () => listeners.delete(fn);

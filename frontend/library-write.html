@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>作家の机 | 図書館 | ともはね β版</title>
+  <link rel="stylesheet" href="/shared/base.css">
+  <link rel="stylesheet" href="/shared/playground.css">
+  <link rel="stylesheet" href="/shared/customize.css">
+  <link rel="stylesheet" href="/shared/network.css">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body class="library-page" data-quiet>
+  <header class="site-header" id="header"></header>
+  <main class="page">
+    <p><a class="back-link-text" href="/library.html">‹ 図書館の棚にもどる</a></p>
+    <h1>✍️ 作家の机</h1>
+
+    <section class="card panel library-staff">
+      <div class="say-line"><img src="/shared/avatars/nezumi.svg" alt="" width="48" height="48">
+        <div><p class="muted small">司書のネズミ</p>
+        <p id="nezumi-say">（ちいさな声で）小説や漫画を、図書館に出せます。「きれいにまとめてほしい」ときは、わたしに言ってくださいね。</p></div></div>
+    </section>
+
+    <p class="note-line" id="need-login" hidden>本を出すには、ログインしてください。<a href="/login.html?next=/library-write.html">ログイン</a></p>
+
+    <div id="desk" hidden>
+      <!-- わたしの本 -->
+      <section class="card panel" aria-labelledby="mine-title">
+        <div class="row between"><h2 id="mine-title">📚 わたしの本</h2>
+          <button class="btn" type="button" id="new-book">＋ 新しい本を書く</button></div>
+        <ul class="lib-mine" id="mine"></ul>
+        <p class="muted small" id="mine-empty" hidden>まだ本がありません。「新しい本を書く」から始めましょう。</p>
+      </section>
+
+      <!-- 本を書く・なおす -->
+      <section class="card panel lib-editor" id="editor" hidden aria-labelledby="editor-title">
+        <h2 id="editor-title">新しい本</h2>
+        <form id="book-form">
+          <fieldset class="field" id="kind-field"><legend>小説か漫画か</legend>
+            <label class="row"><input type="radio" name="kind" value="novel" checked> 📖 小説</label>
+            <label class="row"><input type="radio" name="kind" value="manga"> 🖼️ 漫画（画像を入れる）</label>
+          </fieldset>
+          <label class="field">題名（40文字まで）<input class="input" name="title" maxlength="40" required></label>
+          <div class="lib-two">
+            <label class="field">ジャンル<select class="input" name="genre" id="genre"></select></label>
+            <label class="field">年齢の棚<select class="input" name="minAge" id="min-age"></select></label>
+          </div>
+          <label class="field">あらすじ（100文字まで・なくてもよい）<input class="input" name="blurb" maxlength="100"></label>
+          <div class="lib-two">
+            <label class="field">表紙の絵文字<input class="input" name="emoji" maxlength="8" placeholder="📖"></label>
+            <label class="field">表紙の色<input class="input color-input" name="color" type="color" value="#5e8c4a"></label>
+          </div>
+
+          <div id="novel-field">
+            <label class="field">本文（60,000文字まで）
+              <textarea class="input novel-input" name="text" rows="14"></textarea></label>
+            <p class="muted small"><span id="text-count">0</span>文字</p>
+            <details class="lib-howto"><summary>きれいに見せる書き方</summary>
+              <ul class="small">
+                <li><code>◆ 一 はじまり</code> … 章の見出し</li>
+                <li><code>|漢字《かんじ》</code> … ルビ（ふりがな）</li>
+                <li>空の行 … 場面の切りかわり</li>
+                <li>「」で始まる行 … 会話。それ以外の行は、図書館が1字下げます</li>
+              </ul>
+              <p class="small">わからなくても大丈夫。「ネズミにきれいにまとめてもらう」にチェックすると、わたしが案を出します。</p>
+            </details>
+          </div>
+
+          <label class="row tidy-want"><input type="checkbox" name="tidyWanted"> 🐭 ネズミにきれいにまとめてもらう（案を出すだけ。使うかはあなたが決めます）</label>
+          <p class="error" role="alert" id="form-error"></p>
+          <div class="row wrap">
+            <button class="btn" type="submit" id="save">下書きを保存</button>
+            <button class="btn ghost" type="button" id="close-editor">閉じる</button>
+          </div>
+        </form>
+
+        <!-- 漫画のページ（保存してから入れる） -->
+        <div id="manga-field" hidden>
+          <h3>🖼️ ページ</h3>
+          <p class="muted small">PNG・JPEG・WebP の画像を、1枚5MBまで、40ページまで入れられます。ファイルの名前に番号（p1、p2…）があると、ネズミが順番をそろえやすくなります。</p>
+          <label class="btn ghost file-btn">画像をえらんで入れる<input type="file" id="page-files" accept="image/png,image/jpeg,image/webp" multiple hidden></label>
+          <p class="muted small" id="upload-state" aria-live="polite"></p>
+          <ol class="lib-pages" id="pages"></ol>
+        </div>
+
+        <!-- ネズミのまとめた案 -->
+        <section class="lib-tidy" id="tidy" hidden aria-labelledby="tidy-title">
+          <div class="say-line"><img src="/shared/avatars/nezumi.svg" alt="" width="40" height="40">
+            <div><h3 id="tidy-title">🐭 ネズミのまとめた案</h3>
+            <p class="small">（ちいさな声で）お話や文章は変えていません。見くらべて、よければ使ってくださいね。</p></div></div>
+          <ul class="small" id="tidy-changes"></ul>
+          <div id="tidy-novel">
+            <div class="lib-compare">
+              <div><p class="muted small">いまの本文</p><div class="novel-body compare" id="cmp-before"></div></div>
+              <div><p class="muted small">ネズミの案</p><div class="novel-body compare" id="cmp-after"></div></div>
+            </div>
+            <fieldset class="field" id="ruby-box"><legend>ルビ（ふりがな）の案：使うものにチェック</legend><div id="ruby-list"></div></fieldset>
+            <div id="typo-box"><p class="small"><strong>誤字かも？</strong>（直していません。気になったら、本文を自分で直してください）</p><ul class="small" id="typo-list"></ul></div>
+          </div>
+          <div id="tidy-manga"><p class="small">ネズミの案の順番：</p><ol class="lib-pages small-pages" id="tidy-pages"></ol></div>
+          <div class="row wrap">
+            <button class="btn" type="button" id="use-nezumi">ネズミの案を使う</button>
+          </div>
+        </section>
+
+        <!-- 運営に手伝ってもらう -->
+        <details class="lib-help" id="help">
+          <summary>🦉 ネズミではむずかしいとき：運営に手伝ってもらう</summary>
+          <div id="help-ask">
+            <label class="field">手伝ってほしいこと（200文字まで）<textarea class="input" id="help-note" rows="2" maxlength="200" placeholder="例：章の分け方を見てほしい／ページの順番がわからなくなった"></textarea></label>
+            <button class="btn ghost" type="button" id="help-send">運営に頼む</button>
+          </div>
+          <div id="help-wait" hidden>
+            <p class="small">運営に頼みました：「<span id="help-asked"></span>」</p>
+            <p class="small" id="help-reply"></p>
+            <div class="row wrap">
+              <button class="btn" type="button" id="use-admin" hidden>運営の案を使う</button>
+              <button class="btn ghost" type="button" id="help-cancel">頼むのをやめる</button>
+            </div>
+          </div>
+        </details>
+
+        <!-- 図書館に出す（同意） -->
+        <section class="lib-publish" id="publish" aria-labelledby="publish-title">
+          <h3 id="publish-title">📚 図書館に出す</h3>
+          <p class="small" id="publish-state"></p>
+          <div id="consent-box">
+            <p class="small">図書館の約束</p>
+            <ul class="small">
+              <li>自分で書いた・描いた本です（二次創作もOK。ほかの人の作品を、そのまま写していません）</li>
+              <li>年齢の棚が、本の中身に合っています</li>
+              <li>感想はカフェで。図書館の中では、しずかに</li>
+            </ul>
+            <label class="row"><input type="checkbox" id="consent"> 約束に同意して、図書館に出します</label>
+            <button class="btn" type="button" id="publish-btn" disabled>図書館に出す</button>
+          </div>
+          <div class="row wrap">
+            <button class="btn ghost" type="button" id="unpublish" hidden>棚からしまう（下書きにもどす）</button>
+            <a class="btn ghost" id="read-link" href="#" hidden>読んでみる</a>
+            <button class="btn ghost danger" type="button" id="delete-book">この本を消す</button>
+          </div>
+        </section>
+      </section>
+
+      <!-- 運営だけ -->
+      <section class="card panel" id="admin" hidden aria-labelledby="admin-title">
+        <h2 id="admin-title">🦉 図書館の運営</h2>
+        <h3>手伝ってほしい本</h3>
+        <ul class="lib-admin" id="admin-help"></ul>
+        <h3>棚に出ている本（取り下げ）</h3>
+        <ul class="lib-admin" id="admin-books"></ul>
+        <h3>取り下げた本</h3>
+        <ul class="lib-admin" id="admin-hidden"></ul>
+      </section>
+    </div>
+  </main>
+  <script type="module" src="/library-write.js"></script>
+  <script type="module" src="/shared/customize.js"></script>
+  <script type="module" src="/shared/network.js"></script>
+  <script type="module" src="/shared/playground.js"></script>
+</body>
+</html>

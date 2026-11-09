@@ -28,13 +28,13 @@ function askConsent(shelf, then) {
   $('#consent-text').textContent = CONSENT_TEXT[shelf];
   $('#consent-check').checked = false;
   $('#consent-yes').disabled = true;
-  $('#consent').dataset.shelf = shelf;
+  $('#consent').dataset.askShelf = shelf;
   $('#consent').hidden = false;
   $('#consent').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 $('#consent-check').addEventListener('change', (e) => { $('#consent-yes').disabled = !e.target.checked; });
 $('#consent-yes').addEventListener('click', () => {
-  rememberConsent($('#consent').dataset.shelf);
+  rememberConsent($('#consent').dataset.askShelf);
   $('#consent').hidden = true;
   afterConsent?.();
 });
@@ -48,6 +48,7 @@ function chip(group, id, label, pressed) {
   return `<button type="button" class="lib-chip" data-${group}="${id}" aria-pressed="${pressed}">${label}</button>`;
 }
 function coverHtml(b, big = false) {
+  if (b.coverImage) return `<img class="cover-img" src="${escapeHtml(b.coverImage)}" alt="" loading="lazy">`;
   return `<span class="cover-emoji">${escapeHtml(b.cover.emoji)}</span>${big ? '' : `<span class="cover-title">${escapeHtml(b.title)}</span>`}`;
 }
 function renderLobby() {
@@ -96,22 +97,27 @@ function komaHtml(k, i) {
     <div class="koma-cast">${facesHtml(k.face ?? [])}</div>
     <div class="koma-says">${says}</div></div>`;
 }
+// サンプルは4コマのデータ、ユーザーの漫画は画像のページ
+const pageTotal = () => (book.pages ? book.pages.length : book.pageCount);
 function renderPage() {
-  const total = book.pages.length;
-  $('#manga-page').innerHTML = book.pages[page].panels.map(komaHtml).join('');
+  const total = pageTotal();
+  $('#manga-page').classList.toggle('is-image', !book.pages);
+  $('#manga-page').innerHTML = book.pages
+    ? book.pages[page].panels.map(komaHtml).join('')
+    : `<img class="manga-img" src="/api/library/books/${encodeURIComponent(book.id)}/pages/${page}" alt="${page + 1}ページめ">`;
   $('#page-no').textContent = `${page + 1} / ${total} ページ`;
   $('#next').disabled = page >= total - 1;
   $('#prev').disabled = page <= 0;
 }
 function turn(d) {
-  if (!book?.pages) return;
-  const p = Math.min(Math.max(page + d, 0), book.pages.length - 1);
+  if (book?.kind !== 'manga') return;
+  const p = Math.min(Math.max(page + d, 0), pageTotal() - 1);
   if (p !== page) { page = p; renderPage(); $('#manga').scrollIntoView({ block: 'start' }); }
 }
 $('#next').addEventListener('click', () => turn(1));
 $('#prev').addEventListener('click', () => turn(-1));
 document.addEventListener('keydown', (e) => {
-  if ($('#reader').hidden || !book?.pages || e.target.closest('input,textarea,select')) return;
+  if ($('#reader').hidden || book?.kind !== 'manga' || e.target.closest('input,textarea,select')) return;
   if (e.key === 'ArrowLeft') turn(1);
   if (e.key === 'ArrowRight') turn(-1);
 });
@@ -140,7 +146,7 @@ async function openBook(id, { push = true } = {}) {
   $('#book-cover').style.setProperty('--cover', book.cover.color);
   $('#book-cover').innerHTML = coverHtml(book, true);
   $('#book-title').textContent = book.title;
-  $('#book-meta').textContent = `${book.author}・${book.kind === 'novel' ? '小説' : '漫画'}・${g.emoji} ${g.name}・${shelfName(book.minAge)}`;
+  $('#book-meta').textContent = `${book.author}${book.sample ? '' : 'さん'}・${book.kind === 'novel' ? '小説' : '漫画'}・${g.emoji} ${g.name}・${shelfName(book.minAge)}`;
   $('#book-blurb').textContent = book.blurb;
   $('#novel').hidden = book.kind !== 'novel';
   $('#novel-tools').hidden = book.kind !== 'novel';

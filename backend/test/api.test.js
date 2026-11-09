@@ -20,6 +20,8 @@ let base;
 let store;
 let sim;
 let videoDir;
+let libraryDir;
+const MAX_TEST_PAGE = 2048;
 const MAX_TEST_VIDEO = 1024;
 
 // こことも の代わり（テストでは本物を起動しない）
@@ -37,14 +39,16 @@ before(async () => {
     random: () => 0, replyDelayMs: null, checkInternet: async () => true, lanAddresses: () => ['192.168.0.10'],
   });
   videoDir = mkdtempSync(join(tmpdir(), 'letters-'));
+  libraryDir = mkdtempSync(join(tmpdir(), 'library-'));
   const kokotomo = createKokotomoClient({ baseUrl: 'http://localhost:3100', fetchImpl: fakeKokotomoFetch });
-  server = http.createServer(createApp({ store, sim, videoDir, maxVideoBytes: MAX_TEST_VIDEO, kokotomo, clock: () => arcadeNow }));
+  server = http.createServer(createApp({ store, sim, videoDir, maxVideoBytes: MAX_TEST_VIDEO, libraryDir, maxPageBytes: MAX_TEST_PAGE, kokotomo, clock: () => arcadeNow }));
   await new Promise((r) => server.listen(0, r));
   base = `http://localhost:${server.address().port}`;
 });
 after(() => {
   server.close();
   rmSync(videoDir, { recursive: true, force: true });
+  rmSync(libraryDir, { recursive: true, force: true });
 });
 
 async function call(path, { method = 'GET', body, as, headers = {} } = {}) {
@@ -1265,4 +1269,130 @@ test('図書館：小説をきれいにまとめる（見出し・字下げ・�
   assert.ok(html.includes('<p class="talk">「おはよう」</p>'));
   assert.ok(html.includes('<p class="scene"><ruby>推<rt>お</rt></ruby>しの名前と、<ruby>親指<rt>おやゆび</rt></ruby>。</p>'));
   assert.ok(!html.includes('<script>'), '書いた文字はそのまま文字として出す');
+});
+
+// ---- 図書館（2段目）：ユーザーが本を出す・ネズミのまとめた案・運営の手伝い ----
+const PNG = (n = 0) => Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(16, n)]);
+async function putPage(who, bookId, body, { type = 'image/png', name = 'p.png' } = {}) {
+  const res = await fetch(`${base}/api/library/books/${bookId}/pages`, {
+    method: 'POST', headers: { Cookie: who.cookie, 'Content-Type': type, 'X-File-Name': encodeURIComponent(name) }, body,
+  });
+  return { status: res.status, data: await res.json() };
+}
+
+test('図書館：小説を書いて、同意して出すと棚に並ぶ。下書きは作者だけ', async () => {
+  const author = await signup('図書館の作家');
+  const reader = await signup('図書館の読者');
+  const text = Array.from({ length: 3000 }, (_, i) => `${i}行め。とても長い小説。`).join('\n'); // 16KB をこえる長さ
+  const made = await call('/api/library/books', { method: 'POST', as: author, body: {
+    kind: 'novel', title: 'ながいお話', genre: 'anime', minAge: 'child', blurb: 'あらすじ', text,
+  } });
+  assert.equal(made.status, 200, made.data.error);
+  const id = made.data.id;
+  assert.equal(made.data.status, 'draft');
+  assert.equal(made.data.tidy.nezumi, null, '頼んでいなければ、ネズミは案を出さない');
+  assert.equal((await call(`/api/library/books/${id}`, { as: reader })).status, 404, '下書きは、ほかの人には見えない');
+  assert.equal((await call(`/api/library/books/${id}`, { as: author })).status, 200, '作者は読める');
+
+  assert.equal((await call(`/api/library/books/${id}/publish`, { method: 'POST', as: author, body: {} })).status, 400, '同意がないと出せない');
+  const pub = await call(`/api/library/books/${id}/publish`, { method: 'POST', as: author, body: { consent: true } });
+  assert.equal(pub.data.status, 'published');
+  const shelf = (await call('/api/library', { as: reader })).data.books;
+  const card = shelf.find((b) => b.id === id);
+  assert.equal(card.author, '図書館の作家');
+  assert.equal(card.sample, false);
+  assert.ok(!('text' in card));
+  assert.equal((await call(`/api/library/books/${id}`, { as: reader })).data.text, text);
+
+  assert.equal((await call(`/api/library/books/${id}`, { method: 'PUT', as: reader, body: { title: 'のっとり' } })).status, 403, 'ほかの人は変えられない');
+  await call(`/api/library/books/${id}/unpublish`, { method: 'POST', as: author });
+  assert.ok(!(await call('/api/library', { as: reader })).data.books.some((b) => b.id === id), 'しまうと棚から消える');
+  assert.equal((await call(`/api/library/books/${id}`, { method: 'DELETE', as: author })).data.ok, true);
+});
+
+test('図書館：自分の年齢で読めない棚には出せない。はっきりした犯罪の文は出せない', async () => {
+  const kid = await signup('図書館のこども作家', { birthdate: '2018-01-01' });
+  const base = { kind: 'novel', title: 'こどもの本', genre: 'other', text: 'むかしむかし。' };
+  assert.equal((await call('/api/library/books', { method: 'POST', as: kid, body: { ...base, minAge: 'teen' } })).status, 403);
+  assert.equal((await call('/api/library/books', { method: 'POST', as: kid, body: { ...base, minAge: 'child' } })).status, 200);
+  const adult = await signup('図書館の作家');
+  const bad = await call('/api/library/books', { method: 'POST', as: adult, body: { ...base, minAge: 'adult', text: '闇バイト募集、高収入、即日現金' } });
+  assert.equal(bad.status, 422);
+  assert.equal((await call('/api/library/books', { method: 'POST', body: { ...base, minAge: 'child' } })).status, 401, 'ログインが必要');
+});
+
+test('図書館：きれいにまとめる。ネズミの案（見た目・ルビ・誤字の印）を、作者が選んで使う', async () => {
+  const author = await signup('図書館の作家');
+  const made = (await call('/api/library/books', { method: 'POST', as: author, body: {
+    kind: 'novel', title: 'まとめてほしい', genre: 'idol', minAge: 'child', tidyWanted: true,
+    text: '第1章　はじまり\n　彼女は囁いた。「ほんとに!?うそ...」\n\n\n「ありがとう。」\nこんにちわ。綺麗な薔薇。',
+  } })).data;
+  const s = made.tidy.nezumi;
+  assert.ok(s, 'ネズミがすぐに案を出す');
+  assert.ok(s.text.startsWith('◆ 第1章　はじまり'));
+  assert.ok(s.text.includes('「ほんとに！？　うそ……」'));
+  assert.ok(s.text.includes('「ありがとう」'));
+  assert.deepEqual(s.ruby.map((r) => r.kanji), ['囁', '綺麗', '薔薇']);
+  assert.ok(s.typos.some((t) => t.snippet === 'こんにちわ'), '誤字は印だけ');
+  assert.ok(made.text.includes('こんにちわ'), '作者が使うまで、本文はそのまま');
+
+  const used = (await call(`/api/library/books/${made.id}/tidy`, { method: 'POST', as: author, body: { from: 'nezumi', ruby: ['囁'] } })).data;
+  assert.ok(used.text.includes('|囁《ささや》いた'));
+  assert.ok(!used.text.includes('|綺麗'), '選ばなかったルビはつけない');
+  assert.ok(used.text.includes('こんにちわ'), '誤字は直さない（決めるのは作者）');
+});
+
+test('図書館：漫画のページ（画像だけ受け取る）・ネズミがページの順番をそろえる・年齢が合わない人には見せない', async () => {
+  const author = await signup('図書館の漫画家', { birthdate: '2010-01-01' });
+  const made = (await call('/api/library/books', { method: 'POST', as: author, body: {
+    kind: 'manga', title: '中高生の漫画', genre: 'game', minAge: 'teen', tidyWanted: true,
+  } })).data;
+  for (const name of ['p10.png', 'p2.png', 'p1.png']) assert.equal((await putPage(author, made.id, PNG(name.length), { name })).status, 200);
+  assert.equal((await putPage(author, made.id, Buffer.from('<html>'), { name: 'x.png' })).status, 415, 'PNG のふりをした文字は受け取らない');
+  assert.equal((await putPage(author, made.id, Buffer.from('GIF89a'), { type: 'image/gif' })).status, 415);
+  assert.equal((await putPage(author, made.id, Buffer.concat([PNG(), Buffer.alloc(MAX_TEST_PAGE)]))).status, 413, '大きすぎる画像');
+  assert.equal(readdirSync(libraryDir).filter((f) => f.endsWith('.part')).length, 0, '途中のファイルは残さない');
+
+  let mine = (await call('/api/library/mine', { as: author })).data.find((b) => b.id === made.id);
+  assert.deepEqual(mine.pages.map((p) => p.name), ['p10.png', 'p2.png', 'p1.png']);
+  assert.deepEqual(mine.tidy.nezumi.order, [2, 1, 0]);
+  mine = (await call(`/api/library/books/${made.id}/tidy`, { method: 'POST', as: author, body: { from: 'nezumi' } })).data;
+  assert.deepEqual(mine.pages.map((p) => p.name), ['p1.png', 'p2.png', 'p10.png']);
+  assert.equal(mine.coverPage, 0);
+
+  await call(`/api/library/books/${made.id}/publish`, { method: 'POST', as: author, body: { consent: true } });
+  const img = await fetch(`${base}/api/library/books/${made.id}/pages/0`, { headers: { Cookie: (await signup('図書館の中高生', { birthdate: '2011-01-01' })).cookie } });
+  assert.equal(img.status, 200);
+  assert.equal(img.headers.get('content-type'), 'image/png');
+  assert.equal(img.headers.get('x-content-type-options'), 'nosniff');
+  const kidGroup = await signup('図書館のこども', { birthdate: '2018-01-01' });
+  assert.equal((await fetch(`${base}/api/library/books/${made.id}/pages/0`, { headers: { Cookie: kidGroup.cookie } })).status, 404, '年齢が合わない人には、画像も見せない');
+  assert.equal((await call(`/api/library/books/${made.id}`, { as: kidGroup })).status, 403);
+});
+
+test('図書館：ネズミでむずかしいときは運営が手伝う（案だけ）。運営は取り下げられる', async () => {
+  const author = await signup('図書館の作家');
+  const admin = await signup('図書館の運営');
+  store.getUser(admin.id).role = 'admin';
+  const made = (await call('/api/library/books', { method: 'POST', as: author, body: {
+    kind: 'novel', title: '手伝ってほしい', genre: 'sports', minAge: 'child', text: 'もとの本文。',
+  } })).data;
+  assert.equal((await call('/api/library/admin', { as: author })).status, 403);
+  await call(`/api/library/books/${made.id}/help`, { method: 'POST', as: author, body: { note: '章の分け方を見てほしい' } });
+  const list = (await call('/api/library/admin', { as: admin })).data.help;
+  assert.ok(list.some((b) => b.id === made.id && b.tidy.help.note === '章の分け方を見てほしい'));
+  await call(`/api/library/books/${made.id}/help-reply`, { method: 'POST', as: admin, body: { text: '◆ 一\nもとの本文。', note: '見出しをつけました' } });
+  let mine = (await call('/api/library/mine', { as: author })).data.find((b) => b.id === made.id);
+  assert.equal(mine.text, 'もとの本文。', '運営は本文を直接は変えない');
+  assert.equal(mine.tidy.help.reply.note, '見出しをつけました');
+  mine = (await call(`/api/library/books/${made.id}/tidy`, { method: 'POST', as: author, body: { from: 'admin' } })).data;
+  assert.equal(mine.text, '◆ 一\nもとの本文。', '作者が使うと決めたら入る');
+
+  await call(`/api/library/books/${made.id}/publish`, { method: 'POST', as: author, body: { consent: true } });
+  assert.equal((await call(`/api/library/books/${made.id}/hide`, { method: 'POST', as: admin, body: {} })).status, 400, '理由が必要');
+  await call(`/api/library/books/${made.id}/hide`, { method: 'POST', as: admin, body: { reason: '約束に合わない内容' } });
+  assert.ok(!(await call('/api/library')).data.books.some((b) => b.id === made.id), '取り下げた本は棚から消える');
+  const again = await call(`/api/library/books/${made.id}/publish`, { method: 'POST', as: author, body: { consent: true } });
+  assert.equal(again.status, 403);
+  assert.match(again.data.error, /約束に合わない内容/);
 });
