@@ -9,7 +9,9 @@ import { publishedIssues, findPoll, pollTalk } from '../shared/news.js';
 import { lanAddresses } from './net.js';
 import { REPORT_REASONS, STAGES, findReason, stageOf } from '../shared/report.js';
 import { ARCADE_APPS, arcadeStatus } from '../shared/arcade.js';
-import { createLibraryApi, MAX_PAGE_BYTES } from './library.js';
+import { LEAVE_MS, GUARDIAN_LEAVE_MS } from '../shared/leave.js';
+import { reporterFor, suggestionTalk, TALK_SHOW } from '../shared/suggest.js';
+import { createLibraryApi, MAX_PAGE_BYTES, removeLibraryFiles } from './library.js';
 import { MAX_VIDEO_BYTES, removeVideo, saveVideo, serveVideo } from './letters.js';
 import { createKokotomoClient } from './kokotomo.js';
 import { createGameLink, GHOST_URL, MISETOMO_URL, KOROTOMO_URL, SORATOMO_URL } from './gamelink.js';
@@ -100,6 +102,20 @@ function meView(u) {
     ghost: u.ghost ?? null,
     korotomo: u.korotomo ?? null,
     soratomo: u.soratomo ?? null,
+    leaving: leavingView(u),
+    practice: u.kind === 'human' && ageGroup(u.birthdate) === 'child' && !(u.guardianIds?.length), // 練習モード（おうちの人とつながる前の子ども）
+    termsVersion: u.termsAgreed?.version ?? null, // 同意した利用規約の版（新しい版とちがえば、もう一度同意してもらう）
+  };
+}
+
+// 退会の手続き。until：本人が入れなくなる（消える）日時。
+// guarded：おうちの人とつながっている子ども。guardianUntil：おうちの人が取り消せる日時（そのあと消える）
+function leavingView(u) {
+  if (!u.leaving) return null;
+  const at = Date.parse(u.leaving.at);
+  return {
+    requestedAt: u.leaving.requestedAt, until: new Date(at + LEAVE_MS).toISOString(), guarded: Boolean(u.leaving.guarded),
+    guardianUntil: u.leaving.guarded ? new Date(at + GUARDIAN_LEAVE_MS).toISOString() : null,
   };
 }
 
@@ -109,6 +125,7 @@ function childView(c, posts, usersById) {
     ...publicUser(c), ageGroup: ageGroup(c.birthdate),
     game: c.game ?? null, ghost: c.ghost ?? null, korotomo: c.korotomo ?? null, soratomo: c.soratomo ?? null,
     recentPosts: posts.filter((p) => p.authorId === c.id).slice(0, 5).map((p) => postView(p, usersById)),
+    leaving: leavingView(c),
   };
 }
 
@@ -120,6 +137,13 @@ const cleanStr = (v, max, label) => {
   if ([...t].length > max) throw new HttpError(400, `${label}は${max}文字以内にしてください`);
   return t;
 };
+// ともはね のゲームセンターには、広告・課金のあるゲームは置けない
+function noAdsNoPurchases(body) {
+  if (body.ads === true || body.purchases === true) {
+    throw new HttpError(400, 'ともはね のゲームセンターには、広告や課金のあるゲームは置けません（広告・課金のない版で申しこんでください）');
+  }
+  return { ads: false, purchases: false };
+}
 // インディーズ・個人のゲームの申しこみ。アドレスは http(s) だけ
 function cleanGameApply(body) {
   const id = String(body.id ?? '').trim().toLowerCase();
@@ -138,8 +162,7 @@ function cleanGameApply(body) {
     description: cleanStr(body.description, 80, 'ゲームの説明'),
     tags,
     minAge: AGE_KEYS.includes(body.minAge) ? body.minAge : 'child',
-    ads: body.ads === true,
-    purchases: body.purchases === true,
+    ...noAdsNoPurchases(body),
   };
 }
 
@@ -251,11 +274,14 @@ export function createApp({
       return {
         guardians: store.guardiansOf(u.id).map(publicUser),
         children: store.childrenOf(u.id).map((c) => childView(c, store.listPosts(), users)),
+        diary: store.familyDiaryFor(u.id).map((d) => ({ id: d.id, text: d.text, at: d.at })),
       };
     }],
     ['POST', /^\/api\/guardian\/code$/, ({ me }) => [201, store.issueGuardianCode(needLogin(me).id)]],
     ['POST', /^\/api\/guardian\/join$/, ({ body, me }) => publicUser(store.acceptGuardianCode(needLogin(me).id, body.code))],
     ['DELETE', /^\/api\/guardian\/children\/([\w-]+)$/, ({ params, me }) => store.unlinkChild(needLogin(me).id, params[0])],
+    // 子どもの退会を、おうちの人が取り消す（機種変更などのまちがい。14日まで）
+    ['POST', /^\/api\/guardian\/children\/([\w-]+)\/leave-cancel$/, ({ params, me }) => store.guardianCancelLeave(needLogin(me).id, params[0])],
 
     // ---- ゲームセンターの営業時間（見る人の年齢で、閉店の時間がちがう） ----
     ['GET', /^\/api\/arcade$/, ({ me }) => arcadeFor(me)],
@@ -268,7 +294,7 @@ export function createApp({
       const recs = store.listGameRecs();
       return visibleGames(me).map((g) => {
         const mine = me && recs.find((r) => r.gameId === g.id && r.userId === me.id);
-        const voices = recs.filter((r) => r.gameId === g.id && r.comment).slice(-5).reverse().map((r) => ({
+        const voices = recs.filter((r) => r.gameId === g.id && r.comment && !store.isLeaving(users[r.userId])).slice(-5).reverse().map((r) => ({
           name: users[r.userId]?.name ?? '？', oshi: users[r.userId]?.oshi?.name || null, comment: r.comment, at: r.createdAt,
         }));
         return {
@@ -357,6 +383,36 @@ export function createApp({
       }));
     }],
 
+    // ---- 📮 目安箱：記者が受け取る。だれが書いたかは運営にも見せない ----
+    ['POST', /^\/api\/suggestions$/, ({ body, me }) => {
+      store.addSuggestion(needLogin(me).id, { topic: body.topic, text: body.text });
+      return [201, { reply: reporterFor(clock()) }];
+    }],
+    // 新聞の座談会「目安箱から」（とりあげた声の要約と運営の答え）。書いた本人にだけ mine
+    ['GET', /^\/api\/suggestions\/talk$/, ({ me }) => store.listSuggestions()
+      .filter((x) => x.status === 'picked')
+      .sort((a, b) => b.picked.at.localeCompare(a.picked.at))
+      .slice(0, TALK_SHOW)
+      .map((x, i) => ({ id: x.id, topic: x.topic, at: x.picked.at, lines: suggestionTalk({ topic: x.topic, ...x.picked }, i), mine: Boolean(me && x.userId === me.id) }))],
+    ['GET', /^\/api\/suggestions$/, ({ me }) => {
+      needAdmin(me);
+      const users = store.usersById();
+      // 「個人情報」（見せて・消して など）だけは、本人と分からないと答えられないので、名前とログインIDを出す
+      return store.listSuggestions().map((x) => ({
+        id: x.id, age: x.age, topic: x.topic, text: x.text, status: x.status, picked: x.picked, at: x.createdAt,
+        ...(x.topic === 'privacy' ? { from: users[x.userId] ? { name: users[x.userId].name, loginId: users[x.userId].loginId } : null } : {}),
+      }));
+    }],
+    ['POST', /^\/api\/suggestions\/([\w-]+)\/pick$/, ({ params, body, me }) => {
+      needAdmin(me);
+      const x = store.pickSuggestion(params[0], { summary: body.summary, answer: body.answer });
+      return { id: x.id, status: x.status, picked: x.picked };
+    }],
+    ['POST', /^\/api\/suggestions\/([\w-]+)\/close$/, ({ params, me }) => {
+      needAdmin(me);
+      return { id: store.closeSuggestion(params[0]).id, status: 'done' };
+    }],
+
     // ---- やりくり献立との連結（最新の献立の「きょうの晩ごはん」と、画面のアドレス） ----
     ['GET', /^\/api\/kondate$/, () => sim.kondateSummary()],
 
@@ -414,7 +470,7 @@ export function createApp({
     // ---- カフェのテーブル（決まった並び）と、それぞれの投稿の数 ----
     ['GET', /^\/api\/cafe\/tables$/, () => store.listTables().map((t) => ({
       id: t.id, kind: t.kind, name: t.name, emoji: t.emoji, note: t.note ?? '', parent: t.parent ?? null,
-      postCount: store.listPosts().filter((p) => p.table === t.id && !p.hidden && !p.orphaned).length,
+      postCount: store.listPosts().filter((p) => p.table === t.id && !p.hidden && !p.orphaned && !p.practiceOwner).length,
     }))],
     // ユーザーの声：ほしいジャンルのリクエスト（ペンギンが受け取る）→ 運営が見て、テーブルを足す
     ['POST', /^\/api\/cafe\/requests$/, ({ body, me }) => {
@@ -459,7 +515,7 @@ export function createApp({
           held: Boolean(n.post.hidden), apologized: n.apologized,
         })),
         farewells: store.farewellsFor(u.id).map((x) => ({
-          id: x.id, from: store.usersById()[x.fromId]?.name ?? '？', text: x.text, at: x.at,
+          id: x.id, from: x.fromName ?? store.usersById()[x.fromId]?.name ?? '？', text: x.text, at: x.at,
         })),
         apologies: store.apologiesFor(u.id).map((r) => ({
           id: r.id, from: publicUser(store.usersById()[r.authorId])?.name ?? '？', at: r.apology.at,
@@ -572,6 +628,17 @@ export function createApp({
     } else if (action === 'recover') {
       const { user, codesLeft } = await store.recover(body);
       login(user, { codesLeft });
+    } else if (action === 'agree') {
+      // 利用規約・プライバシーに同意する
+      store.agreeTerms(needLogin(me).id, body.version);
+      sendJson(res, 200, { me: meView(store.getUser(me.id)) });
+    } else if (action === 'leave') {
+      // 退会の申しこみ（7日たってから消える）
+      await store.requestLeave(needLogin(me).id, { password: body.password, farewell: body.farewell });
+      sendJson(res, 200, { me: meView(store.getUser(me.id)) });
+    } else if (action === 'leave-cancel') {
+      store.cancelLeave(needLogin(me).id);
+      sendJson(res, 200, { me: meView(store.getUser(me.id)) });
     } else if (action === 'logout' || action === 'logout-all') {
       const token = readCookie(req, SESSION_COOKIE);
       if (action === 'logout-all' && me) store.endAllSessions(me.id);
@@ -759,7 +826,15 @@ export function createApp({
     }
   }
 
-  return async function handler(req, res) {
+  // 退会して7日たった人を消す（手紙のビデオのファイルも）
+  async function purgeLeavers(atMs) {
+    const { erased, videos, images = [] } = store.purgeLeaving(atMs);
+    for (const v of videos) await removeVideo(videoDir, v);
+    await removeLibraryFiles(libraryDir, images); // 図書館の漫画のページ・絵
+    return erased;
+  }
+
+  async function handler(req, res) {
     const url = new URL(req.url, 'http://localhost');
     const { pathname } = url;
     try {
@@ -802,7 +877,9 @@ export function createApp({
       if (!req.complete) res.setHeader('Connection', 'close');
       return sendJson(res, status, { error: status === 500 ? 'サーバーエラーが発生しました' : err.message });
     }
-  };
+  }
+  handler.purgeLeavers = purgeLeavers;
+  return handler;
 }
 
 const isMain = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
@@ -811,7 +888,12 @@ if (isMain) {
   const store = createStore({ file: join(ROOT, 'data', 'db.json') });
   const sim = createSimulation(store);
   sim.start();
-  const server = http.createServer(createApp({ store, sim, port }));
+  const app = createApp({ store, sim, port });
+  const server = http.createServer(app);
+  // 退会して7日たった人を、起動したときと1時間ごとに消す
+  const purge = () => app.purgeLeavers().catch((e) => console.error('退会の片づけに失敗', e));
+  purge();
+  setInterval(purge, 3600000).unref();
   server.listen(port, () => {
     console.log(`SNS サーバー起動: http://localhost:${port}`);
     console.log(`  フロントエンド（SNS）     http://localhost:${port}/`);

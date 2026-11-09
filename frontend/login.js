@@ -3,6 +3,7 @@
 import { api, refreshMe, rememberMe, logout, headerHtml, escapeHtml, toast, timeAgo, safeNext } from '/shared/api.js';
 import { REPORT_REASONS } from '/shared/report.js';
 import { isComingSoon, SOON_LABEL } from '/shared/soon.js';
+import { FAREWELL_CHOICES, SEND_OFF, WELCOME_BACK } from '/shared/leave.js';
 
 const $ = (sel) => document.querySelector(sel);
 const AGE = { child: '子ども（12歳まで）', teen: '中高生（13〜17歳）', adult: '大人（18歳から）' };
@@ -40,10 +41,11 @@ function render(me) {
   $('#acc-login').textContent = me.loginId;
   $('#acc-age').textContent = AGE[me.ageGroup] ?? '―';
   $('#acc-role').textContent = ROLE[me.role] ?? me.role;
-  $('#acc-soratomo').textContent = isComingSoon('soratomo') && !me.soratomo ? SOON_LABEL : me.soratomo ? `ミッション達成 ${me.soratomo.missions}回（${me.soratomo.plays}回あそんだ）` : 'まだ遊んでいません（町の地図の「宇宙」から）';
-  $('#acc-korotomo').textContent = isComingSoon('korotomo') && !me.korotomo ? SOON_LABEL : me.korotomo ? `ゴール ${me.korotomo.goals}回（${me.korotomo.plays}回あそんだ）` : 'まだ遊んでいません（町の地図のガレージのとなりから）';
+  $('#acc-soratomo').textContent = isComingSoon('soratomo') && !me.soratomo ? SOON_LABEL : me.soratomo ? `ミッション達成 ${me.soratomo.missions}回（${me.soratomo.plays}回あそんだ）` : 'まだ遊んでいません（ゲームセンターから）';
+  $('#acc-korotomo').textContent = isComingSoon('korotomo') && !me.korotomo ? SOON_LABEL : me.korotomo ? `ゴール ${me.korotomo.goals}回（${me.korotomo.plays}回あそんだ）` : 'まだ遊んでいません（ゲームセンターから）';
   $('#acc-ghost').textContent = me.ghost ? `自己ベスト更新 ${me.ghost.bests}回・${me.ghost.days}日つづけた` : 'まだ使っていません（町の地図のグラウンドから）';
-  $('#acc-game').textContent = me.game ? `${me.game.wins}勝（${me.game.plays}回あそんだ）` : 'まだ遊んでいません（町の地図のシバの家から）';
+  $('#acc-game').textContent = me.game ? `${me.game.wins}勝（${me.game.plays}回あそんだ）` : 'まだ遊んでいません（ゲームセンターから）';
+  renderLeaving(me);
   $('#acc-child').hidden = me.ageGroup !== 'child';
   $('#acc-back').href = nextUrl();
   renderFamily(me);
@@ -51,6 +53,60 @@ function render(me) {
   renderReportAdmin(me);
   renderCafeAdmin(me);
 }
+
+// ---- 退会（7日たってから消える。それまではここで取り消せる） ----
+const sayLine = (l) => `<div class="say-line"><img src="/shared/avatars/${l.face}.svg" alt="" width="40" height="40"><p><strong>${escapeHtml(l.name)}</strong>：${escapeHtml(l.text)}</p></div>`;
+const dateJa = (iso) => new Date(iso).toLocaleString('ja-JP', { month: 'long', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit' });
+function renderLeaving(me) {
+  const l = me.leaving;
+  $('#leaving').hidden = !l;
+  $('#leave-box').hidden = Boolean(l) || me.role === 'admin';
+  $('#leave-child-note').hidden = me.ageGroup !== 'child';
+  if (!l) return;
+  $('#leaving-when').textContent = l.guarded
+    ? `${dateJa(l.until)} に、ともはね に入れなくなります。おうちの人には、シバの日記で伝わっています。`
+    : `${dateJa(l.until)} に、アカウントと投稿などが消えます。`;
+  $('#leaving-lines').innerHTML = SEND_OFF.map(sayLine).join('');
+}
+$('#leave-farewell-choices').innerHTML = [...FAREWELL_CHOICES, ''].map((t, i) => `<label class="block-kind">
+  <input type="radio" name="farewell" value="${escapeHtml(t)}"${i === 0 ? ' checked' : ''}>
+  <span><strong>${t ? `「${escapeHtml(t)}」` : '✏️ 自分のことばで'}</strong></span></label>`).join('');
+$('#leave-form').addEventListener('change', (e) => {
+  if (e.target.name === 'farewell') $('#leave-own-box').hidden = e.target.value !== '';
+});
+$('#leave-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = e.target.elements;
+  const err = e.target.querySelector('.error');
+  err.textContent = '';
+  const farewell = f.farewell.value || f.own.value.trim();
+  if (!farewell) {
+    err.textContent = 'ひとことを選ぶか、自分のことばを書いてください';
+    return;
+  }
+  if (!confirm('退会を申しこみますか？（7日のあいだは取り消せます）')) return;
+  try {
+    const r = await api('/auth/leave', { method: 'POST', body: { password: f.password.value, farewell } });
+    e.target.reset();
+    $('#leave-own-box').hidden = true;
+    $('#leave-box').open = false;
+    rememberMe(r.me);
+    render(r.me);
+    $('#leaving').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  } catch (ex) {
+    err.textContent = ex.offline ? 'つながっていません。つながってから、もう一度どうぞ' : ex.message;
+  }
+});
+$('#leave-cancel').addEventListener('click', async () => {
+  try {
+    const r = await api('/auth/leave-cancel', { method: 'POST' });
+    rememberMe(r.me);
+    render(r.me);
+    toast(`🐕 ${WELCOME_BACK.text}`, 5000);
+  } catch (ex) {
+    toast(ex.message, 5000);
+  }
+});
 
 // ---- 運営だけ：カフェのリクエスト ----
 async function renderCafeAdmin(me) {
@@ -180,6 +236,10 @@ async function renderFamily(me) {
       : 'まだ、おうちの人とつながっていません。';
     return;
   }
+  const diary = data.diary ?? [];
+  $('#family-diary-box').hidden = !diary.length;
+  $('#family-diary').innerHTML = diary.map((d) => `<li><img src="/shared/avatars/shiba.svg" alt="" width="32" height="32">
+    <div><span class="muted small">${escapeHtml(dateJa(d.at))}</span><p>${escapeHtml(d.text)}</p></div></li>`).join('');
   const count = (label, v, text) => (v ? `${label} ${text(v)}` : null);
   $('#family-children').innerHTML = data.children.map((c) => {
     const games = [
@@ -191,8 +251,15 @@ async function renderFamily(me) {
     const posts = c.recentPosts.length
       ? `<ul class="posts">${c.recentPosts.map((p) => `<li>${escapeHtml(p.text)} <span class="muted">（${escapeHtml(timeAgo(p.createdAt))}）</span></li>`).join('')}</ul>`
       : '<p class="muted small">広場の投稿はまだありません</p>';
-    return `<li><strong>${escapeHtml(c.name)}</strong> <span class="muted small">${escapeHtml(games)}</span>${posts}
-      <button type="button" class="btn ghost" data-unlink="${escapeHtml(c.id)}" data-name="${escapeHtml(c.name)}">つなぐのをやめる</button></li>`;
+    const id = escapeHtml(c.id);
+    const name = escapeHtml(c.name);
+    const until = c.leaving?.guardianUntil ?? c.leaving?.until;
+    const leave = c.leaving
+      ? `<p class="note-line">🌸 退会の手続き中です。${escapeHtml(dateJa(c.leaving.until))} に本人は入れなくなり、${escapeHtml(dateJa(until))} にアカウントと投稿などが消えます。機種変更などのまちがいなら、それまでここで取り消せます。</p>
+        <div class="row wrap"><button type="button" class="btn ghost" data-leave="${id}" data-name="${name}">退会を取り消す</button></div>`
+      : '';
+    return `<li><strong>${name}</strong> <span class="muted small">${escapeHtml(games)}</span>${posts}${leave}
+      <button type="button" class="btn ghost" data-unlink="${id}" data-name="${name}">つなぐのをやめる</button></li>`;
   }).join('');
 }
 $('#family-issue').addEventListener('click', async () => {
@@ -204,6 +271,18 @@ $('#family-issue').addEventListener('click', async () => {
   }
 });
 $('#family-children').addEventListener('click', async (e) => {
+  const lv = e.target.closest('[data-leave]');
+  if (lv) {
+    if (!confirm(`${lv.dataset.name} さんの退会を取り消しますか？`)) return;
+    try {
+      await api(`/guardian/children/${encodeURIComponent(lv.dataset.leave)}/leave-cancel`, { method: 'POST' });
+      toast(`🐕 取り消したっす。${lv.dataset.name}さん、おかえりなさいっす！`, 5000);
+      renderFamily(await refreshMe());
+    } catch (err) {
+      toast(err.message, 5000);
+    }
+    return;
+  }
   const btn = e.target.closest('[data-unlink]');
   if (!btn || !confirm(`${btn.dataset.name} さんと、つなぐのをやめますか？`)) return;
   try {
@@ -223,13 +302,13 @@ $('#family-join').addEventListener('submit', async (e) => {
   renderFamily(await refreshMe());
 });
 
-async function submit(form, path, fields) {
+async function submit(form, path, fields, extra = {}) {
   const err = form.querySelector('.error');
   err.textContent = '';
   const btn = form.querySelector('button[type="submit"]');
   btn.disabled = true;
   try {
-    const body = Object.fromEntries(fields.map((k) => [k, form.elements[k].value.trim()]));
+    const body = { ...Object.fromEntries(fields.map((k) => [k, form.elements[k].value.trim()])), ...extra };
     return await api(path, { method: 'POST', body });
   } catch (e) {
     err.textContent = e.offline ? 'つながっていません。つながってから、もう一度どうぞ' : e.message;
@@ -244,13 +323,18 @@ $('#panel-login').addEventListener('submit', async (e) => {
   const r = await submit(e.target, '/auth/login', ['loginId', 'password']);
   if (!r) return;
   rememberMe(r.me);
+  // 退会の手続き中なら、取り消せるようにアカウントのページを出す
+  if (r.me.leaving) {
+    toast(`🐕 ${WELCOME_BACK.text}　退会を取り消すなら、下のボタンっす`, 6000);
+    return render(r.me);
+  }
   location.href = nextUrl();
 });
 
 let pendingCodes = [];
 $('#panel-register').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const r = await submit(e.target, '/auth/register', ['loginId', 'name', 'password', 'birthdate']);
+  const r = await submit(e.target, '/auth/register', ['loginId', 'name', 'password', 'birthdate'], { agreeTerms: e.target.elements.agreeTerms.checked });
   if (!r) return;
   rememberMe(r.me);
   pendingCodes = r.recoveryCodes;

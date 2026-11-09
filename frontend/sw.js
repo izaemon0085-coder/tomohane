@@ -3,7 +3,7 @@
 // ・つながっているときは、いつも最新をサーバーから取る（ネットワーク優先）
 // ・つながらないときは、保存しておいたものを見せる（前に見た投稿が見られる）
 // ※ Service Worker は「安全な接続」（localhost か https）のときだけ動く
-const CACHE = 'tomohane-v22';
+const CACHE = 'tomohane-v23';
 
 const SHELL = [
   '/', '/style.css', '/map.js', '/plaza.html', '/plaza.js', '/cafe.html', '/oshi.html', '/oshi.js',
@@ -11,6 +11,7 @@ const SHELL = [
   '/side/', '/side/style.css', '/side/app.js',
   '/sub/', '/sub/style.css', '/sub/app.js',
   '/shared/base.css', '/shared/api.js', '/shared/speech.js',
+  '/terms.html', '/terms.js', '/shared/terms.js', '/shared/leave.js', '/shared/suggest.js',
   '/shared/playground.js', '/shared/playground.css',
   '/shared/customize.js', '/shared/customize.css', '/shared/kisekae-opinions.js',
   '/shared/outbox.js', '/shared/network.js', '/shared/network.css',

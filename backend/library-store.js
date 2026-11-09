@@ -28,7 +28,12 @@ export const DEFAULT_COVER = { novel: { emoji: '📖', color: '#5e8c4a' }, manga
 
 const chars = (s) => [...String(s ?? '')].length;
 
-export function createLibraryStore({ state, now, emit, newId, userById, ageGroupOf, rejectBlocked }) {
+// isPractice：練習モード（おうちの人とつながる前の子ども）。下書きとネズミの案は使えるが、
+// 棚に出す・募集を出す・応募する（ほかの人に見えること）は、つながってから
+export const PRACTICE_LIBRARY_MSG = 'おうちの人とつながったら、図書館に出せるようになるっす！（アカウントのページの「おうちの人とつなぐ」から）';
+
+export function createLibraryStore({ state, now, emit, newId, userById, ageGroupOf, rejectBlocked, isPractice = () => false }) {
+  const notPractice = (user) => { if (isPractice(user)) throw new HttpError(403, PRACTICE_LIBRARY_MSG); };
   state.books ??= [];
   state.calls ??= []; // 挿し絵・表紙の募集 { id, bookId, authorId, kind, slot, note, status, entries: [{ id, userId, image, comment, consentAt, at }], adoptedEntryId }
 
@@ -102,7 +107,7 @@ export function createLibraryStore({ state, now, emit, newId, userById, ageGroup
       : null;
   }
 
-  return {
+  const library = {
     listPublishedBooks: () => state.books.filter((b) => b.status === 'published'),
     listBooksBy: (authorId) => state.books.filter((b) => b.authorId === authorId),
     listHelpRequests: () => state.books.filter((b) => b.tidy.help),
@@ -221,6 +226,7 @@ export function createLibraryStore({ state, now, emit, newId, userById, ageGroup
     publishBook(authorId, id, consent) {
       const book = ownBook(authorId, id);
       if (consent !== true) throw new HttpError(400, '図書館の約束に同意してください');
+      notPractice(userById(authorId));
       if (book.status === 'hidden') throw new HttpError(403, `運営が取り下げた本です（${book.hiddenReason ?? '理由なし'}）。運営に相談してください`);
       if (book.kind === 'novel' && !book.text.trim()) throw new HttpError(400, '本文を書いてください');
       if (book.kind === 'manga' && !book.pages.length) throw new HttpError(400, 'ページを1枚以上入れてください');
@@ -265,6 +271,7 @@ export function createLibraryStore({ state, now, emit, newId, userById, ageGroup
     callsOf: (bookId) => state.calls.filter((c) => c.bookId === bookId),
     openCall(authorId, bookId, { kind, slot, note }) {
       const book = ownBook(authorId, bookId);
+      notPractice(userById(authorId));
       if (!CALL_KINDS.includes(kind)) throw new HttpError(400, '表紙か挿し絵かを選んでください');
       if (kind === 'illust' && book.kind !== 'novel') throw new HttpError(400, '挿し絵の募集は、小説だけです');
       const s = kind === 'illust' ? Number(slot) : null;
@@ -303,6 +310,7 @@ export function createLibraryStore({ state, now, emit, newId, userById, ageGroup
       const call = requireCall(callId);
       const user = userById(userId);
       if (!user || user.kind !== 'human') throw new HttpError(403, '応募できるのは、ともはねのユーザーだけです');
+      notPractice(user);
       if (call.status !== 'open') throw new HttpError(400, 'この募集は、もう閉まっています');
       if (consent !== true) throw new HttpError(400, '「選ばれたら、この本に載せてもいい」に同意してください');
       const book = requireBook(call.bookId);
@@ -370,6 +378,38 @@ export function createLibraryStore({ state, now, emit, newId, userById, ageGroup
       return files.filter((img) => !fileUsed(img.file));
     },
   };
+
+  // 退会した人の図書館のもの（書いた本・その本の募集・応募した絵・ほかの本に載った絵）を消す。
+  // 消したあとで、どこにも使われていないファイルを返す（サーバーが消す）
+  function eraseUserLibrary(userId) {
+    const files = [];
+    for (const book of state.books.filter((b) => b.authorId === userId)) {
+      const a = book.art ?? { cover: null, illust: {} };
+      files.push(...book.pages, a.cover, ...Object.values(a.illust));
+      for (const call of state.calls.filter((c) => c.bookId === book.id)) {
+        state.calls.splice(state.calls.indexOf(call), 1);
+        files.push(...call.entries.map((e) => e.image));
+      }
+      state.books.splice(state.books.indexOf(book), 1);
+    }
+    for (const call of state.calls) {
+      for (const e of call.entries.filter((x) => x.userId === userId)) {
+        call.entries.splice(call.entries.indexOf(e), 1);
+        files.push(e.image);
+        if (call.adoptedEntryId === e.id) { call.adoptedEntryId = null; call.status = 'closed'; }
+      }
+    }
+    for (const book of state.books) {
+      const a = book.art;
+      if (!a) continue;
+      if (a.cover?.by === userId) { files.push(a.cover); a.cover = null; }
+      for (const [slot, art] of Object.entries(a.illust)) if (art.by === userId) { files.push(art); delete a.illust[slot]; }
+    }
+    const seen = new Set();
+    return files.filter((f) => f && !seen.has(f.file) && seen.add(f.file) && !fileUsed(f.file));
+  }
+  library.eraseUserLibrary = eraseUserLibrary;
+  return library;
 
   // そのファイルを、どこか（応募・本の絵）がまだ使っているか
   function fileUsed(file) {

@@ -6,6 +6,7 @@ import { speak } from '/shared/speech.js';
 import { sendPost, getOutbox, flushOutbox } from '/shared/outbox.js';
 import { precheck } from '/shared/precheck.js';
 import { REPORT_REASONS, APOLOGY_CHOICES, MAX_APOLOGY } from '/shared/report.js';
+import { FAREWELL_CHOICES as FAREWELLS } from '/shared/leave.js';
 
 const $ = (sel) => document.querySelector(sel);
 const header = $('#header');
@@ -31,6 +32,7 @@ function renderAuth() {
   header.innerHTML = headerHtml(cafeMode ? 'cafe' : 'plaza');
   loginForm.hidden = Boolean(me);
   composer.hidden = !me;
+  $('#practice-note').hidden = !me?.practice;
 }
 
 function snippet(text, n = 20) {
@@ -58,6 +60,7 @@ function bubbleHtml(post) {
         ${parent ? `<span class="quote">↩ ${escapeHtml(parent.author.name)}「${escapeHtml(snippet(parent.text))}」</span>` : ''}
         <p>${escapeHtml(post.text)}</p>
         ${threadLink}
+        ${mine && post.practiceOwner ? '<span class="held-note">🐾 練習モード：きみとキャラたちにだけ見えています</span>' : ''}
         ${mine && post.orphaned ? '<span class="held-note">↩ 元の投稿は消えました（あなたにだけ見えています）</span>' : ''}
         ${mine && post.hidden ? `<span class="held-note">🔒 ${post.hidden === 'admin' ? '運営が止めました。' : '運営が見るまで、'}ほかの人には見えていません</span>` : ''}
       </div>
@@ -287,7 +290,6 @@ blockForm.addEventListener('submit', async (e) => {
 });
 
 // ---- 投稿を消す ----
-const FAREWELLS = ['ありがとう', '頑張ります', '応援してください'];
 const deleteDialog = $('#delete-dialog');
 const deleteForm = $('#delete-form');
 let deletePost = null;

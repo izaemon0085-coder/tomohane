@@ -443,6 +443,45 @@ html[data-oshi-color] .oshi-hero { color: var(--accent-text); }
 @keyframes cab-blink { 50% { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) { .cab-attract { animation: none; } }
 .games-page h1 { text-shadow: 0 0 10px color-mix(in srgb, var(--accent) 35%, transparent); }
+
+/* 退会 */
+.leaving { background: var(--surface-2); border-radius: 12px; padding: 10px 14px; border-top: 0; }
+.leaving .say-line { margin: 8px 0; }
+.leaving .say-line img { flex: none; border-radius: 50%; background: var(--surface); }
+.leave-box summary { cursor: pointer; color: var(--muted, inherit); }
+.leave-box form { display: grid; gap: 10px; margin-top: 10px; }
+.leave-farewell { border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; display: grid; gap: 6px; }
+.family-diary-title { font-size: .95rem; margin: 14px 0 6px; }
+.family-diary { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+.family-diary li { display: flex; gap: 10px; align-items: flex-start; background: var(--surface-2); border-radius: 10px; padding: 8px 12px; }
+.family-diary li img { flex: none; border-radius: 50%; background: var(--surface); }
+.family-diary p { margin: 2px 0 0; }
+
+/* 📮 目安箱 */
+.meyasu { margin-top: 16px; display: grid; gap: 10px; }
+.meyasu form { display: grid; gap: 8px; }
+.meyasu-item { border-bottom: 1px dashed var(--border); padding-bottom: 6px; }
+.mine-chip { display: inline-block; margin: 0 0 4px; font-size: .82rem; background: var(--surface-2); border-radius: 999px; padding: 2px 10px; }
+#meyasu-reply img { flex: none; border-radius: 50%; background: var(--surface); }
+.meyasu-admin-list { list-style: none; padding: 0; display: grid; gap: 10px; }
+.meyasu-admin-list > li { border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; }
+.meyasu-admin-list p { margin: 2px 0; }
+
+/* 📜 ともはね の約束（利用規約・プライバシー） */
+.terms h2 { font-size: 1.05rem; margin: 18px 0 6px; }
+.terms ul, .terms ol { padding-left: 1.3em; line-height: 1.8; }
+.table-wrap { overflow-x: auto; }
+.terms-table { border-collapse: collapse; width: 100%; min-width: 560px; font-size: .88rem; }
+.terms-table th, .terms-table td { border: 1px solid var(--border); padding: 6px 8px; vertical-align: top; text-align: left; }
+.terms-table th { background: var(--surface-2); }
+.terms-child { font-size: 1.05rem; }
+.terms-child li { margin: 4px 0; }
+.agree-box:not([hidden]) { display: grid; gap: 10px; margin-bottom: 14px; border: 2px solid var(--accent, #c2410c); }
+.agree-box .say-line img { flex: none; border-radius: 50%; background: var(--surface); }
+
+/* 🐾 練習モード（おうちの人とつながる前の子ども） */
+.practice-note:not([hidden]) { display: flex; background: var(--surface-2); border-radius: 12px; padding: 8px 12px; margin: 8px 0; }
+.practice-note img { flex: none; border-radius: 50%; background: var(--surface); }
 /* 図書館：地図の建物（カフェのとなり、ガレージの右） */
 .library-spot {
   position: absolute; left: 57%; top: 74%; z-index: 2; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;

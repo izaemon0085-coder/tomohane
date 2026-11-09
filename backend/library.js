@@ -71,6 +71,7 @@ async function savePage(req, { dir, bookId, maxBytes }) {
   return { file, type, size, name };
 }
 const removePage = (dir, page) => (page && PAGE_FILE.test(page.file) ? rm(join(dir, page.file), { force: true }) : null);
+export const removeLibraryFiles = (dir, images) => Promise.all(images.filter(Boolean).map((img) => removePage(dir, img)));
 
 export function createLibraryApi({ store, dir, sendJson, maxPageBytes = MAX_PAGE_BYTES }) {
   const groupOf = (me) => (me?.birthdate ? ageGroup(me.birthdate) : 'child');

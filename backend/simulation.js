@@ -62,7 +62,7 @@ export function createSimulation(store, {
       if (target) replyAsAgent(agent, target);
     } else if (roll < 0.7) {
       const target = store.listPosts().slice(0, 10)
-        .find((p) => p.authorId !== agent.id && !p.likes.includes(agent.id));
+        .find((p) => p.authorId !== agent.id && !p.likes.includes(agent.id) && !p.practiceOwner);
       if (target) {
         store.toggleLike(target.id, agent.id);
         store.addDiary(agent.id, `${store.getUser(target.authorId).name}さんの投稿にいいねした`);
@@ -98,7 +98,8 @@ export function createSimulation(store, {
       text: brain.replyToPost(agent, post, author.name, random, { isFirstPost: !post.replyTo && isFirstPostOf(post) }),
       replyTo: post.id,
     });
-    store.addDiary(agent.id, `${author.name}さんに返信した`);
+    // 練習モードの子どもの名前は、家の日記（だれでも読める）に書かない
+    store.addDiary(agent.id, post.practiceOwner ? '練習中の小さなお客さんに返事をした' : `${author.name}さんに返信した`);
     return reply;
   }
 
@@ -132,7 +133,7 @@ export function createSimulation(store, {
       recs: store.listGameRecs(), usersById: store.usersById(), user: author,
     });
     const reply = store.createPost({ authorId: agent.id, text: gameRecommendReply(rec, author.name), replyTo: post.id });
-    store.addDiary(agent.id, `${author.name}さんにゲームをすすめた`);
+    store.addDiary(agent.id, post.practiceOwner ? '練習中の小さなお客さんにゲームをすすめた' : `${author.name}さんにゲームをすすめた`);
     return reply;
   }
 
@@ -156,7 +157,7 @@ export function createSimulation(store, {
       text: brain.cafeReply(agent, post, author.name, table.name, random, { isFirstVisit }),
       replyTo: post.id,
     });
-    store.addDiary(agent.id, `カフェで${author.name}さんに声をかけた`);
+    store.addDiary(agent.id, post.practiceOwner ? 'カフェで練習中の小さなお客さんに声をかけた' : `カフェで${author.name}さんに声をかけた`);
     return reply;
   }
 

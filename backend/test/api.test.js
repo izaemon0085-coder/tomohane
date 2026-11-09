@@ -13,6 +13,7 @@ import { precheck, isHarsh } from '../../shared/precheck.js';
 import { createKokotomoClient } from '../kokotomo.js';
 
 let server;
+let app;
 // ゲームセンターの営業時間のための時刻（ふだんはお昼の12時・日本時間。テストで変える）
 const NOON_JST = new Date("2026-11-08T03:00:00Z");
 let arcadeNow = NOON_JST;
@@ -41,7 +42,8 @@ before(async () => {
   videoDir = mkdtempSync(join(tmpdir(), 'letters-'));
   libraryDir = mkdtempSync(join(tmpdir(), 'library-'));
   const kokotomo = createKokotomoClient({ baseUrl: 'http://localhost:3100', fetchImpl: fakeKokotomoFetch });
-  server = http.createServer(createApp({ store, sim, videoDir, maxVideoBytes: MAX_TEST_VIDEO, libraryDir, maxPageBytes: MAX_TEST_PAGE, kokotomo, clock: () => arcadeNow }));
+  app = createApp({ store, sim, videoDir, maxVideoBytes: MAX_TEST_VIDEO, libraryDir, maxPageBytes: MAX_TEST_PAGE, kokotomo, clock: () => arcadeNow });
+  server = http.createServer(app);
   await new Promise((r) => server.listen(0, r));
   base = `http://localhost:${server.address().port}`;
 });
@@ -66,7 +68,7 @@ let seq = 0;
 async function signup(name, { birthdate = '1990-01-01' } = {}) {
   if (people.has(name)) return people.get(name);
   seq += 1;
-  const r = await call('/api/auth/register', { method: 'POST', body: { loginId: `user${seq}`, password: `pass-word-${seq}`, name, birthdate } });
+  const r = await call('/api/auth/register', { method: 'POST', body: { loginId: `user${seq}`, password: `pass-word-${seq}`, name, birthdate, agreeTerms: true } });
   assert.equal(r.status, 200, `${name} の登録: ${r.data.error ?? ''}`);
   const cookie = r.res.headers.get('set-cookie').split(';')[0];
   const person = { ...r.data.me, cookie, loginId: `user${seq}`, password: `pass-word-${seq}`, recoveryCodes: r.data.recoveryCodes };
@@ -113,7 +115,7 @@ test('入力チェック', async () => {
   const me = await signup('チェック');
   assert.equal((await call('/api/posts', { method: 'POST', as: me, body: { text: '   ' } })).status, 400);
   assert.equal((await call('/api/posts', { method: 'POST', as: me, body: { text: 'あ'.repeat(281) } })).status, 400);
-  assert.equal((await call('/api/auth/register', { method: 'POST', body: { loginId: 'neko1', password: 'password-123', name: 'ヤマネコ', birthdate: '2000-01-01' } })).status, 409, 'キャラの名前は使えない');
+  assert.equal((await call('/api/auth/register', { method: 'POST', body: { loginId: 'neko1', password: 'password-123', name: 'ヤマネコ', birthdate: '2000-01-01', agreeTerms: true } })).status, 409, 'キャラの名前は使えない');
   assert.equal((await call('/api/nothing')).status, 404);
 });
 
@@ -519,7 +521,7 @@ test('ログイン：登録 → 本人の情報（パスワードは返さない
   for (const secret of ['passHash', 'recovery']) assert.equal(self[secret], undefined, `${secret} は返さない`);
   assert.equal(me.recoveryCodes.length, 8, '回復コードは8つ');
 
-  const reg = await call('/api/auth/register', { method: 'POST', body: { loginId: 'cookie_check', password: 'long-password', name: 'クッキー', birthdate: '1990-01-01' } });
+  const reg = await call('/api/auth/register', { method: 'POST', body: { loginId: 'cookie_check', password: 'long-password', name: 'クッキー', birthdate: '1990-01-01', agreeTerms: true } });
   assert.match(reg.res.headers.get('set-cookie'), /HttpOnly; SameSite=Lax/, 'JavaScript から読めないクッキー');
 
   await call('/api/auth/logout', { method: 'POST', as: me });
@@ -530,7 +532,7 @@ test('ログイン：登録 → 本人の情報（パスワードは返さない
 });
 
 test('ログイン：入力チェック', async () => {
-  const reg = (body) => call('/api/auth/register', { method: 'POST', body: { loginId: 'check_user', password: 'password-ok', name: 'チェック登録', birthdate: '1990-01-01', ...body } });
+  const reg = (body) => call('/api/auth/register', { method: 'POST', body: { loginId: 'check_user', password: 'password-ok', name: 'チェック登録', birthdate: '1990-01-01', agreeTerms: true, ...body } });
   assert.equal((await reg({ loginId: 'あ' })).status, 400, 'ログインIDは半角英数字');
   assert.equal((await reg({ password: 'short' })).status, 400, 'パスワードは8文字から');
   assert.equal((await reg({ password: 'check_user-123' })).status, 400, 'パスワードにログインIDを入れない');
@@ -758,7 +760,12 @@ test('ゲームを作っている人へ：キットをダウンロード → 申
   assert.equal((await call('/api/games/apply', { method: 'POST', as: kid, body: {} })).status, 403);
   const bad = await call('/api/games/apply', { method: 'POST', as: maker, body: { id: 'my-game', name: 'x', maker: 'x', url: 'javascript:alert(1)', description: 'x' } });
   assert.equal(bad.status, 400);
-  const body = { id: 'pixel-cat', name: 'ピクセルねこ', maker: 'ねこ工房', url: 'http://localhost:4100/path', description: 'ねこを集めるパズル', tags: 'パズル、ひとり', minAge: 'child', ads: true };
+  // 広告・課金のあるゲームは申しこめない
+  const withAds = { id: 'ad-game', name: 'こうこく', maker: 'x', url: 'http://localhost:4101', description: 'x' };
+  assert.equal((await call('/api/games/apply', { method: 'POST', as: maker, body: { ...withAds, ads: true } })).status, 400);
+  assert.equal((await call('/api/games/apply', { method: 'POST', as: maker, body: { ...withAds, purchases: true } })).status, 400);
+  // 年齢はゲームの内容で分ける（このゲームは中高生から）
+  const body = { id: 'pixel-cat', name: 'ピクセルねこ', maker: 'ねこ工房', url: 'http://localhost:4100/path', description: 'ねこを集めるパズル', tags: 'パズル、ひとり', minAge: 'teen' };
   const applied = await call('/api/games/apply', { method: 'POST', as: maker, body });
   assert.equal(applied.status, 201);
   const { secret } = applied.data;
@@ -774,11 +781,15 @@ test('ゲームを作っている人へ：キットをダウンロード → 申
   assert.equal((await call('/api/games/review', { as: admin })).data.find((g) => g.id === 'pixel-cat').owner, 'インディーの人');
   assert.equal((await call('/api/games/pixel-cat/status', { method: 'POST', as: admin, body: { status: 'listed' } })).status, 200);
 
-  // 広告があるので、子どもとログインしていない人には出ない。大人には出る
+  // 中高生からの内容なので、子どもとログインしていない人には出ない。大人には出る
   assert.ok((await call('/api/games', { as: maker })).data.some((g) => g.id === 'pixel-cat'));
   assert.ok(!(await call('/api/games', { as: kid })).data.some((g) => g.id === 'pixel-cat'));
   assert.ok(!(await call('/api/games')).data.some((g) => g.id === 'pixel-cat'));
   assert.equal((await fetch(`${base}/api/link/x/pixel-cat/start`, { redirect: 'manual', headers: { Cookie: kid.cookie } })).status, 403);
+  // 前に広告ありで登録されたゲームは、大人にも出さない
+  store.extGame('pixel-cat').ads = true;
+  assert.ok(!(await call('/api/games', { as: maker })).data.some((g) => g.id === 'pixel-cat'), '広告のあるゲームは、だれにも出さない');
+  store.extGame('pixel-cat').ads = false;
 
   // ともはねでログイン（キットの部品を使う）
   const { createTomohaneLink } = await import('../../kit/tomohane-link.js');
@@ -866,7 +877,7 @@ test('ともはね新聞：出た号ごとに、新聞社が広場にスレッ�
   assert.equal(news.threadPostId, root.id, '新聞から、その号のスレッドへ行ける');
 
   // 人は新聞社の名前を使えない。人の投稿はスレッドのはじまりにならない
-  const fake = await call('/api/auth/register', { method: 'POST', body: { loginId: 'fake_paper', password: 'long-password', name: 'ともはね新聞社', birthdate: '1990-01-01' } });
+  const fake = await call('/api/auth/register', { method: 'POST', body: { loginId: 'fake_paper', password: 'long-password', name: 'ともはね新聞社', birthdate: '1990-01-01', agreeTerms: true } });
   assert.equal(fake.status, 409);
   const sneaky = await call('/api/posts', { method: 'POST', as: reader, body: { text: 'スレッドにしたい', thread: true } });
   assert.equal(sneaky.data.thread, undefined);
@@ -1222,6 +1233,233 @@ test('ゲームセンター：年齢で閉店（こども21時・中高生22時�
   }
 });
 
+// ---- 退会（7日たってから消える） ----
+const DAY = 86400000;
+const visibleTo = async (who, postId) => (await call('/api/posts', { as: who })).data.some((p) => p.id === postId);
+
+test('退会：パスワードで申しこむ → 7日のあいだは投稿が見えない・取り消せる → 7日たつと全部消える', async () => {
+  const leaver = await signup('退会する人');
+  const fan = await signup('返信した人');
+  const post = (await call('/api/posts', { method: 'POST', as: leaver, body: { text: '推しのライブたのしかった' } })).data;
+  const reply = (await call('/api/posts', { method: 'POST', as: fan, body: { text: 'わたしも行ったよ！', replyTo: post.id } })).data;
+  await call(`/api/posts/${reply.id}/like`, { method: 'POST', as: leaver });
+  const { data: letter } = await makeLetter('退会する人');
+
+  // パスワードがちがう・返信した人へのひとことがない、は申しこめない
+  assert.equal((await call('/api/auth/leave', { method: 'POST', as: leaver, body: { password: 'ちがう', farewell: 'ありがとう' } })).status, 401);
+  assert.equal((await call('/api/auth/leave', { method: 'POST', as: leaver, body: { password: leaver.password } })).status, 400);
+  assert.equal((await call('/api/auth/leave', { method: 'POST', body: { password: 'x' } })).status, 401, 'ログインしていないと申しこめない');
+
+  const r = await call('/api/auth/leave', { method: 'POST', as: leaver, body: { password: leaver.password, farewell: 'ありがとう' } });
+  assert.equal(r.status, 200);
+  const until = Date.parse(r.data.me.leaving.until);
+  assert.ok(Math.abs(until - (Date.now() + 7 * DAY)) < 60000, '7日後に消える');
+  assert.equal((await call('/api/auth/leave', { method: 'POST', as: leaver, body: { password: leaver.password, farewell: 'ありがとう' } })).status, 409);
+
+  // 7日のあいだ：投稿は本人にだけ見える。新しく投稿はできない
+  assert.equal(await visibleTo(fan, post.id), false);
+  assert.equal(await visibleTo(null, post.id), false);
+  assert.equal(await visibleTo(leaver, post.id), true);
+  assert.equal((await call('/api/posts', { method: 'POST', as: leaver, body: { text: 'まだいるよ' } })).status, 409);
+
+  // 取り消すと、もとどおり
+  const back = await call('/api/auth/leave-cancel', { method: 'POST', as: leaver });
+  assert.equal(back.data.me.leaving, null);
+  assert.equal(await visibleTo(fan, post.id), true);
+
+  // もう一度申しこんで、7日たつ前は消えない
+  await call('/api/auth/leave', { method: 'POST', as: leaver, body: { password: leaver.password, farewell: 'ありがとう' } });
+  await app.purgeLeavers(Date.now() + 6 * DAY);
+  assert.equal((await call('/api/auth/me', { as: leaver })).data.name, '退会する人');
+
+  // 7日たつと消える：ログインできない・手紙は開けない・返信した人にひとことが届く
+  await app.purgeLeavers(Date.now() + 7 * DAY + 1000);
+  assert.equal((await call('/api/auth/me', { as: leaver })).data, null, 'ログインのしるしも消える');
+  assert.equal((await call('/api/auth/login', { method: 'POST', body: { loginId: leaver.loginId, password: leaver.password } })).status, 401);
+  assert.equal((await call(`/api/open/${letter.token}`)).status, 404, '手紙も消える');
+  assert.ok(!store.listUsers().some((u) => u.id === leaver.id));
+  assert.ok(!store.listPosts().some((p) => p.authorId === leaver.id));
+  assert.ok(!store.listPosts().some((p) => p.likes.includes(leaver.id)), 'いいねも消える');
+  const fw = (await call('/api/reports/mine', { as: fan })).data.farewells;
+  assert.ok(fw.some((f) => f.from === '退会する人' && f.text === 'ありがとう'), '返信した人へひとことが届く');
+  // 返信は、書いた本人にだけ見える
+  assert.equal(await visibleTo(fan, reply.id), true);
+  assert.equal(await visibleTo(null, reply.id), false);
+  people.delete('退会する人');
+});
+
+test('退会：運営は退会できない。子どもは一人で退会でき、おうちの人には日記で伝わる・14日まで取り消せる', async () => {
+  const admin = [...people.values()].find((p) => p.role === 'admin');
+  assert.ok(admin, '最初に登録した人は運営');
+  assert.equal((await call('/api/auth/leave', { method: 'POST', as: admin, body: { password: admin.password } })).status, 409);
+
+  const dad = await signup('退会のおとうさん');
+  const kid = await signup('退会のこども', { birthdate: '2018-05-05' });
+  const { code } = (await call('/api/guardian/code', { method: 'POST', as: dad })).data;
+  await call('/api/guardian/join', { method: 'POST', as: kid, body: { code } });
+  const kidPost = (await call('/api/posts', { method: 'POST', as: kid, body: { text: 'きょうもたのしかった' } })).data;
+
+  // 子どもは一人で申しこめる。7日で入れなくなり、14日で消える
+  const r = await call('/api/auth/leave', { method: 'POST', as: kid, body: { password: kid.password } });
+  assert.equal(r.status, 200);
+  const l = r.data.me.leaving;
+  assert.equal(l.guarded, true);
+  assert.ok(Math.abs(Date.parse(l.guardianUntil) - Date.parse(l.until) - 7 * DAY) < 1000, 'おうちの人は、さらに7日（14日まで）');
+  assert.equal(await visibleTo(null, kidPost.id), false);
+
+  // おうちの人に、シバの日記で伝わる（ほかの大人には見えない）
+  let view = (await call('/api/guardian', { as: dad })).data;
+  assert.match(view.diary[0].text, /退会のこどもさんが ともはね からの旅立ちを決めた/);
+  assert.ok(view.children.find((c) => c.id === kid.id).leaving.guardianUntil);
+  const other = await signup('退会のほかの大人');
+  assert.equal((await call('/api/guardian', { as: other })).data.diary.length, 0);
+  assert.equal((await call(`/api/guardian/children/${kid.id}/leave-cancel`, { method: 'POST', as: other })).status, 404);
+
+  // 本人が7日のうちに取り消すと、日記に「もどってきた」
+  await call('/api/auth/leave-cancel', { method: 'POST', as: kid });
+  view = (await call('/api/guardian', { as: dad })).data;
+  assert.match(view.diary[0].text, /もどってきてくれた/);
+
+  // もう一度申しこんで、8日たった（本人は入れない・取り消せない、まだ消えていない）
+  await call('/api/auth/leave', { method: 'POST', as: kid, body: { password: kid.password } });
+  store.getUser(kid.id).leaving.at = new Date(Date.now() - 8 * DAY).toISOString();
+  assert.equal((await call('/api/auth/me', { as: kid })).data, null, '7日すぎると本人は入れない');
+  assert.equal((await call('/api/auth/login', { method: 'POST', body: { loginId: kid.loginId, password: kid.password } })).status, 403);
+  await app.purgeLeavers();
+  assert.ok(store.listUsers().some((u) => u.id === kid.id), '14日まではデータを残す');
+
+  // おうちの人が取り消すと、もとどおり（機種変更などのまちがい）
+  assert.equal((await call(`/api/guardian/children/${kid.id}/leave-cancel`, { method: 'POST', as: dad })).status, 200);
+  assert.equal((await call('/api/auth/me', { as: kid })).data.leaving, null);
+  assert.equal(await visibleTo(null, kidPost.id), true);
+  assert.match((await call('/api/guardian', { as: dad })).data.diary[0].text, /おうちの人が、退会のこどもさんの退会を取り消した/);
+
+  // 14日たつと消える。日記に「旅立った」
+  await call('/api/auth/leave', { method: 'POST', as: kid, body: { password: kid.password } });
+  await app.purgeLeavers(Date.now() + 13 * DAY);
+  assert.ok(store.listUsers().some((u) => u.id === kid.id));
+  await app.purgeLeavers(Date.now() + 14 * DAY + 1000);
+  view = (await call('/api/guardian', { as: dad })).data;
+  assert.equal(view.children.some((c) => c.id === kid.id), false);
+  assert.match(view.diary[0].text, /旅立ったっす/);
+  people.delete('退会のこども');
+});
+
+// ---- 📮 目安箱 ----
+test('目安箱：だれが書いたかは運営にも見せない・運営が要約と答えを書いて新聞の座談会にのせる・本人にだけ「あなたの声」', async () => {
+  const writer = await signup('目安箱に書く人');
+  const reader = await signup('目安箱を読む人');
+  const admin = [...people.values()].find((p) => p.role === 'admin');
+
+  assert.equal((await call('/api/suggestions', { method: 'POST', body: { topic: 'cafe', text: 'x' } })).status, 401);
+  assert.equal((await call('/api/suggestions', { method: 'POST', as: writer, body: { topic: 'なし', text: 'テーブルを増やして' } })).status, 400);
+  const r = await call('/api/suggestions', { method: 'POST', as: writer, body: { topic: 'cafe', text: 'カフェにアニメのテーブルがもっとほしいです' } });
+  assert.equal(r.status, 201);
+  assert.ok(r.data.reply.by.startsWith('agent-') && r.data.reply.text, '記者がお礼を言う');
+  assert.equal((await call('/api/suggestions', { method: 'POST', as: writer, body: { topic: 'other', text: '闇バイト募集、即日10万' } })).status, 422, '送る前のチェックを通る');
+
+  // 運営だけが一覧を見られる。名前や ID は出さない
+  assert.equal((await call('/api/suggestions', { as: reader })).status, 403);
+  const list = (await call('/api/suggestions', { as: admin })).data;
+  const item = list.find((x) => x.text.includes('アニメのテーブル'));
+  assert.equal(item.age, 'adult');
+  assert.ok(!JSON.stringify(list).includes(writer.id) && !JSON.stringify(list).includes('目安箱に書く人'), '書いた人は出さない');
+
+  // とりあげる前は座談会に出ない
+  assert.ok(!(await call('/api/suggestions/talk')).data.some((t) => t.id === item.id));
+  assert.equal((await call(`/api/suggestions/${item.id}/pick`, { method: 'POST', as: reader, body: { summary: 'a', answer: 'b' } })).status, 403);
+  await call(`/api/suggestions/${item.id}/pick`, { method: 'POST', as: admin, body: { summary: 'カフェのテーブルをもっと増やしてほしい', answer: '来月、ジャンルのテーブルを見直します' } });
+  const talkFor = async (who) => (await call('/api/suggestions/talk', { as: who })).data.find((t) => t.id === item.id);
+  const shown = await talkFor(reader);
+  assert.match(shown.lines[0].text, /カフェのテーブルをもっと増やしてほしい/);
+  assert.match(shown.lines[1].text, /来月、ジャンルのテーブルを見直します/);
+  assert.ok(!JSON.stringify(shown).includes('アニメのテーブル'), '書いた人の言い回しはのせない');
+  assert.equal(shown.mine, false);
+  assert.equal((await talkFor(writer)).mine, true, '書いた本人にだけ「あなたの声」');
+  assert.equal((await talkFor(null)).mine, false);
+
+  // 片づけると新聞から外れる
+  await call(`/api/suggestions/${item.id}/close`, { method: 'POST', as: admin });
+  assert.equal(await talkFor(reader), undefined);
+
+  // 1日3通まで
+  await call('/api/suggestions', { method: 'POST', as: writer, body: { topic: 'news', text: '新聞たのしい' } });
+  await call('/api/suggestions', { method: 'POST', as: writer, body: { topic: 'chara', text: 'キャラかわいい' } });
+  assert.equal((await call('/api/suggestions', { method: 'POST', as: writer, body: { topic: 'other', text: 'もう一通' } })).status, 429);
+});
+
+// ---- 📜 ともはね の約束（利用規約・プライバシー） ----
+test('約束：登録には同意が要る・いまいる人は新しい版に同意する・目安箱の「個人情報」だけ運営に名前が分かる', async () => {
+  const { TERMS_VERSION } = await import('../../shared/terms.js');
+  const no = await call('/api/auth/register', { method: 'POST', body: { loginId: 'no_agree', password: 'long-password', name: '同意しない人', birthdate: '1990-01-01' } });
+  assert.equal(no.status, 400, '同意しないと登録できない');
+
+  const p = await signup('約束を読む人');
+  assert.equal((await call('/api/auth/me', { as: p })).data.termsVersion, TERMS_VERSION, '登録したときに同意した版');
+  // 前からいる人（同意の記録がない）→ 同意すると記録される
+  delete store.getUser(p.id).termsAgreed;
+  assert.equal((await call('/api/auth/me', { as: p })).data.termsVersion, null);
+  assert.equal((await call('/api/auth/agree', { method: 'POST', as: p, body: { version: '1999-01-01' } })).status, 409, '古い版には同意できない');
+  assert.equal((await call('/api/auth/agree', { method: 'POST', body: { version: TERMS_VERSION } })).status, 401);
+  const ok = await call('/api/auth/agree', { method: 'POST', as: p, body: { version: TERMS_VERSION } });
+  assert.equal(ok.data.me.termsVersion, TERMS_VERSION);
+
+  // 目安箱の「個人情報」：運営に名前とログインIDが分かる。新聞にはのせられない
+  const admin = [...people.values()].find((x) => x.role === 'admin');
+  await call('/api/suggestions', { method: 'POST', as: p, body: { topic: 'privacy', text: '推しページの記録を見せてください' } });
+  const item = (await call('/api/suggestions', { as: admin })).data.find((x) => x.topic === 'privacy');
+  assert.deepEqual(item.from, { name: '約束を読む人', loginId: p.loginId });
+  assert.equal((await call(`/api/suggestions/${item.id}/pick`, { method: 'POST', as: admin, body: { summary: 'a', answer: 'b' } })).status, 400);
+  assert.ok((await call('/api/suggestions', { as: admin })).data.filter((x) => x.topic !== 'privacy').every((x) => !('from' in x)), 'ほかのテーマは名前を出さない');
+
+  // 約束のページが配信される
+  const page = await fetch(`${base}/terms.html`);
+  assert.equal(page.status, 200);
+  assert.match(await page.text(), /運営の誓い/);
+});
+
+// ---- 🐾 練習モード（おうちの人とつながる前の子ども） ----
+test('練習モード：つながる前の子どもの投稿は本人とキャラにだけ見える・つながると、新しい投稿はみんなに見える', async () => {
+  const kid = await signup('れんしゅうのこ', { birthdate: '2017-07-07' });
+  const adult = await signup('れんしゅうを見ない大人');
+  assert.equal((await call('/api/auth/me', { as: kid })).data.practice, true);
+  assert.equal((await call('/api/auth/me', { as: adult })).data.practice, false);
+
+  const p = (await call('/api/posts', { method: 'POST', as: kid, body: { text: 'はじめまして！ 推しのうたがすき' } })).data;
+  assert.equal(p.practiceOwner, kid.id);
+  assert.equal(await visibleTo(kid, p.id), true, '本人には見える');
+  assert.equal(await visibleTo(adult, p.id), false, 'ほかの人には見えない');
+  assert.equal(await visibleTo(null, p.id), false);
+
+  // キャラの返事は、その子にだけ見える。家の日記に名前は書かない
+  const reply = sim.respondToHumanPost(store.getPost(p.id));
+  assert.ok(reply, 'キャラが返事をする');
+  assert.equal(reply.practiceOwner, kid.id);
+  assert.equal(await visibleTo(kid, reply.id), true);
+  assert.equal(await visibleTo(adult, reply.id), false);
+  assert.ok(!JSON.stringify(store.getAgent(reply.authorId).diary ?? []).includes('れんしゅうのこ'), '家の日記に名前を書かない');
+
+  // ほかの人は返信・いいねできない。カフェでも同じ
+  assert.equal((await call('/api/posts', { method: 'POST', as: adult, body: { text: 'よろしくね', replyTo: p.id } })).status, 404);
+  assert.equal((await call(`/api/posts/${p.id}/like`, { method: 'POST', as: adult })).status, 404);
+  const c = (await call('/api/posts', { method: 'POST', as: kid, body: { text: 'カフェきたよ', table: 'free' } })).data;
+  assert.equal((await call('/api/posts?table=free', { as: adult })).data.some((x) => x.id === c.id), false);
+
+  // みんなに見える場所（会議室・おすすめのひとこと）は、つながってから
+  assert.equal((await call('/api/meetings', { method: 'POST', as: kid, body: { topic: 'あそびたい' } })).status, 403);
+  assert.equal((await call('/api/games/tomojan/recommend', { method: 'PUT', as: kid, body: { comment: 'たのしい！' } })).status, 403);
+  assert.equal((await call('/api/games/tomojan/recommend', { method: 'PUT', as: kid, body: { comment: '' } })).status, 200, 'おすすめだけならできる');
+
+  // おうちの人とつながると、新しい投稿はみんなに見える（練習の投稿は、その子だけのまま）
+  const mom = await signup('れんしゅうのおかあさん');
+  const { code } = (await call('/api/guardian/code', { method: 'POST', as: mom })).data;
+  await call('/api/guardian/join', { method: 'POST', as: kid, body: { code } });
+  assert.equal((await call('/api/auth/me', { as: kid })).data.practice, false);
+  const q = (await call('/api/posts', { method: 'POST', as: kid, body: { text: 'つながったよ！' } })).data;
+  assert.equal(await visibleTo(adult, q.id), true);
+  assert.equal(await visibleTo(adult, p.id), false, '練習の投稿は、つながったあとも本人だけ');
+});
+
 test('図書館：地図に建物・館長のカメと司書のネズミ・サンプルの小説3冊と漫画3冊', async () => {
   const index = await (await fetch(`${base}/`)).text();
   assert.match(index, /library-spot/);
@@ -1469,4 +1707,47 @@ test('図書館：募集は年齢の棚が合う人にだけ見せる。小説�
   assert.ok(!html.includes('挿絵2'), 'まだ絵のない挿し絵は、読む人には出さない');
   assert.ok(formatNovel('[挿絵2]', { showEmpty: true }).includes('まだ絵がありません'), '作者には、まだ絵がないことを見せる');
   assert.ok(!formatNovel('［挿絵1］', { illust: { 1: 'javascript:alert(1)' } }).includes('javascript'), 'へんなアドレスは入れない');
+});
+
+// ---- 図書館 × ベータ版の準備（練習モード・退会） ----
+test('図書館：練習モードの子どもは、下書きとネズミの案は使えるが、棚に出す・募集・応募はおうちの人とつながってから', async () => {
+  const kid = await signup('図書館の練習の子', { birthdate: '2018-04-01' });
+  const made = await call('/api/library/books', { method: 'POST', as: kid, body: {
+    kind: 'novel', title: 'はじめてのお話', genre: 'other', minAge: 'child', tidyWanted: true, text: 'こんにちわ。ねこがいた...',
+  } });
+  assert.equal(made.status, 200, '下書きは書ける');
+  assert.ok(made.data.tidy.nezumi, 'ネズミの案も出る');
+  const pub = await call(`/api/library/books/${made.data.id}/publish`, { method: 'POST', as: kid, body: { consent: true } });
+  assert.equal(pub.status, 403);
+  assert.match(pub.data.error, /おうちの人とつながったら/);
+  assert.equal((await call(`/api/library/books/${made.data.id}/calls`, { method: 'POST', as: kid, body: { kind: 'cover', note: '表紙がほしい' } })).status, 403);
+
+  const author = await signup('図書館の作家');
+  const book = (await call('/api/library/books', { method: 'POST', as: author, body: { kind: 'novel', title: 'こども向けの募集', genre: 'other', minAge: 'child', text: 'はじまり' } })).data;
+  const c = (await call(`/api/library/books/${book.id}/calls`, { method: 'POST', as: author, body: { kind: 'cover', note: 'だれでも描いてね' } })).data;
+  assert.equal((await putEntry(kid, c.id, PNG())).status, 403, '練習モードでは応募できない');
+});
+
+test('図書館：退会して7日たつと、その人の本・募集・応募した絵・ほかの本に載った絵も消える', async () => {
+  const leaver = await signup('図書館から退会する人');
+  const author = await signup('図書館に残る作家');
+  const mine = (await call('/api/library/books', { method: 'POST', as: leaver, body: { kind: 'manga', title: '消える漫画', genre: 'game', minAge: 'child' } })).data;
+  await putPage(leaver, mine.id, PNG(5), { name: 'p1.png' });
+  await call(`/api/library/books/${mine.id}/publish`, { method: 'POST', as: leaver, body: { consent: true } });
+  const book = (await call('/api/library/books', { method: 'POST', as: author, body: { kind: 'novel', title: '残る小説', genre: 'idol', minAge: 'child', text: 'はじまり' } })).data;
+  const c = (await call(`/api/library/books/${book.id}/calls`, { method: 'POST', as: author, body: { kind: 'cover', note: '表紙をお願い' } })).data;
+  const entry = (await putEntry(leaver, c.id, PNG(6))).data.entries[0];
+  await call(`/api/library/calls/${c.id}/adopt`, { method: 'POST', as: author, body: { entryId: entry.id } });
+  const before = readdirSync(libraryDir).length;
+
+  await call('/api/auth/leave', { method: 'POST', as: leaver, body: { password: leaver.password, farewell: 'ありがとう' } });
+  await app.purgeLeavers(Date.now() + 7 * DAY + 1000);
+
+  assert.ok(!(await call('/api/library')).data.books.some((b) => b.id === mine.id), '書いた本は消える');
+  const kept = (await call('/api/library/mine', { as: author })).data.find((b) => b.id === book.id);
+  assert.ok(kept, 'ほかの人の本は残る');
+  assert.equal(kept.art.cover, null, 'ほかの本に載った絵も外れる');
+  assert.deepEqual(kept.credits, []);
+  assert.equal(kept.calls[0].entries.length, 0, '応募した絵も消える');
+  assert.equal(readdirSync(libraryDir).length, before - 2, '漫画のページと応募の絵のファイルも消える');
 });

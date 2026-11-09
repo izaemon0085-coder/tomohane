@@ -1,6 +1,8 @@
 // 🐾 モグの保存係（工程 1-6）：パソコンで毎日動く
 // ・Projects フォルダのアプリ（Git のリポジトリ）を1つずつ見て、「保存（コミット）していない」「GitHub に送っていない」を知らせる
 // ・全部のリポジトリの写し（git bundle）を、家のバックアップ先に置く（GitHub に送らない ともあい・非公開のコロッセオも）
+// ・アプリのデータ（data フォルダ。Git に入れていないので bundle には入らない）も、そのまま写す
+//   もどし方：アプリを止めて、写しの「<名前>-data」フォルダの中身を、アプリの data フォルダに戻す
 // ・したことは mogu-log.jsonl に1行ずつ残す（工程 1-7 の記録）
 // モグは「見る・写す・知らせる」だけ。コミットや送信はしない（決めるのは人）
 //
@@ -10,7 +12,7 @@
 //   MOGU_KEEP     … 写しを何日ぶん残すか（ふだんは 7）
 // 外部パッケージなし
 import { execFileSync } from 'node:child_process';
-import { appendFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -47,6 +49,16 @@ function backup(dir, name) {
   return file;
 }
 
+// アプリのデータ（ユーザー・投稿・手紙など）。data フォルダがなければ何もしない
+function backupData(dir, name) {
+  const src = join(dir, 'data');
+  if (!existsSync(src) || !statSync(src).isDirectory()) return null;
+  const dest = join(BACKUP, today, `${name}-data`);
+  rmSync(dest, { recursive: true, force: true }); // 同じ日に2回動いたら、新しいほうにする
+  cpSync(src, dest, { recursive: true });
+  return dest;
+}
+
 // 古い写しを片づける（KEEP 日ぶん残す）
 function prune() {
   if (!existsSync(BACKUP)) return [];
@@ -65,7 +77,9 @@ function main() {
     const r = inspect(dir);
     let bundle = null;
     try { bundle = backup(dir, r.name); } catch (e) { r.backupError = e.message; }
-    report.push({ ...r, bundle });
+    let data = null;
+    try { data = backupData(dir, r.name); } catch (e) { r.dataError = e.message; }
+    report.push({ ...r, bundle, data });
   }
   const pruned = prune();
 
@@ -77,8 +91,10 @@ function main() {
     if (r.remote && r.noUpstream.length) notes.push(`GitHub にないブランチ ${r.noUpstream.join('・')}`);
     if (!r.remote) notes.push('GitHub にはつないでいない（パソコンの中だけ）');
     if (r.backupError) notes.push(`写しを作れなかった：${r.backupError}`);
-    const ok = !r.changes && !r.unpushed && !r.backupError && !(r.remote && r.noUpstream.length);
-    lines.push(`  ${ok ? '✅' : '⚠️'} ${r.name}：${notes.length ? notes.join('、') : 'だいじょうぶモグ'}`);
+    if (r.dataError) notes.push(`データを写せなかった：${r.dataError}`);
+    const ok = !r.changes && !r.unpushed && !r.backupError && !r.dataError && !(r.remote && r.noUpstream.length);
+    const dataNote = r.data ? '（データも写した）' : '';
+    lines.push(`  ${ok ? '✅' : '⚠️'} ${r.name}：${notes.length ? notes.join('、') : 'だいじょうぶモグ'}${dataNote}`);
   }
   if (pruned.length) lines.push(`  🧹 古い写しを片づけた：${pruned.join('・')}`);
   const text = lines.join('\n');
@@ -88,8 +104,9 @@ function main() {
   writeFileSync(join(BACKUP, 'mogu-latest.txt'), `${text}\n`);
   appendFileSync(join(BACKUP, 'mogu-log.jsonl'), `${JSON.stringify({
     at: new Date().toISOString(), agent: 'mogu', action: 'patrol-and-backup',
-    repos: report.map(({ name, changes, unpushed, remote, noUpstream, bundle, backupError }) => ({
+    repos: report.map(({ name, changes, unpushed, remote, noUpstream, bundle, backupError, data, dataError }) => ({
       name, changes, unpushed, onGitHub: Boolean(remote), noUpstream, backedUp: Boolean(bundle), backupError: backupError ?? null,
+      dataBackedUp: Boolean(data), dataError: dataError ?? null,
     })),
     pruned,
   })}\n`);
