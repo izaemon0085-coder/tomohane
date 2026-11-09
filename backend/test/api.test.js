@@ -121,8 +121,8 @@ test('入力チェック', async () => {
 
 test('サイドフロント：エージェントの家とノック', async () => {
   const { data: agents } = await call('/api/agents');
-  assert.equal(agents.length, 12);
-  assert.deepEqual(agents.map((a) => a.name), ['ヤマネコ', 'ウサギ', 'フクロウ', 'シバ', 'クルマ', 'モグ', 'タヌキ', 'ペンギン', 'キツネ', 'カエル', 'カメ', 'ネズミ']);
+  assert.equal(agents.length, 13);
+  assert.deepEqual(agents.map((a) => a.name), ['ヤマネコ', 'ウサギ', 'フクロウ', 'シバ', 'クルマ', 'モグ', 'タヌキ', 'ペンギン', 'キツネ', 'カエル', 'カメ', 'ネズミ', 'ハト']);
   const id = agents[0].id;
   store.updateAgent(id, { status: 'sleeping' });
   const { data } = await call(`/api/agents/${id}/knock`, { method: 'POST' });
@@ -199,7 +199,7 @@ test('保存データに新しいキャラが自動で引っ越してくる', as
   const state = { users: old.listAgents().slice(0, 2), posts: [], meetings: [] };
   writeFileSync(file, JSON.stringify(state));
   const loaded = createStore({ file });
-  assert.equal(loaded.listAgents().length, 12);
+  assert.equal(loaded.listAgents().length, 13);
   assert.deepEqual(loaded.listTables().map((t) => t.id), ['free', 'idol', 'anime', 'game', 'vtuber', 'sports', 'other'], 'カフェのテーブルも用意される');
   rmSync(dir, { recursive: true, force: true });
 });
@@ -1750,4 +1750,67 @@ test('図書館：退会して7日たつと、その人の本・募集・応募�
   assert.deepEqual(kept.credits, []);
   assert.equal(kept.calls[0].entries.length, 0, '応募した絵も消える');
   assert.equal(readdirSync(libraryDir).length, before - 2, '漫画のページと応募の絵のファイルも消える');
+});
+
+// ---- 🔔 お知らせ（ハトの郵便屋さん）：図書館・おうちの人・目安箱 ----
+test('お知らせ：図書館の応募・絵が選ばれた・運営の返事・取り下げが、本人に届く。読んだしるしをつけられる', async () => {
+  const author = await signup('お知らせを受ける作家');
+  const artist = await signup('お知らせを受ける絵描き');
+  const admin = await signup('お知らせの運営');
+  store.getUser(admin.id).role = 'admin';
+  const notices = async (who) => (await call('/api/notices', { as: who })).data;
+  assert.equal((await call('/api/notices')).status, 401, 'ログインが必要');
+  const start = (await notices(author)).items.length;
+
+  const book = (await call('/api/library/books', { method: 'POST', as: author, body: { kind: 'novel', title: 'ハトの本', genre: 'other', minAge: 'child', text: 'はじまり' } })).data;
+  const c = (await call(`/api/library/books/${book.id}/calls`, { method: 'POST', as: author, body: { kind: 'cover', note: '表紙をお願い' } })).data;
+  const entry = (await putEntry(artist, c.id, PNG(3))).data.entries[0];
+  let a = await notices(author);
+  assert.equal(a.items.length, start + 1);
+  assert.match(a.items[0].text, /「ハトの本」の表紙の募集に、お知らせを受ける絵描きさんが応募してくれたよ/);
+  assert.equal(a.items[0].link, `/library-write.html?book=${book.id}`);
+  assert.ok(a.unread >= 1);
+
+  await call(`/api/library/calls/${c.id}/adopt`, { method: 'POST', as: author, body: { entryId: entry.id } });
+  assert.match((await notices(artist)).items[0].text, /あなたの絵が「ハトの本」の表紙に選ばれたよ/);
+
+  await call(`/api/library/books/${book.id}/help`, { method: 'POST', as: author, body: { note: '見てほしい' } });
+  await call(`/api/library/books/${book.id}/help-reply`, { method: 'POST', as: admin, body: { note: 'いいと思います' } });
+  await call(`/api/library/books/${book.id}/publish`, { method: 'POST', as: author, body: { consent: true } });
+  await call(`/api/library/books/${book.id}/hide`, { method: 'POST', as: admin, body: { reason: 'ためしの取り下げ' } });
+  a = await notices(author);
+  assert.match(a.items[0].text, /運営が棚から取り下げたよ（理由：ためしの取り下げ）/);
+  assert.match(a.items[1].text, /運営から返事がきたよ/);
+
+  // 読んだしるし：1つだけ → ぜんぶ
+  const before = a.unread;
+  await call('/api/notices/read', { method: 'POST', as: author, body: { ids: [a.items[0].id] } });
+  assert.equal((await notices(author)).unread, before - 1);
+  await call('/api/notices/read', { method: 'POST', as: author, body: {} });
+  assert.equal((await notices(author)).unread, 0);
+  assert.equal((await notices(artist)).items.some((n) => n.text.includes('取り下げ')), false, 'ほかの人のお知らせは見えない');
+});
+
+test('お知らせ：おうちの人とつながった・目安箱の声が新聞にのった。ハトはお知らせのページにだけいる', async () => {
+  const guardian = await signup('お知らせのおうちの人');
+  const kid = await signup('お知らせの子', { birthdate: '2018-06-01' });
+  const { code } = (await call('/api/guardian/code', { method: 'POST', as: guardian })).data;
+  assert.equal((await call('/api/guardian/join', { method: 'POST', as: kid, body: { code } })).status, 200);
+  assert.match((await call('/api/notices', { as: kid })).data.items[0].text, /お知らせのおうちの人さんと、おうちの人としてつながったよ/);
+  assert.match((await call('/api/notices', { as: guardian })).data.items[0].text, /お知らせの子さんと、おうちの人としてつながったよ/);
+
+  const writer = await signup('目安箱に書いた人');
+  const admin = await signup('お知らせの運営');
+  store.getUser(admin.id).role = 'admin';
+  const s = store.addSuggestion(writer.id, { topic: 'cafe', text: 'カフェにテーブルを足してほしい' });
+  store.pickSuggestion(s.id, { summary: 'テーブルを足してほしい', answer: 'ジャンルのリクエストからどうぞ' });
+  const n = (await call('/api/notices', { as: writer })).data.items[0];
+  assert.match(n.text, /新聞の「目安箱から」にのったよ/);
+  assert.equal(n.link, '/news.html');
+
+  const agents = (await call('/api/agents')).data;
+  assert.deepEqual(agents.filter((x) => x.place === 'post').map((x) => [x.name, x.roleLabel]), [['ハト', 'お知らせの郵便屋さん']]);
+  assert.equal((await call('/api/posts')).data.some((p) => p.authorId === 'agent-hato'), false, '広場には出ない');
+  const page = await (await fetch(`${base}/notices.html`)).text();
+  assert.match(page, /hato\.svg/);
 });

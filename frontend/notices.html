@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>お知らせ | ともはね β版</title>
+  <link rel="stylesheet" href="/shared/base.css">
+  <link rel="stylesheet" href="/shared/playground.css">
+  <link rel="stylesheet" href="/shared/customize.css">
+  <link rel="stylesheet" href="/shared/network.css">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body class="notices-page">
+  <header class="site-header" id="header"></header>
+  <main class="page">
+    <h1>🔔 お知らせ</h1>
+
+    <!-- お知らせの郵便屋さん、ハト -->
+    <section class="card panel notice-hato" aria-live="polite">
+      <div class="say-line"><img src="/shared/avatars/hato.svg" alt="" width="56" height="56">
+        <div><p class="muted small">お知らせの郵便屋さん ハト</p>
+        <p id="hato-say">クルックー！ お知らせを届けにきたよ。</p></div></div>
+    </section>
+
+    <p class="note-line" id="need-login" hidden>お知らせを見るには、ログインしてください。<a href="/login.html?next=/notices.html">ログイン</a></p>
+
+    <section id="box" hidden>
+      <div class="row between notice-tools">
+        <p class="muted small">図書館のこと・おうちの人のこと・目安箱のことを届けます。100件まで残ります。</p>
+        <button class="btn ghost small" type="button" id="read-all" hidden>ぜんぶ読んだことにする</button>
+      </div>
+      <ul class="notice-list" id="list"></ul>
+      <p class="muted" id="empty" hidden>まだお知らせはないよ。届いたら、上の 🔔 に数が出るよ。</p>
+    </section>
+  </main>
+  <script type="module" src="/notices.js"></script>
+  <script type="module" src="/shared/customize.js"></script>
+  <script type="module" src="/shared/network.js"></script>
+  <script type="module" src="/shared/playground.js"></script>
+</body>
+</html>

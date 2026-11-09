@@ -621,3 +621,20 @@ html[data-oshi-color] .oshi-hero { color: var(--accent-text); }
 .illust-empty { color: #8a7d72; font-size: .85em; text-indent: 0 !important; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .lib-entry.adopted { background: #3a321c; } }
 :root[data-theme="dark"] .lib-entry.adopted { background: #3a321c; }
+/* 🔔 お知らせ（ハトの郵便屋さん） */
+.notice-bell { position: relative; display: inline-flex; align-items: center; justify-content: center; min-width: 40px; min-height: 40px; text-decoration: none; font-size: 1.1rem; border-radius: 999px; }
+.notice-bell:hover, .notice-bell[aria-current="page"] { background: var(--surface-2); }
+.notice-count { position: absolute; top: 0; right: -2px; min-width: 18px; padding: 0 5px; box-sizing: border-box; font-size: .68rem; font-weight: 800; line-height: 18px; text-align: center; color: #fff; background: var(--like, #e0245e); border-radius: 999px; }
+.notice-count[hidden] { display: none; }
+.notice-hato img { flex: none; border-radius: 50%; background: var(--surface-2); }
+.notice-hato p { margin: 0; }
+.notice-tools { margin-bottom: 8px; align-items: center; }
+.notice-tools p { margin: 0; }
+.notice-list { list-style: none; padding: 0; margin: 0 0 16px; display: grid; gap: 8px; }
+.notice-item > a, .notice-item > div { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface); color: var(--text); text-decoration: none; }
+.notice-item > a:hover { border-color: var(--accent); }
+.notice-item > a:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.notice-item.unread > a, .notice-item.unread > div { border-left: 5px solid #7a9cc6; background: color-mix(in srgb, #7a9cc6 10%, var(--surface)); }
+.notice-icon { flex: none; font-size: 1.4rem; line-height: 1.2; }
+.notice-body { display: grid; gap: 2px; }
+.notice-new { color: #3b6fb0; }

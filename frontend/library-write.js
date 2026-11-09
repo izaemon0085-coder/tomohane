@@ -387,6 +387,12 @@ if (!me) {
 } else {
   $('#desk').hidden = false;
   fillSelects();
-  try { await loadMine(); } catch (err) { toast(`🐭 ${err.message}`); }
+  try {
+    await loadMine();
+    // お知らせ（ハト）から来たときは、その本を開く
+    const want = new URLSearchParams(location.search).get('book');
+    const book = want && books.find((b) => b.id === want);
+    if (book) openEditor(book);
+  } catch (err) { toast(`🐭 ${err.message}`); }
   if (me.role === 'admin') loadAdmin().catch(() => {});
 }

@@ -156,8 +156,21 @@ export function markNewsSeen() {
   try { localStorage.setItem(NEWS_SEEN_KEY, latestIssueId()); } catch { /* 保存できない端末 */ }
 }
 
+// 🔔 お知らせ：まだ読んでいない数をヘッダーの 🔔 に出す（ログインしている人だけ）
+export async function refreshNoticeCount() {
+  const el = document.querySelector('[data-notice-count]');
+  if (!el) return;
+  try {
+    const { unread } = await api('/notices');
+    el.textContent = unread > 99 ? '99+' : String(unread);
+    el.hidden = !unread;
+    el.closest('a')?.setAttribute('aria-label', unread ? `お知らせ（まだ読んでいないものが${unread}件）` : 'お知らせ');
+  } catch { el.hidden = true; }
+}
+
 export function headerHtml(current) {
   const me = getMe();
+  if (me) setTimeout(refreshNoticeCount, 0); // ヘッダーが画面に入ってから数を取りにいく
   const link = (href, label, key) =>
     `<a href="${href}"${current === key ? ' aria-current="page"' : ''}>${label}</a>`;
   return `<div class="inner">
@@ -176,6 +189,7 @@ export function headerHtml(current) {
     </nav>
     <button type="button" class="net-chip" data-open-network data-net-chip title="ローカル回線のようす">📶</button>
     <button type="button" class="kisekae-btn" data-open-customize title="推しカラーや飾りで画面をきせかえ">🎨 きせかえ</button>
+    ${me ? `<a class="notice-bell"${current === 'notices' ? ' aria-current="page"' : ''} href="/notices.html" title="お知らせ（ハトの郵便屋さん）" aria-label="お知らせ">🔔<span class="notice-count" data-notice-count hidden></span></a>` : ''}
     ${me
     ? `<a class="me" href="/login.html" title="アカウント・ログアウト">${escapeHtml(me.name)} さん</a>`
     : '<a class="me" href="/login.html" data-login-link>ログイン</a>'}
