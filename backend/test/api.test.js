@@ -1982,3 +1982,88 @@ test('招待状：子ども（12歳まで）は出せない・出した招待状
     await call('/api/invites/settings', { method: 'PUT', as: admin, body: { on: false, limit: 50 } });
   }
 });
+
+// ---- 💝 応援（寄付）：新聞社の募金箱 ----
+test('寄付：振込先は大人だけに見せる・1円から1,000円まで・運営が確かめたらお礼と領収書', async () => {
+  const admin = await signup('寄付の運営');
+  store.getUser(admin.id).role = 'admin';
+  const adult = await signup('寄付する大人');
+  const other = await signup('寄付を見る大人');
+  const teen = await signup('寄付の中高生', { birthdate: '2011-04-04' });
+  const kid = await signup('寄付の子', { birthdate: '2018-08-08' });
+
+  // はじめはお休み
+  assert.equal((await call('/api/donations')).data.on, false);
+  assert.equal((await call('/api/donations', { method: 'POST', as: adult, body: { amount: 100, payerName: 'キフ スル' } })).status, 403);
+  // 切りかえは運営だけ。振込先と発行者がないとオンにできない
+  assert.equal((await call('/api/donations/settings', { method: 'PUT', as: adult, body: { on: true } })).status, 403);
+  assert.equal((await call('/api/donations/settings', { method: 'PUT', as: admin, body: { on: true } })).status, 400);
+  assert.equal((await call('/api/donations/settings', { method: 'PUT', as: admin, body: { supportUrl: 'http://example.com' } })).status, 400, 'https だけ');
+  const set = await call('/api/donations/settings', { method: 'PUT', as: admin, body: { on: true, account: 'ゆうちょ銀行（テスト）', issuer: 'ともはね 運営' } });
+  assert.equal(set.status, 200);
+  try {
+    // 振込先が見えるのは、ログインした大人だけ
+    assert.equal((await call('/api/donations')).data.account, undefined, 'ログインしていない人には出さない');
+    assert.equal((await call('/api/donations', { as: adult })).data.account, 'ゆうちょ銀行（テスト）');
+    const t = (await call('/api/donations', { as: teen })).data;
+    assert.equal(t.account, '');
+    assert.match(t.reason, /おうちの人/);
+    assert.equal((await call('/api/donations', { as: kid })).data.account, '');
+    assert.equal((await call('/api/donations', { method: 'POST', as: teen, body: { amount: 100, payerName: 'チュウコウセイ' } })).status, 403);
+    assert.equal((await call('/api/donations', { method: 'POST', as: kid, body: { amount: 1, payerName: 'コドモ' } })).status, 403);
+
+    // 金額は1円から1,000円まで（1円単位）
+    for (const amount of [0, 1001, 1.5, '十円']) {
+      assert.equal((await call('/api/donations', { method: 'POST', as: adult, body: { amount, payerName: 'キフ スル' } })).status, 400, String(amount));
+    }
+    assert.equal((await call('/api/donations', { method: 'POST', as: adult, body: { amount: 10 } })).status, 400, '振込のお名前が要る');
+    const one = await call('/api/donations', { method: 'POST', as: adult, body: { amount: 1, payerName: 'キフ スル', showName: true } });
+    assert.equal(one.status, 200);
+    assert.equal(one.data.status, 'pending');
+    const big = await call('/api/donations', { method: 'POST', as: adult, body: { amount: 1000, payerName: 'キフ スル' } });
+    assert.equal(big.status, 200);
+
+    // 確かめる前は領収書が出ない。確かめは運営だけ
+    assert.equal((await call(`/api/donations/${one.data.id}/receipt`, { as: adult })).status, 400);
+    assert.equal((await call(`/api/donations/${one.data.id}/confirm`, { method: 'POST', as: adult })).status, 403);
+    assert.equal((await call('/api/donations/admin', { as: adult })).status, 403);
+    const ok = await call(`/api/donations/${one.data.id}/confirm`, { method: 'POST', as: admin });
+    assert.equal(ok.data.status, 'confirmed');
+    assert.match(ok.data.receiptNo, /^TH-\d{4}-\d{4}$/);
+
+    // ハトがお礼を届ける（金額は書かない）
+    const n = (await call('/api/notices', { as: adult })).data.items[0];
+    assert.equal(n.kind, 'donation');
+    assert.match(n.text, /ありがとう/);
+    assert.doesNotMatch(n.text, /円/);
+    assert.equal((await call('/api/donations', { as: adult })).data.thanked, true);
+
+    // 領収書は本人と運営だけ
+    const r = (await call(`/api/donations/${one.data.id}/receipt`, { as: adult })).data;
+    assert.equal(r.amount, 1);
+    assert.equal(r.issuer, 'ともはね 運営');
+    assert.match(r.purpose, /寄付/);
+    assert.equal((await call(`/api/donations/${one.data.id}/receipt`, { as: other })).status, 404);
+    assert.equal((await call(`/api/donations/${one.data.id}/receipt`, { as: admin })).status, 200);
+
+    // 新聞にのせるのは、のせたい人の名前だけ（金額は出さない）
+    const pub = (await call('/api/donations')).data.supporters;
+    assert.ok(pub.names.includes('寄付する大人'));
+    assert.equal(JSON.stringify(pub).includes('1000'), false);
+
+    // 通帳で見つからなかったとき・まちがえて押したとき
+    const no = await call(`/api/donations/${big.data.id}/cancel`, { method: 'POST', as: admin });
+    assert.equal(no.data.status, 'cancelled');
+    const oops = await call('/api/donations', { method: 'POST', as: adult, body: { amount: 50, payerName: 'キフ スル' } });
+    assert.equal((await call(`/api/donations/${oops.data.id}`, { method: 'DELETE', as: other })).status, 404, 'ほかの人は取り消せない');
+    assert.equal((await call(`/api/donations/${oops.data.id}`, { method: 'DELETE', as: adult })).data.ok, true);
+    assert.equal((await call(`/api/donations/${one.data.id}`, { method: 'DELETE', as: adult })).status, 400, '確かめたものは取り消せない');
+
+    // 運営の帳簿：月ごとの合計
+    const books = (await call('/api/donations/admin', { as: admin })).data;
+    assert.ok(books.months[0].total >= 1);
+    assert.ok(books.items.some((x) => x.payerName === 'キフ スル'));
+  } finally {
+    await call('/api/donations/settings', { method: 'PUT', as: admin, body: { on: false } });
+  }
+});

@@ -294,6 +294,15 @@ export function createApp({
     ['POST', /^\/api\/invites$/, ({ me }) => store.issueInvite(needLogin(me).id)],
     ['DELETE', /^\/api\/invites\/([\w-]+)$/, ({ me, params }) => store.cancelInvite(needLogin(me).id, params[0])],
     ['PUT', /^\/api\/invites\/settings$/, ({ me, body }) => store.setInviteSettings(needLogin(me).id, body)],
+    // 💝 応援（寄付）：振込先は大人だけ・確かめは運営だけ・領収書は本人と運営だけ
+    ['GET', /^\/api\/donations$/, ({ me }) => store.donationInfo(me?.id ?? null)],
+    ['POST', /^\/api\/donations$/, ({ me, body }) => store.reportDonation(needLogin(me).id, body)],
+    ['DELETE', /^\/api\/donations\/([\w-]+)$/, ({ me, params }) => store.withdrawDonation(needLogin(me).id, params[0])],
+    ['GET', /^\/api\/donations\/([\w-]+)\/receipt$/, ({ me, params }) => store.donationReceipt(needLogin(me).id, params[0])],
+    ['GET', /^\/api\/donations\/admin$/, ({ me }) => store.donationAdmin(needLogin(me).id)],
+    ['PUT', /^\/api\/donations\/settings$/, ({ me, body }) => store.setDonationSettings(needLogin(me).id, body)],
+    ['POST', /^\/api\/donations\/([\w-]+)\/confirm$/, ({ me, params }) => store.confirmDonation(needLogin(me).id, params[0])],
+    ['POST', /^\/api\/donations\/([\w-]+)\/cancel$/, ({ me, params }) => store.cancelDonation(needLogin(me).id, params[0])],
 
     // ---- 🔍 さがす：投稿・図書館の本・人・#タグ。見てよいものだけ ----
     // ・投稿は store.canSee（練習モード・止めた投稿・ブロックなど）を通ったものだけ

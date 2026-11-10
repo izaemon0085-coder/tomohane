@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ともはね を応援する | ともはね β版</title>
+  <link rel="stylesheet" href="/shared/base.css">
+  <link rel="stylesheet" href="/shared/playground.css">
+  <link rel="stylesheet" href="/shared/customize.css">
+  <link rel="stylesheet" href="/shared/network.css">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body class="donate-page">
+  <header class="site-header" id="header"></header>
+  <main class="page">
+    <h1>💝 ともはね を応援する</h1>
+    <p class="muted">📰 新聞社の募金箱</p>
+
+    <section class="card panel" aria-labelledby="about-title">
+      <h2 id="about-title">応援（寄付）について</h2>
+      <div class="say-line" id="ask-line"></div>
+      <ul>
+        <li>集めるのは、<strong>運営費（サーバー・ドメイン・メール・バックアップ）の分だけ</strong>です。</li>
+        <li>金額は <strong>1円から1,000円まで</strong>（1円単位）。無理はしないでください。</li>
+        <li>払っても、<strong>使える機能は何も変わりません</strong>（有利になりません）。お礼は、町のキャラたちの「ありがとう」です。</li>
+        <li>集まった金額と使い道は、新聞の座談会で報告します。<strong>だれがいくら出したかは出しません</strong>。</li>
+        <li>運営が通帳で確かめたら、<strong>領収書</strong>が出せます。β版は個人として受け取るので、寄付金控除にはなりません。</li>
+        <li>振込の手数料は、振り込む人の負担になります。少ない金額のときは、手数料のほうが高くなることがあります。</li>
+      </ul>
+    </section>
+
+    <section class="card panel" id="give" aria-labelledby="give-title">
+      <h2 id="give-title">応援する</h2>
+      <p id="give-state" class="muted" aria-live="polite"></p>
+      <div id="give-body" hidden>
+        <h3>振込先</h3>
+        <pre class="account-box" id="account"></pre>
+        <p id="support-link" hidden></p>
+        <form id="give-form">
+          <h3>振り込んだら、運営に知らせてください</h3>
+          <div class="row wrap quick-amounts" id="quick"></div>
+          <label class="field">金額（円・1〜1,000）<input class="input" type="number" name="amount" min="1" max="1000" step="1" inputmode="numeric" required></label>
+          <label class="field">振込のお名前（通帳にのる名前・カナ）<input class="input" name="payerName" maxlength="30" autocomplete="off" required placeholder="例：トモハネ ハナコ"></label>
+          <label class="row"><input type="checkbox" name="showName"> 新聞の「応援してくれた人」に、ともはね での名前をのせてもいい</label>
+          <p class="error" role="alert"></p>
+          <button class="btn" type="submit">振り込みました（運営に知らせる）</button>
+        </form>
+      </div>
+    </section>
+
+    <section class="card panel" id="mine-box" hidden aria-labelledby="mine-title">
+      <h2 id="mine-title">あなたの応援</h2>
+      <ul class="donate-list" id="mine"></ul>
+    </section>
+
+    <section class="card panel" id="thanks" hidden aria-labelledby="thanks-title">
+      <h2 id="thanks-title">🕊️ 町のみんなから「ありがとう」</h2>
+      <ul class="thanks-list" id="thanks-list"></ul>
+    </section>
+
+    <section class="card panel" id="supporters-box" hidden aria-labelledby="sup-title">
+      <h2 id="sup-title">今月、応援してくれた人</h2>
+      <p class="muted small">名前をのせたい人だけです。金額は出しません。</p>
+      <p id="supporters"></p>
+    </section>
+
+    <details class="card panel admin-box" id="admin" hidden>
+      <summary>運営だけ：募金箱の設定と確かめ</summary>
+      <form id="settings-form">
+        <label class="row"><input type="checkbox" name="on"> 募金箱をひらく</label>
+        <label class="field">振込先（大人にだけ見せます。300文字まで）<textarea class="input" name="account" maxlength="300" rows="4" placeholder="例：ゆうちょ銀行　記号・番号／他の銀行からは 店名・口座番号／口座名義"></textarea></label>
+        <label class="field">応援サービスのアドレス（あれば・https:// から）<input class="input" name="supportUrl" maxlength="300" placeholder="https://"></label>
+        <label class="field">領収書の発行者（運営の名前）<input class="input" name="issuer" maxlength="40" placeholder="例：ともはね 運営　〇〇 〇〇"></label>
+        <p class="small muted">ここに入れたものは、このパソコンの data/ に保存されます。GitHub には送りません。</p>
+        <p class="error" role="alert"></p>
+        <button class="btn" type="submit">保存する</button>
+      </form>
+      <h3>月ごとの合計</h3>
+      <ul id="months"></ul>
+      <h3>「振り込みました」のお知らせ</h3>
+      <p class="small muted">通帳の「振込のお名前」と金額を見くらべて、あれば「確かめた」を押してください。ハトがお礼を届けて、領収書が出せるようになります。</p>
+      <ul id="admin-list"></ul>
+    </details>
+  </main>
+  <script type="module" src="/donate.js"></script>
+  <script type="module" src="/shared/customize.js"></script>
+  <script type="module" src="/shared/network.js"></script>
+  <script type="module" src="/shared/playground.js"></script>
+</body>
+</html>

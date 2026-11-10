@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>領収書 | ともはね β版</title>
+  <link rel="stylesheet" href="/shared/base.css">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body class="receipt-page">
+  <main class="page">
+    <p class="no-print"><a href="/donate.html">← 応援のページへもどる</a></p>
+    <p class="muted no-print" id="state" aria-live="polite">読みこみ中…</p>
+    <article class="receipt" id="receipt" hidden>
+      <h1>領　収　書</h1>
+      <p class="receipt-no">No. <span id="r-no"></span>　　<span id="r-date"></span></p>
+      <p class="receipt-to"><input class="input receipt-name" id="r-to" maxlength="40" aria-label="宛名"> 様</p>
+      <p class="receipt-amount">金額　<strong id="r-amount"></strong></p>
+      <p>但し　<span id="r-purpose"></span></p>
+      <p>上記の金額を、たしかに受け取りました。</p>
+      <p class="receipt-issuer">発行者　<span id="r-issuer"></span><br><span class="small">推し活SNS ともはね（β版）</span></p>
+    </article>
+    <div class="no-print" id="tools" hidden>
+      <p class="small muted">宛名は、印刷する前に書きかえられます（保存はしません）。</p>
+      <button class="btn" type="button" id="print">🖨️ 印刷する・PDFにする</button>
+    </div>
+  </main>
+  <script type="module" src="/receipt.js"></script>
+</body>
+</html>
