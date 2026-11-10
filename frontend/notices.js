@@ -1,11 +1,11 @@
-// 🔔 お知らせ：ハトの郵便屋さんが届ける（図書館・おうちの人・目安箱）
+// 🔔 お知らせ：ハトの郵便屋さんが届ける（図書館・おうちの人・目安箱・招待状・応援のお礼）
 // ・まだ読んでいないものは目立たせる。押すと読んだことになって、そのページへ行く
 import { api, refreshMe, headerHtml, escapeHtml, timeAgo, toast, refreshNoticeCount, onServerEvents } from '/shared/api.js';
 
 const $ = (s) => document.querySelector(s);
 document.querySelector('#header').innerHTML = headerHtml('notices');
 
-const KIND = { invite: { icon: '✉️', label: '招待状' }, library: { icon: '📚', label: '図書館' }, family: { icon: '🏠', label: 'おうちの人' }, suggest: { icon: '📮', label: '目安箱' } };
+const KIND = { invite: { icon: '✉️', label: '招待状' }, library: { icon: '📚', label: '図書館' }, family: { icon: '🏠', label: 'おうちの人' }, suggest: { icon: '📮', label: '目安箱' }, donation: { icon: '💝', label: '応援' } };
 // ハトのひとこと（まだ読んでいない数で変わる）
 const hatoLine = (unread) => (unread
   ? `クルックー！ まだ読んでいないお知らせが ${unread}通 あるよ。`

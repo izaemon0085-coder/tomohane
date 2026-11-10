@@ -16,6 +16,7 @@ import {
 } from '../shared/cafe.js';
 import { createLibraryStore } from './library-store.js';
 import { createInviteStore } from './invites.js';
+import { createDonationStore } from './donations.js';
 
 export const MAX_POST_LENGTH = 280;
 export const MAX_NAME_LENGTH = 20;
@@ -264,6 +265,9 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
     state.farewells = state.farewells.filter((f) => f.toId !== id);
     state.notices = state.notices.filter((n) => n.userId !== id);
     state.invites = state.invites.filter((i) => i.by !== id || i.usedBy); // 出したまま使われていない招待状は消す
+    // 寄付：確かめ待ちは消す。確かめたものは運営の帳簿のために金額と日付だけ残し、だれのものかは消す
+    state.donations = (state.donations ?? []).filter((d) => d.userId !== id || d.status === 'confirmed');
+    for (const d of state.donations) if (d.userId === id) Object.assign(d, { userId: null, payerName: '', showName: false });
     state.gameRecs = state.gameRecs.filter((r) => r.userId !== id);
     state.newsVotes = state.newsVotes.filter((v) => v.userId !== id);
     state.tableRequests = state.tableRequests.filter((r) => r.userId !== id);
@@ -302,9 +306,16 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
     isPractice: (u) => isPractice(u), ageGroupOf: (u) => (u?.birthdate ? ageGroup(u.birthdate, new Date(clockMs())) : 'child'),
   });
 
+  // 💝 応援（寄付）
+  const donations = createDonationStore({
+    state, now, clockMs, emit, newId, userById, notify,
+    ageGroupOf: (u) => (u?.birthdate ? ageGroup(u.birthdate, new Date(clockMs())) : 'child'),
+  });
+
   const store = {
     ...library,
     ...invites,
+    ...donations,
     notify,
     listNotices: (userId) => state.notices.filter((n) => n.userId === userId).reverse(),
     unreadNotices: (userId) => state.notices.filter((n) => n.userId === userId && !n.readAt).length,
