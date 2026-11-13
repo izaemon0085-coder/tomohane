@@ -16,7 +16,7 @@ import { shelfAllows, SAMPLE_BOOKS } from '../shared/library.js';
 import { MAX_QUERY, LIMITS, normalizeText, tagsOf } from '../shared/search.js';
 import { MAX_VIDEO_BYTES, removeVideo, saveVideo, serveVideo } from './letters.js';
 import { createKokotomoClient } from './kokotomo.js';
-import { createGameLink, GHOST_URL, MISETOMO_URL, KOROTOMO_URL, SORATOMO_URL } from './gamelink.js';
+import { createGameLink, GHOST_URL, MISETOMO_URL, KOROTOMO_URL, SORATOMO_URL, HAATOMO_URL, TOMORU_URL } from './gamelink.js';
 import {
   BUILTIN_GAMES, SLUG, visibleFor, recommendFor, gamesFor, hashSecret, newGameSecret, secretMatches,
 } from './games.js';
@@ -230,6 +230,8 @@ export function createApp({
   misetomoLink = createGameLink({ app: 'misetomo', gameUrl: MISETOMO_URL }),
   korotomoLink = createGameLink({ app: 'korotomo', gameUrl: KOROTOMO_URL }),
   soratomoLink = createGameLink({ app: 'soratomo', gameUrl: SORATOMO_URL }),
+  haatomoLink = createGameLink({ app: 'haatomo', gameUrl: HAATOMO_URL }),
+  tomoruLink = createGameLink({ app: 'tomoru', gameUrl: TOMORU_URL }),
   clock = () => new Date(), // ゲームセンターの営業時間に使う（テストでは時刻を決められる）
 }) {
   // ゲームセンターが閉まっていたら、ゲームセンターの画面にもどす（キツネが「閉店！」と言う）
@@ -782,7 +784,7 @@ export function createApp({
     return true;
   }
 
-  // ---- つながるアプリ（ともじゃん・ゴーストエージェント・みせとも・ころとも・そらとも）との連結 ----
+  // ---- つながるアプリ（ともじゃん・ゴーストエージェント・みせとも・ころとも・そらとも・はーとも美術館・ともーるアリーナ）との連結 ----
   // /api/link/<名前>-start ・ -ticket/:通行証 ・ -results
   const LINKS = {
     game: { link: gameLink, setId: (u, id) => store.setGameId(u, id), results: (id, body) => store.setGameResults(id, body) },
@@ -793,6 +795,9 @@ export function createApp({
     korotomo: { link: korotomoLink, setId: (u, id) => store.setKorotomoId(u, id), results: (id, body) => store.setKorotomoResults(id, body) },
     // そらとも（人工衛星の運用ゲーム）：ミッション達成の数と遊んだ回数だけ
     soratomo: { link: soratomoLink, setId: (u, id) => store.setSoratomoId(u, id), results: (id, body) => store.setSoratomoResults(id, body) },
+    // はーとも美術館（イラストの展示）・ともーるアリーナ（イベント）：ログインだけ。運営かどうかも渡す（作品の確認・イベント作りに使う）
+    haatomo: { link: haatomoLink, setId: () => {}, results: null, admin: true },
+    tomoru: { link: tomoruLink, setId: () => {}, results: null, admin: true },
   };
   // アプリのアドレス。このパソコン（localhost）のアドレスのとき、スマホから開いても届くように、いま開いているアドレスに合わせる
   function gameUrlFor(req, link) {
@@ -802,10 +807,10 @@ export function createApp({
     return u.origin;
   }
   async function handleGameLink(req, res, pathname, me) {
-    const m = pathname.match(/^\/api\/link\/(game|ghost|misetomo|korotomo|soratomo)-(start|ticket|results)(?:\/([\w-]+))?$/);
+    const m = pathname.match(/^\/api\/link\/(game|ghost|misetomo|korotomo|soratomo|haatomo|tomoru)-(start|ticket|results)(?:\/([\w-]+))?$/);
     if (!m) return false;
     const [, name, action, ticketId] = m;
-    const { link, setId, results } = LINKS[name];
+    const { link, setId, results, admin } = LINKS[name];
     // アプリの「ともはねでログイン」から来る。ログインしていなければ、ログインしてからもどってくる
     if (action === 'start' && req.method === 'GET' && !ticketId) {
       if (!me) {
@@ -830,7 +835,7 @@ export function createApp({
       if (!group) throw new HttpError(403, '生年月日の登録が必要です');
       const appId = link.gameIdOf(user.id);
       setId(user.id, appId);
-      sendJson(res, 200, { gameId: appId, name: user.name, ageGroup: group });
+      sendJson(res, 200, { gameId: appId, name: user.name, ageGroup: group, ...(admin ? { admin: user.role === 'admin' } : {}) });
       return true;
     }
     const body = await readJson(req);

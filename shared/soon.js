@@ -5,6 +5,8 @@ export const COMING_SOON = {
   misetomo: 'お店のアプリ',
   soratomo: 'そらとも',
   korotomo: 'ころとも',
+  haatomo: 'はーとも美術館',
+  tomoru: 'ともーるアリーナ',
 };
 export const isComingSoon = (id) => Object.hasOwn(COMING_SOON, id);
 export const SOON_LABEL = '🛠 アップデート予定';
