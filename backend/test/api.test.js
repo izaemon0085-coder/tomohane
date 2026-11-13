@@ -645,6 +645,21 @@ test('みせとも：ともはねでログインだけ（別の番号）。結�
   assert.equal((await call('/api/link/misetomo-results', { method: 'POST', headers: S, body: { gameId: info.gameId } })).status, 404);
 });
 
+test('はーとも美術館・ともーるアリーナ：ログインだけ（別の番号）。運営かどうかも渡す', async () => {
+  const me = await signup('絵のすきな人');
+  const S = { 'X-Link-Secret': 'tomohane-dev-link-secret' };
+  for (const [name, port, prefix] of [['haatomo', 4000, /^h_/], ['tomoru', 4100, /^t_/]]) {
+    const r = await fetch(`${base}/api/link/${name}-start`, { redirect: 'manual', headers: { Cookie: me.cookie } });
+    const loc = new URL(r.headers.get('location'));
+    assert.equal(loc.origin, `http://localhost:${port}`);
+    const info = (await call(`/api/link/${name}-ticket/${loc.searchParams.get('ticket')}`, { headers: S })).data;
+    assert.match(info.gameId, prefix);
+    assert.equal(info.name, '絵のすきな人');
+    assert.equal(typeof info.admin, 'boolean');
+    assert.equal((await call(`/api/link/${name}-results`, { method: 'POST', headers: S, body: { gameId: info.gameId } })).status, 404);
+  }
+});
+
 test('ころとも：ともはねのゲームとして、ゴールの回数と遊んだ回数だけ受けとる', async () => {
   const me = await signup('ころともの人');
   const S = { 'X-Link-Secret': 'tomohane-dev-link-secret' };

@@ -687,3 +687,16 @@ html[data-oshi-color] .oshi-hero { color: var(--accent-text); }
   .receipt-page .page { padding: 0; }
   .receipt { border-width: 2px; margin: 0 auto; }
 }
+/* はーとも美術館・ともーるアリーナ：地図の建物（別のアプリが開く） */
+.museum-spot, .arena-spot {
+  position: absolute; z-index: 2; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; text-decoration: none;
+  font-weight: 800; font-size: clamp(.68rem, 1.7vw, .9rem); padding: 4px 12px; border-radius: 10px 10px 3px 3px;
+}
+.museum-spot { left: 30%; top: 20%; background: #f6f0ff; color: #4a3878; border: 2px solid #7a5bb5; box-shadow: 0 2px 0 #c9a14a; }
+.arena-spot { left: 2%; top: 86%; background: #eafaf6; color: #17594f; border: 2px solid #1f8a7a; box-shadow: 0 2px 0 #f2c94c; border-radius: 999px 999px 6px 6px; }
+.museum-spot:focus-visible, .arena-spot:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+@media (max-width: 600px) {
+  .museum-spot { left: 22%; top: 22%; }
+  .arena-spot { left: 1%; top: 88%; }
+  .museum-spot .soon-badge, .arena-spot .soon-badge { display: none; } /* スマホでは札をしまう（押すとシバが「アップデート予定」と教える） */
+}
