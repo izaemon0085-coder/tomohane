@@ -25,21 +25,20 @@ function houseHtml(a) {
   </article>`;
 }
 
-// ガレージ：車のエージェントの住まい。眠っているときはシャッターが閉まる
+// ガレージ：車のエージェントの住まい。シャッターを閉めてカギをかけているので、中はのぞけない
+const GARAGE_LOCKED_MSG = '🔒 ガレージにはカギがかかっています。中はのぞけません';
 function garageHtml(a) {
-  const status = a.status === 'sleeping' ? '🔧 エンジン停止中' : STATUS_LABEL[a.status];
-  return `<article class="garage" id="${a.id}" data-agent="${a.id}" data-status="${a.status}" style="--c:${a.color}">
+  return `<article class="garage is-locked" id="${a.id}" data-locked-garage style="--c:${a.color}">
     <div class="garage-roof">${escapeHtml(a.house)}</div>
     <div class="garage-body">
       <div class="garage-door" aria-hidden="true">
-        <img class="car" src="${a.avatar}" alt="">
         <span class="shutter"></span>
+        <span class="garage-lock">🔒</span>
       </div>
       <div class="garage-info">
-        <h3>${escapeHtml(a.name)} <span class="badge">${escapeHtml(a.roleLabel)}</span></h3>
-        <div class="meta muted">${status}・気分：${escapeHtml(a.mood)}</div>
-        <div class="activity">${escapeHtml(a.activity)}</div>
-        <button class="btn ghost door" data-agent="${a.id}">🚪 ガレージをのぞく</button>
+        <h3>🔒 カギがかかっています</h3>
+        <div class="activity">シャッターが閉まっていて、中はのぞけません。ときどき「ブルルン」と音がします。</div>
+        <button class="btn ghost door" data-locked-garage>🔒 カギがかかっています</button>
       </div>
     </div>
   </article>`;
@@ -78,18 +77,19 @@ async function renderDialog() {
       : '<li class="muted">まだ投稿していません</li>'}</ul>`;
 }
 
-function openHouse(id) {
+async function openHouse(id) {
+  // ガレージの住人（カギがかかっている）はのぞけない
+  try {
+    const a = await api(`/agents/${id}`);
+    if (a.place === 'garage') { toast(GARAGE_LOCKED_MSG, 3500); history.replaceState(null, '', location.pathname); return; }
+  } catch { /* 下の renderDialog でエラーを出す */ }
   openAgentId = id;
   lastSpeech = '';
   renderDialog().then(() => { if (!dialog.open) dialog.showModal(); });
 }
 
 document.querySelector('#garage').addEventListener('click', (e) => {
-  const garage = e.target.closest('[data-agent]');
-  if (garage) {
-    history.replaceState(null, '', `#${garage.dataset.agent}`);
-    openHouse(garage.dataset.agent);
-  }
+  if (e.target.closest('[data-locked-garage]')) toast(GARAGE_LOCKED_MSG, 3500);
 });
 
 town.addEventListener('click', (e) => {

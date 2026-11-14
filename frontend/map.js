@@ -13,18 +13,28 @@ const SPOTS = {
   'agent-kuruma': { x: 39, y: 78 }, // ガレージ
 };
 
+// ガレージ：シャッターを閉めてカギをかけている。押しても開かない
+const GARAGE_LOCKED_MSG = '🔒 ガレージにはカギがかかっています。中はのぞけません';
+function garageSpotHtml(a, spot) {
+  return `<a class="map-house garage-spot is-locked" role="button" tabindex="0" data-locked-garage
+      style="left:${spot.x}%;top:${spot.y}%;--c:${a.color}" aria-label="ガレージ（カギがかかっています）">
+    <span class="map-roof map-shutter" aria-hidden="true"><span class="map-lock">🔒</span></span>
+    <span class="map-label">ガレージ 🔒</span>
+  </a>`;
+}
+
 function houseHtml(a) {
   const spot = SPOTS[a.id];
   if (!spot) return '';
-  const isGarage = a.place === 'garage';
+  if (a.place === 'garage') return garageSpotHtml(a, spot);
   const away = a.status === 'meeting';
-  return `<a class="map-house${isGarage ? ' garage-spot' : ''}" href="/side/#${a.id}" data-status="${a.status}"
+  return `<a class="map-house" href="/side/#${a.id}" data-status="${a.status}"
       style="left:${spot.x}%;top:${spot.y}%;--c:${a.color}" aria-label="${escapeHtml(a.house)}（${escapeHtml(a.name)}・${STATUS_LABEL[a.status]}）">
     <span class="map-roof" aria-hidden="true"></span>
     <img class="map-face" src="${a.avatar}" alt="" ${away ? 'hidden' : ''}>
     ${a.status === 'sleeping' ? '<span class="map-zzz" aria-hidden="true">z z Z</span>' : ''}
     ${away ? '<span class="map-away" aria-hidden="true">留守</span>' : ''}
-    <span class="map-label">${escapeHtml(isGarage ? 'ガレージ' : `${a.name}の家`)}</span>
+    <span class="map-label">${escapeHtml(`${a.name}の家`)}</span>
   </a>`;
 }
 
@@ -88,6 +98,17 @@ for (const el of document.querySelectorAll('[data-app]')) {
   el.addEventListener('click', tell);
   el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tell(); } });
 }
+
+// カギのかかったガレージ：押すと「カギがかかっています」と出るだけ
+const mapHouses = document.querySelector('#map-houses');
+const tellLocked = (e) => {
+  if (!e.target.closest('[data-locked-garage]')) return;
+  if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return;
+  e.preventDefault();
+  toast(GARAGE_LOCKED_MSG, 3500);
+};
+mapHouses.addEventListener('click', tellLocked);
+mapHouses.addEventListener('keydown', tellLocked);
 
 loadHouses();
 loadLatest();
