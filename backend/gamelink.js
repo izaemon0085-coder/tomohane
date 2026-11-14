@@ -1,4 +1,4 @@
-// つながるアプリ（ともじゃん・ゴーストエージェント・みせとも・ころとも・そらとも・はーとも美術館・ともーるアリーナ）との連結：「ともはねでログイン」の通行証と、結果の受けとり。
+// つながるアプリ（ともじゃん・ゴーストエージェント・みせとも・ころとも・そらとも・はーとも美術館・ともーるアリーナ・Vとも）との連結：「ともはねでログイン」の通行証と、結果の受けとり。
 // アプリに渡すのは、アプリ用の番号（ともはねの ID そのものではない）・表示名・年齢の区分だけ
 // アプリ用の番号はアプリごとにちがう（ともじゃんとゴーストの番号を見比べても、同じ人だと分からない）
 // アプリから受けとるのは、数（勝ち数・自己ベストの回数など）だけ
@@ -11,6 +11,7 @@ export const KOROTOMO_URL = (process.env.KOROTOMO_URL || 'http://localhost:3700'
 export const SORATOMO_URL = (process.env.SORATOMO_URL || 'http://localhost:3800').replace(/\/+$/, '');
 export const HAATOMO_URL = (process.env.HAATOMO_URL || 'http://localhost:4000').replace(/\/+$/, ''); // はーとも美術館
 export const TOMORU_URL = (process.env.TOMORU_URL || 'http://localhost:4100').replace(/\/+$/, ''); // ともーるアリーナ
+export const VTOMO_URL = (process.env.VTOMO_URL || 'http://localhost:4200').replace(/\/+$/, ''); // Vとも（2D のキャラ作り）
 // ゲームのアプリと ともはね で同じ値にする合言葉（サーバーどうしの確認用）。本番では必ず設定する
 export const LINK_SECRET = process.env.LINK_SECRET || 'tomohane-dev-link-secret';
 const TICKET_MS = 60 * 1000; // 通行証は1分だけ・1回だけ
