@@ -677,6 +677,28 @@ test('Vとも：ともはねでログインだけ。運営かどうかは渡さ�
   assert.equal((await call('/api/link/vtomo-results', { method: 'POST', headers: S, body: { gameId: info.gameId } })).status, 404);
 });
 
+test('うたとも：ともはねでログインだけ。運営かどうかは渡さない・結果は受けとらない・入口はアップデート予定', async () => {
+  const me = await signup('曲を作る人');
+  const S = { 'X-Link-Secret': 'tomohane-dev-link-secret' };
+  const r = await fetch(`${base}/api/link/utatomo-start`, { redirect: 'manual', headers: { Cookie: me.cookie } });
+  const loc = new URL(r.headers.get('location'));
+  assert.equal(loc.origin, 'http://localhost:4400');
+  assert.equal(loc.pathname, '/auth/callback');
+  const ticket = loc.searchParams.get('ticket');
+  assert.equal((await call(`/api/link/utatomo-ticket/${ticket}`, { headers: { 'X-Link-Secret': 'wrong-secret' } })).status, 403, '合言葉がちがうと渡さない');
+  const info = (await call(`/api/link/utatomo-ticket/${ticket}`, { headers: S })).data;
+  assert.match(info.gameId, /^u_/);
+  assert.equal(info.name, '曲を作る人');
+  assert.ok(['child', 'teen', 'adult'].includes(info.ageGroup));
+  assert.equal('admin' in info, false);
+  assert.equal((await call(`/api/link/utatomo-ticket/${ticket}`, { headers: S })).status, 404, '通行証は1回だけ');
+  assert.equal((await call('/api/link/utatomo-results', { method: 'POST', headers: S, body: { gameId: info.gameId } })).status, 404);
+  const out = await fetch(`${base}/api/link/utatomo-start`, { redirect: 'manual' });
+  assert.match(out.headers.get('location'), /^\/login\.html\?next=/, 'ログインしていなければ、ログインしてからもどってくる');
+  const { isComingSoon } = await import('../../shared/soon.js');
+  assert.equal(isComingSoon('utatomo'), true, '地図の入口は、はじめは「アップデート予定」');
+});
+
 test('2Dメタバース：ともはねでログインだけ。年齢の区分を渡す・番号は Vとも とちがう', async () => {
   const me = await signup('町を歩く人');
   const S = { 'X-Link-Secret': 'tomohane-dev-link-secret' };
