@@ -34,6 +34,14 @@
   clip-path: polygon(50% 0, 100% 55%, 86% 55%, 86% 100%, 14% 100%, 14% 55%, 0 55%);
 }
 .garage-spot .map-roof { clip-path: none; border-radius: 8px 8px 0 0; background: #5b5f6b; aspect-ratio: 2 / 1; }
+/* カギのかかったガレージ：シャッターが閉まっていて、まん中に錠前 */
+.garage-spot.is-locked { cursor: pointer; }
+.garage-spot .map-shutter {
+  display: grid; place-items: center; border: 3px solid #5b5f6b;
+  background: repeating-linear-gradient(#b8bec9 0 6px, #9aa1ad 6px 8px);
+}
+.map-lock { font-size: clamp(.9rem, 2.4vw, 1.4rem); filter: drop-shadow(0 1px 1px rgb(0 0 0 / 30%)); }
+.garage-spot.is-locked:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
 .map-face { width: 34%; margin-top: -32%; filter: drop-shadow(0 1px 1px rgb(0 0 0 / 20%)); }
 .map-house[data-status="sleeping"] .map-face { filter: brightness(.6); }
 .map-zzz { position: absolute; top: 0; right: 14%; font-size: .75rem; font-weight: 700; color: #4b3f75; }
