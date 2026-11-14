@@ -18,6 +18,7 @@ const CABINET = {
   ghost: { icon: '👻🏃', color: '#7e5bb5', attract: 'きのうの自分と勝負！' },
   korotomo: { icon: '🤖⭐', color: '#3b7dc4', attract: '星をあつめよう' },
   soratomo: { icon: '🛰️🌍', color: '#1b2560', attract: '衛星をうごかそう' },
+  metaverse: { icon: '🏙️🚶', color: '#3a7d5c', attract: '町を歩こう' },
 };
 function screenHtml(g, closed) {
   const c = CABINET[g.id] ?? { icon: '🕹️', attract: 'スタートをおしてね' };
