@@ -660,6 +660,23 @@ test('はーとも美術館・ともーるアリーナ：ログインだけ（�
   }
 });
 
+test('Vとも：ともはねでログインだけ。運営かどうかは渡さない・結果は受けとらない', async () => {
+  const me = await signup('キャラを作る人');
+  const S = { 'X-Link-Secret': 'tomohane-dev-link-secret' };
+  const r = await fetch(`${base}/api/link/vtomo-start`, { redirect: 'manual', headers: { Cookie: me.cookie } });
+  const loc = new URL(r.headers.get('location'));
+  assert.equal(loc.origin, 'http://localhost:4200');
+  assert.equal(loc.pathname, '/auth/callback');
+  const ticket = loc.searchParams.get('ticket');
+  assert.equal((await call(`/api/link/vtomo-ticket/${ticket}`, { headers: { 'X-Link-Secret': 'wrong-secret' } })).status, 403, '合言葉がちがうと渡さない');
+  const info = (await call(`/api/link/vtomo-ticket/${ticket}`, { headers: S })).data;
+  assert.match(info.gameId, /^v_/);
+  assert.equal(info.name, 'キャラを作る人');
+  assert.equal('admin' in info, false);
+  assert.equal((await call(`/api/link/vtomo-ticket/${ticket}`, { headers: S })).status, 404, '通行証は1回だけ');
+  assert.equal((await call('/api/link/vtomo-results', { method: 'POST', headers: S, body: { gameId: info.gameId } })).status, 404);
+});
+
 test('ころとも：ともはねのゲームとして、ゴールの回数と遊んだ回数だけ受けとる', async () => {
   const me = await signup('ころともの人');
   const S = { 'X-Link-Secret': 'tomohane-dev-link-secret' };
