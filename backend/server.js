@@ -16,7 +16,7 @@ import { shelfAllows, SAMPLE_BOOKS } from '../shared/library.js';
 import { MAX_QUERY, LIMITS, normalizeText, tagsOf } from '../shared/search.js';
 import { MAX_VIDEO_BYTES, removeVideo, saveVideo, serveVideo } from './letters.js';
 import { createKokotomoClient } from './kokotomo.js';
-import { createGameLink, GHOST_URL, MISETOMO_URL, KOROTOMO_URL, SORATOMO_URL, HAATOMO_URL, TOMORU_URL, VTOMO_URL } from './gamelink.js';
+import { createGameLink, GHOST_URL, MISETOMO_URL, KOROTOMO_URL, SORATOMO_URL, HAATOMO_URL, TOMORU_URL, VTOMO_URL, METAVERSE_URL } from './gamelink.js';
 import {
   BUILTIN_GAMES, SLUG, visibleFor, recommendFor, gamesFor, hashSecret, newGameSecret, secretMatches,
 } from './games.js';
@@ -233,6 +233,7 @@ export function createApp({
   haatomoLink = createGameLink({ app: 'haatomo', gameUrl: HAATOMO_URL }),
   tomoruLink = createGameLink({ app: 'tomoru', gameUrl: TOMORU_URL }),
   vtomoLink = createGameLink({ app: 'vtomo', gameUrl: VTOMO_URL }),
+  metaverseLink = createGameLink({ app: 'metaverse', gameUrl: METAVERSE_URL }),
   clock = () => new Date(), // ゲームセンターの営業時間に使う（テストでは時刻を決められる）
 }) {
   // ゲームセンターが閉まっていたら、ゲームセンターの画面にもどす（キツネが「閉店！」と言う）
@@ -801,6 +802,8 @@ export function createApp({
     tomoru: { link: tomoruLink, setId: () => {}, results: null, admin: true },
     // Vとも（2D のキャラ作り・🦫ビーバーの工作係）：ログインだけ。作ったキャラは Vとも の中にあって、ともはねには来ない
     vtomo: { link: vtomoLink, setId: () => {}, results: null },
+    // 2Dメタバース（仮）：ログインだけ。年齢の区分で町を分けるのに使う。歩いた場所やあいさつは、ともはねに来ない
+    metaverse: { link: metaverseLink, setId: () => {}, results: null },
   };
   // アプリのアドレス。このパソコン（localhost）のアドレスのとき、スマホから開いても届くように、いま開いているアドレスに合わせる
   function gameUrlFor(req, link) {
@@ -810,7 +813,7 @@ export function createApp({
     return u.origin;
   }
   async function handleGameLink(req, res, pathname, me) {
-    const m = pathname.match(/^\/api\/link\/(game|ghost|misetomo|korotomo|soratomo|haatomo|tomoru|vtomo)-(start|ticket|results)(?:\/([\w-]+))?$/);
+    const m = pathname.match(/^\/api\/link\/(game|ghost|misetomo|korotomo|soratomo|haatomo|tomoru|vtomo|metaverse)-(start|ticket|results)(?:\/([\w-]+))?$/);
     if (!m) return false;
     const [, name, action, ticketId] = m;
     const { link, setId, results, admin } = LINKS[name];

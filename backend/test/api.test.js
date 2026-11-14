@@ -677,6 +677,25 @@ test('Vとも：ともはねでログインだけ。運営かどうかは渡さ�
   assert.equal((await call('/api/link/vtomo-results', { method: 'POST', headers: S, body: { gameId: info.gameId } })).status, 404);
 });
 
+test('2Dメタバース：ともはねでログインだけ。年齢の区分を渡す・番号は Vとも とちがう', async () => {
+  const me = await signup('町を歩く人');
+  const S = { 'X-Link-Secret': 'tomohane-dev-link-secret' };
+  const ids = {};
+  for (const name of ['metaverse', 'vtomo']) {
+    const r = await fetch(`${base}/api/link/${name}-start`, { redirect: 'manual', headers: { Cookie: me.cookie } });
+    const loc = new URL(r.headers.get('location'));
+    if (name === 'metaverse') assert.equal(loc.origin, 'http://localhost:4300');
+    const info = (await call(`/api/link/${name}-ticket/${loc.searchParams.get('ticket')}`, { headers: S })).data;
+    ids[name] = info.gameId;
+    if (name === 'metaverse') {
+      assert.ok(['child', 'teen', 'adult'].includes(info.ageGroup));
+      assert.equal('admin' in info, false);
+    }
+  }
+  assert.notEqual(ids.metaverse, ids.vtomo, 'アプリごとに番号がちがう（見比べても同じ人だと分からない）');
+  assert.equal((await call('/api/link/metaverse-results', { method: 'POST', headers: S, body: { gameId: ids.metaverse } })).status, 404);
+});
+
 test('ころとも：ともはねのゲームとして、ゴールの回数と遊んだ回数だけ受けとる', async () => {
   const me = await signup('ころともの人');
   const S = { 'X-Link-Secret': 'tomohane-dev-link-secret' };
