@@ -760,14 +760,14 @@ test('保護者とつなぐ：大人がコードを出し、子どもが入れ�
   assert.equal((await call('/api/guardian')).status, 401);
 });
 
-test('ゲーム一覧：4つのゲーム・おすすめ（一言つき）・同じ推しの人のおすすめをシバが広場で答える', async () => {
+test('ゲーム一覧：5つのゲーム・おすすめ（一言つき）・同じ推しの人のおすすめをシバが広場で答える', async () => {
   const a = await signup('ゲーム好きA');
   const b = await signup('ゲーム好きB');
   await call(`/api/users/${a.id}/oshi`, { method: 'PUT', as: a, body: { name: 'ほしぞらユニット' } });
   await call(`/api/users/${b.id}/oshi`, { method: 'PUT', as: b, body: { name: 'ほしぞらユニット' } });
 
   const list = (await call('/api/games')).data;
-  assert.deepEqual(list.map((g) => g.id), ['tomojan', 'ghost', 'korotomo', 'soratomo']);
+  assert.deepEqual(list.map((g) => g.id), ['tomojan', 'ghost', 'korotomo', 'soratomo', 'metaverse']);
   // ころとも・そらともはアップデート予定：一覧には出るが、遊べない・おすすめできない
   assert.deepEqual(list.filter((g) => g.soon).map((g) => g.id), ['korotomo', 'soratomo']);
   assert.ok(list.filter((g) => g.soon).every((g) => g.play === null));
@@ -1272,6 +1272,7 @@ test('ゲームセンター：年齢で閉店（こども21時・中高生22時�
     arcadeNow = at(0);
     assert.equal(await status(adult), false, '夜中の0時：大人も閉店');
     assert.equal(await start(adult, '/api/link/korotomo-start'), '/games.html?closed=1');
+    assert.equal(await start(adult, '/api/link/metaverse-start'), '/games.html?closed=1', '2Dメタバースもゲームセンターの中');
     assert.match(await start(adult, '/api/link/ghost-start'), /auth\/callback/, 'グラウンド（ゴースト）は運動なので、いつでも');
     arcadeNow = at(5);
     assert.equal(await status(adult), false);

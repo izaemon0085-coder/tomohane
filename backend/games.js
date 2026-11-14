@@ -1,9 +1,9 @@
-// ゲーム一覧：ともはねで遊べるゲーム（もとからある4つ＋インディーズ・個人の作ったゲーム）と、おすすめ
+// ゲーム一覧：ともはねで遊べるゲーム（もとからある5つ＋インディーズ・個人の作ったゲーム）と、おすすめ
 // ・おすすめは「推し活の人」が一言つきで言える。シバが広場で「おすすめは？」に答える
 // ・インディーズや個人のゲームは、キットをダウンロードして「ともはねでログイン」をつなぐ。運営が見てから一覧に出す
 // ・ともあい（お金のゲーム）は公開しないので、ここには入れない
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { GAME_URL, GHOST_URL, KOROTOMO_URL, SORATOMO_URL } from './gamelink.js';
+import { GAME_URL, GHOST_URL, KOROTOMO_URL, SORATOMO_URL, METAVERSE_URL } from './gamelink.js';
 import { isComingSoon } from '../shared/soon.js';
 
 // もとからあるゲーム（start は ともはね の入り口）
@@ -23,6 +23,11 @@ export const BUILTIN_GAMES = [
   {
     id: 'soratomo', name: 'そらとも', maker: 'ともはね', url: SORATOMO_URL, start: '/api/link/soratomo-start',
     description: '小さな人工衛星を運用する。友だちと協力できる', tags: ['宇宙', '協力'], minAge: 'child', ads: false, purchases: false,
+  },
+  {
+    // 名前はまだ決めていない（仮）。年齢の区分ごとに別の町になる
+    id: 'metaverse', name: '2Dメタバース（仮）', maker: 'ともはね', url: METAVERSE_URL, start: '/api/link/metaverse-start',
+    description: 'Vとも で作ったキャラで町を歩く。同じ年ごろの人とあいさつできる', tags: ['町', 'みんなで'], minAge: 'child', ads: false, purchases: false,
   },
 ].map((g) => ({ ...g, soon: isComingSoon(g.id) })); // soon：アップデート予定（一覧には出すが、遊べない・おすすめしない）
 

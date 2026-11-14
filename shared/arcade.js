@@ -4,7 +4,7 @@
 // ・グラウンド（ゴーストエージェント）は運動なので、ゲームセンターの外（いつでも使える）
 export const OPEN_HOUR = 6;
 export const CLOSE_HOUR = { child: 21, teen: 22, adult: 24 };
-export const ARCADE_APPS = ['game', 'korotomo', 'soratomo']; // ゲームセンターの中の台（ともはねの「ともはねでログイン」の入口の名前）
+export const ARCADE_APPS = ['game', 'korotomo', 'soratomo', 'metaverse']; // ゲームセンターの中の台（ともはねの「ともはねでログイン」の入口の名前）
 
 // 日本時間の「時」（0〜23）
 export const jstHour = (date = new Date()) => (date.getUTCHours() + 9) % 24;
