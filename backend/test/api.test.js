@@ -718,6 +718,19 @@ test('2Dメタバース：ともはねでログインだけ。年齢の区分を
   assert.equal((await call('/api/link/metaverse-results', { method: 'POST', headers: S, body: { gameId: ids.metaverse } })).status, 404);
 });
 
+test('こえとも：ともはねでログインだけ。年齢の区分を渡す（保存できるかに使う）・結果は受けとらない', async () => {
+  const me = await signup('声を変える人');
+  const S = { 'X-Link-Secret': 'tomohane-dev-link-secret' };
+  const r = await fetch(`${base}/api/link/koetomo-start`, { redirect: 'manual', headers: { Cookie: me.cookie } });
+  const loc = new URL(r.headers.get('location'));
+  assert.equal(loc.origin, 'http://localhost:4600');
+  const info = (await call(`/api/link/koetomo-ticket/${loc.searchParams.get('ticket')}`, { headers: S })).data;
+  assert.ok(['child', 'teen', 'adult'].includes(info.ageGroup));
+  assert.equal('admin' in info, false);
+  assert.equal((await call(`/api/link/koetomo-ticket/${loc.searchParams.get('ticket')}`, { headers: S })).status, 404, '通行証は1回だけ');
+  assert.equal((await call('/api/link/koetomo-results', { method: 'POST', headers: S, body: { gameId: info.gameId } })).status, 404);
+});
+
 test('ころとも：ともはねのゲームとして、ゴールの回数と遊んだ回数だけ受けとる', async () => {
   const me = await signup('ころともの人');
   const S = { 'X-Link-Secret': 'tomohane-dev-link-secret' };

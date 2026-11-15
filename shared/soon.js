@@ -9,6 +9,7 @@ export const COMING_SOON = {
   tomoru: 'ともーるアリーナ',
   vtomo: 'Vとも',
   utatomo: 'うたとも',
+  koetomo: 'こえとも',
 };
 export const isComingSoon = (id) => Object.hasOwn(COMING_SOON, id);
 export const SOON_LABEL = '🛠 アップデート予定';
