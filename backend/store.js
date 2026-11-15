@@ -11,6 +11,7 @@ import { findReason, stageOf, MAX_APOLOGY } from '../shared/report.js';
 import { LEAVE_MS, GUARDIAN_LEAVE_MS, FAMILY_DIARY } from '../shared/leave.js';
 import { MAX_SUGGESTION, MAX_PER_DAY, MAX_SUMMARY, MAX_ANSWER, SUGGEST_TOPICS } from '../shared/suggest.js';
 import { TERMS_VERSION } from '../shared/terms.js';
+import { CODE_CHARS as USER_CODE_CHARS, CODE_MIN, CODE_MAX, DEFAULT_HONOR, isHonor, callName } from '../shared/honor.js';
 import {
   FREE_TABLE, GENRE_TABLES, GENRE_IDS, MAX_TABLE_NAME, MAX_TABLE_REQUEST, MAX_OPEN_REQUESTS, normalizeOshi,
 } from '../shared/cafe.js';
@@ -136,6 +137,16 @@ function rejectBlocked(user, text) {
   if (check.level === 'block') throw new HttpError(422, `この内容は送れません（${check.reason}）`);
 }
 
+// 名前の下につくコード（6〜12文字のランダム・だれとも同じにならない・あとから変えない）
+function newUserCode(users) {
+  const used = new Set(users.map((u) => u.code).filter(Boolean));
+  for (;;) {
+    const len = randomInt(CODE_MIN, CODE_MAX + 1);
+    const code = Array.from({ length: len }, () => USER_CODE_CHARS[randomInt(USER_CODE_CHARS.length)]).join('');
+    if (!used.has(code)) return code;
+  }
+}
+
 function cleanText(value, max, label) {
   if (typeof value !== 'string') throw new HttpError(400, `${label}を入力してください`);
   const text = value.trim();
@@ -147,6 +158,12 @@ function cleanText(value, max, label) {
 export function createStore({ file = null, now = () => new Date().toISOString() } = {}) {
   const state = file && existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : seedState(now);
   syncSeedAgents(state, now);
+  // 前からいる人にも、名前の下のコードと呼び方を（1回だけ。あとから変えない）
+  for (const u of state.users) {
+    if (u.kind !== 'human') continue;
+    u.code ??= newUserCode(state.users);
+    u.honor ??= DEFAULT_HONOR;
+  }
   state.meta ??= {};
   state.letters ??= [];
   state.sessions ??= [];
@@ -231,7 +248,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
   function eraseUser(user, images = []) {
     const id = user.id;
     images.push(...library.eraseUserLibrary(id)); // 図書館の本・応募した絵（ファイルはサーバーが消す）
-    if (user.guardianIds?.length) writeFamilyDiary(user, FAMILY_DIARY.gone(user.name));
+    if (user.guardianIds?.length) writeFamilyDiary(user, FAMILY_DIARY.gone(callName(user)));
     state.familyDiary = state.familyDiary.filter((d) => d.guardianId !== id);
     const to = store.leaveRepliers(id).filter((x) => !isLeaving(userById(x)));
     const gone = new Set(state.posts.filter((p) => p.authorId === id).map((p) => p.id));
@@ -390,7 +407,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       // 招待状モードなら、招待コードと人数の上限を確かめる（いちばん最初の人＝運営は、コードなしで登録できる）
       const invite = invites.checkInviteForRegister(inviteCode, { firstUser: !state.users.some((u) => u.role === 'admin') });
       if (!user) {
-        user = { id: newId('u'), kind: 'human', name: clean, handle: clean, emoji: null, createdAt: now() };
+        user = { id: newId('u'), kind: 'human', name: clean, handle: clean, emoji: null, createdAt: now(), code: newUserCode(state.users), honor: DEFAULT_HONOR };
         state.users.push(user);
       }
       const codes = Array.from({ length: RECOVERY_CODES }, newRecoveryCode);
@@ -603,8 +620,8 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       loginFails.delete(failKey);
       child.guardianIds.push(entry.guardianId);
       const guardian = requireUser(entry.guardianId);
-      notify(child.id, { kind: 'family', text: `${guardian.name}さんと、おうちの人としてつながったよ。広場やカフェ・図書館で、みんなとお話しできるようになったよ`, link: '/login.html' });
-      notify(guardian.id, { kind: 'family', text: `${child.name}さんと、おうちの人としてつながったよ。アカウントのページで見守れるよ`, link: '/login.html' });
+      notify(child.id, { kind: 'family', text: `${callName(guardian)}と、おうちの人としてつながったよ。広場やカフェ・図書館で、みんなとお話しできるようになったよ`, link: '/login.html' });
+      notify(guardian.id, { kind: 'family', text: `${callName(child)}と、おうちの人としてつながったよ。アカウントのページで見守れるよ`, link: '/login.html' });
       save();
       return guardian;
     },
@@ -690,6 +707,30 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
 
     // ---- 推しの情報（わたしの推しページ） ----
     // プロフィールのひとこと（60文字まで・空にもできる）。送る前のチェックを通す
+    // 表示名を変える（コードは変わらない）
+    setName(userId, name) {
+      const user = requireUser(userId);
+      if (user.kind !== 'human') throw new HttpError(400, '名前を変えられるのは人間のユーザーだけです');
+      const clean = cleanText(name, MAX_NAME_LENGTH, '表示名');
+      if (clean === user.name) return user;
+      if (state.users.some((u) => u.kind !== 'human' && u.name === clean)) throw new HttpError(409, 'その名前はエージェントか公式アカウントが使っています');
+      if (state.users.some((u) => u.kind === 'human' && u.id !== user.id && u.name === clean)) throw new HttpError(409, 'その表示名は使われています');
+      rejectBlocked(user, clean);
+      user.name = clean;
+      user.handle = clean;
+      user.code ??= newUserCode(state.users);
+      emit('user', { id: user.id });
+      return user;
+    },
+    // キャラが呼ぶときの呼び方（さん・さま・くん・ちゃん・どの・呼びすて）
+    setHonor(userId, honor) {
+      const user = requireUser(userId);
+      if (user.kind !== 'human') throw new HttpError(400, '呼び方を変えられるのは人間のユーザーだけです');
+      if (!isHonor(honor)) throw new HttpError(400, '呼び方をえらんでください');
+      user.honor = honor;
+      emit('user', { id: user.id });
+      return user;
+    },
     setBio(userId, text) {
       const user = requireUser(userId);
       if (user.kind !== 'human') throw new HttpError(400, 'ひとことを書けるのは人間のユーザーだけです');
@@ -1101,7 +1142,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       // 子どもでおうちの人とつながっていれば、シバの日記でおうちの人に伝える（14日まで、おうちの人が取り消せる）
       const guarded = ageGroup(user.birthdate, new Date(clockMs())) === 'child' && (user.guardianIds?.length ?? 0) > 0;
       user.leaving = { requestedAt: now(), at: now(), farewell: text, guarded };
-      if (guarded) writeFamilyDiary(user, FAMILY_DIARY.leave(user.name));
+      if (guarded) writeFamilyDiary(user, FAMILY_DIARY.leave(callName(user)));
       emit('user', user);
       return user.leaving;
     },
@@ -1109,7 +1150,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       const user = requireUser(userId);
       if (!user.leaving) throw new HttpError(404, '退会の手続きはしていません');
       if (isClosed(user)) throw new HttpError(409, '7日すぎたので、本人からは取り消せません');
-      if (user.leaving.guarded) writeFamilyDiary(user, FAMILY_DIARY.back(user.name));
+      if (user.leaving.guarded) writeFamilyDiary(user, FAMILY_DIARY.back(callName(user)));
       delete user.leaving;
       emit('user', user);
       return { ok: true };
@@ -1122,7 +1163,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       if (!child.guardianIds?.includes(guardianId)) throw new HttpError(404, 'つながっていません');
       if (!child.leaving) throw new HttpError(404, '退会の手続きはしていません');
       delete child.leaving;
-      writeFamilyDiary(child, FAMILY_DIARY.guardianBack(child.name));
+      writeFamilyDiary(child, FAMILY_DIARY.guardianBack(callName(child)));
       emit('user', child);
       return { ok: true };
     },

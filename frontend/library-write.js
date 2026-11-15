@@ -178,13 +178,13 @@ function renderArt() {
     ...Object.entries(b.art.illust).map(([slot, url]) => ({ role: `挿絵${slot}`, url, path: `illust/${slot}` })),
   ];
   $('#art-now').innerHTML = now.length ? `<p class="small">いま本に入っている絵：</p><ul class="lib-entries">${now.map((a) => `<li class="lib-entry adopted">
-      <img src="${escapeHtml(a.url)}" alt="${escapeHtml(a.role)}"><span class="small"><strong>${escapeHtml(a.role)}</strong>：${escapeHtml(credit(a.role) ?? '？')}さん</span>
+      <img src="${escapeHtml(a.url)}" alt="${escapeHtml(a.role)}"><span class="small"><strong>${escapeHtml(a.role)}</strong>：${escapeHtml(credit(a.role) ?? '？')}</span>
       <button class="btn ghost small" type="button" data-unart="${escapeHtml(a.path)}">本から外す</button></li>`).join('')}</ul>` : '';
   $('#my-calls').innerHTML = b.calls.map((c) => `<li class="lib-call card panel">
     <p class="call-kind">${callLabel(c)}・${CALL_STATUS[c.status]}</p>
     <p class="call-note">「${escapeHtml(c.note)}」</p>
     <ul class="lib-entries">${c.entries.map((e) => `<li class="lib-entry${c.adoptedEntryId === e.id ? ' adopted' : ''}">
-      <img src="${escapeHtml(e.image)}" alt="${escapeHtml(e.name)}さんの絵" loading="lazy">
+      <img src="${escapeHtml(e.image)}" alt="${escapeHtml(e.name)}の絵" loading="lazy">
       <span class="small"><strong>${escapeHtml(e.name)}</strong>さん${c.adoptedEntryId === e.id ? ' 🏅' : ''}</span>
       ${e.comment ? `<span class="small">${escapeHtml(e.comment)}</span>` : ''}
       ${c.adoptedEntryId === e.id ? '' : `<button class="btn small" type="button" data-adopt="${escapeHtml(e.id)}" data-call="${escapeHtml(c.id)}">この絵を選ぶ</button>`}

@@ -146,7 +146,7 @@ async function openBook(id, { push = true } = {}) {
   $('#book-cover').style.setProperty('--cover', book.cover.color);
   $('#book-cover').innerHTML = coverHtml(book, true);
   $('#book-title').textContent = book.title;
-  const credits = (book.credits ?? []).map((c) => `${c.role}：${c.name}さん`).join('・');
+  const credits = (book.credits ?? []).map((c) => `${c.role}：${c.name}`).join('・');
   $('#book-meta').textContent = `${book.author}${book.sample ? '' : 'さん'}・${book.kind === 'novel' ? '小説' : '漫画'}・${g.emoji} ${g.name}・${shelfName(book.minAge)}${credits ? `（${credits}）` : ''}`;
   $('#book-blurb').textContent = book.blurb;
   $('#novel').hidden = book.kind !== 'novel';

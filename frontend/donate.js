@@ -47,7 +47,7 @@ async function load() {
 
   const names = info.supporters?.names ?? [];
   $('#supporters-box').hidden = !names.length;
-  $('#supporters').textContent = names.map((n) => `${n}さん`).join('、');
+  $('#supporters').textContent = names.join('、');
 
   $('#admin').hidden = me?.role !== 'admin';
   if (me?.role === 'admin' && $('#admin').open) await loadAdmin();

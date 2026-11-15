@@ -1,4 +1,5 @@
 // ゲーム一覧：遊ぶ・おすすめする（一言つき）・シバのおすすめ・ゲームを作っている人の申しこみ・運営の確認
+import { callName } from '/shared/honor.js';
 import { api, refreshMe, headerHtml, escapeHtml, toast, onServerEvents } from '/shared/api.js';
 import { SOON_LABEL } from '/shared/soon.js';
 import { kitsuneLine } from '/shared/arcade.js';
@@ -29,7 +30,7 @@ function screenHtml(g, closed) {
 
 function gameHtml(g, isNew = false) {
   const closed = g.id !== 'ghost' && !arcade.open;
-  const voices = g.voices.map((v) => `<li>${v.oshi ? `<span class="oshi-badge">${escapeHtml(v.oshi)}推し</span> ` : ''}${escapeHtml(v.name)}さん「${escapeHtml(v.comment)}」</li>`).join('');
+  const voices = g.voices.map((v) => `<li>${v.oshi ? `<span class="oshi-badge">${escapeHtml(v.oshi)}推し</span> ` : ''}${escapeHtml(v.name)}「${escapeHtml(v.comment)}」</li>`).join('');
   const marks = [
     g.soon ? `<strong>${SOON_LABEL}</strong>` : null,
     g.builtin ? 'ともはね' : `🛠️ ${escapeHtml(g.maker)}`,
@@ -86,7 +87,7 @@ async function loadPick() {
     $('#pick').innerHTML = r && !arcade.open
       ? `ゲロ……いまは閉店中。あした開いたら「${escapeHtml(r.name)}」がおすすめだよ。おやすみゲロ〜`
       : r
-      ? `ゲロゲロ！ ${me ? `${escapeHtml(me.name)}さん` : 'いま'}へのおすすめは「<a href="${escapeHtml(r.play)}">${escapeHtml(r.name)}</a>」！ ${escapeHtml(r.reason)}んだよ。${r.comment ? `「${escapeHtml(r.comment)}」って声もあるよ！` : ''}`
+      ? `ゲロゲロ！ ${me ? escapeHtml(callName(me)) : 'いま'}へのおすすめは「<a href="${escapeHtml(r.play)}">${escapeHtml(r.name)}</a>」！ ${escapeHtml(r.reason)}んだよ。${r.comment ? `「${escapeHtml(r.comment)}」って声もあるよ！` : ''}`
       : 'ゲロ……いまは遊べる台がないみたい……';
   } catch { /* noop */ }
 }
@@ -156,7 +157,7 @@ async function loadReview() {
   const list = await api('/games/review').catch(() => []);
   $('#review').hidden = false;
   $('#review-list').innerHTML = list.map((g) => `<li>
-    <strong>${escapeHtml(g.name)}</strong>（${escapeHtml(g.maker)}・申しこみ：${escapeHtml(g.owner)}さん）… ${STATUS[g.status] ?? g.status}<br>
+    <strong>${escapeHtml(g.name)}</strong>（${escapeHtml(g.maker)}・申しこみ：${escapeHtml(g.owner)}）… ${STATUS[g.status] ?? g.status}<br>
     <span class="small">${escapeHtml(g.url)}・${AGE[g.minAge]}<br>${escapeHtml(g.description)}</span>
     <div class="row wrap">
       ${g.status !== 'listed' ? `<button type="button" class="btn" data-status="listed" data-id="${escapeHtml(g.id)}">一覧に出す</button>` : ''}

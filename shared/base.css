@@ -117,3 +117,10 @@ button, input, textarea { font: inherit; color: inherit; }
 .pw-wrap .input { flex: 1; min-width: 0; }
 .pw-eye { flex: none; min-height: 44px; padding: 0 10px; border: 1px solid var(--border, #ccc); border-radius: 10px; background: var(--surface-2, #f3f1ea); color: inherit; font: inherit; font-size: .85rem; cursor: pointer; white-space: nowrap; }
 .pw-eye:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* 名前の下のコード（だれとも同じにならない・変えられない。shared/honor.js） */
+.user-code { display: block; font-size: .75rem; color: var(--muted, #6a6560); font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; letter-spacing: .04em; line-height: 1.3; margin: 0; }
+h1 + .user-code { margin: -4px 0 8px; font-size: .85rem; }
+.honor-choices { border: none; padding: 0; margin: 10px 0 4px; }
+.honor-choices legend { font-size: .9rem; margin-bottom: 4px; }
+.honor-choice { display: inline-flex; gap: 4px; align-items: center; min-height: 44px; padding: 0 10px; border: 1px solid var(--border, #ccc); border-radius: 999px; margin: 2px; cursor: pointer; }
