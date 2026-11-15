@@ -1,7 +1,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp, parseSoonApps } from '../server.js';
@@ -2217,4 +2217,22 @@ test('名前の下のコード（6〜12文字・だれとも同じにならな�
   // コードでもさがせる（# をつけるとハッシュタグになるので、コードだけで）
   const found = (await call(`/api/search?q=${encodeURIComponent(meA.code)}`, { as: b })).data.people;
   assert.ok(found.some((u) => u.code === meA.code));
+});
+
+test('前からいる人のコードは、読みこんだときにすぐ保存される（読みなおしても変わらない）', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'codes-'));
+  const file = join(dir, 'db.json');
+  try {
+    const first = createStore({ file });
+    const raw = JSON.parse(JSON.stringify(first.usersById ? Object.values(first.usersById()) : []));
+    // コードのない「前からいる人」を作る
+    const state = { users: [...raw.filter((u) => u.kind !== 'human'), { id: 'u_old', kind: 'human', name: '前からの人', handle: '前からの人', createdAt: '2026-11-01T00:00:00Z' }], posts: [], meetings: [] };
+    writeFileSync(file, JSON.stringify(state));
+    const a = createStore({ file }).getUser('u_old').code;
+    assert.match(a, /^[A-Z2-9]{6,12}$/);
+    const b = createStore({ file }).getUser('u_old').code;
+    assert.equal(b, a, '2回目に読みこんでも同じコード');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

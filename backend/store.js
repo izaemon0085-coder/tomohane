@@ -159,10 +159,16 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
   const state = file && existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : seedState(now);
   syncSeedAgents(state, now);
   // 前からいる人にも、名前の下のコードと呼び方を（1回だけ。あとから変えない）
+  let gaveCodes = false;
   for (const u of state.users) {
     if (u.kind !== 'human') continue;
-    u.code ??= newUserCode(state.users);
+    if (!u.code) { u.code = newUserCode(state.users); gaveCodes = true; }
     u.honor ??= DEFAULT_HONOR;
+  }
+  // つけたコードはすぐ保存する（保存の前にサーバーが止まると、次はちがうコードになってしまうため）
+  if (gaveCodes && file) {
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, JSON.stringify(state, null, 2));
   }
   state.meta ??= {};
   state.letters ??= [];
