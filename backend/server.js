@@ -23,6 +23,11 @@ import {
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 
+// SOON_APPS="tomojan, ghost,metaverse" → ['tomojan', 'ghost', 'metaverse']（英小文字・数字・- だけ）
+export function parseSoonApps(text) {
+  return [...new Set(String(text ?? '').split(',').map((s) => s.trim()).filter((s) => /^[a-z0-9-]{1,24}$/.test(s)))];
+}
+
 // URL の接頭辞 → 配信するディレクトリ（長いものから順に判定）
 const STATIC_MOUNTS = [
   ['/side/', 'sidefront'],   // エージェントたちの家
@@ -236,7 +241,15 @@ export function createApp({
   metaverseLink = createGameLink({ app: 'metaverse', gameUrl: METAVERSE_URL }),
   utatomoLink = createGameLink({ app: 'utatomo', gameUrl: UTATOMO_URL }),
   clock = () => new Date(), // ゲームセンターの営業時間に使う（テストでは時刻を決められる）
+  // このサーバーでは動いていないアプリ（例：AWS には ともはね だけ）。環境変数 SOON_APPS="tomojan,ghost,metaverse"。
+  // 地図・ゲーム一覧で「🛠 アップデート予定」の札をつけ、入口からも入れないようにする（このパソコンでは空＝今までどおり）
+  soonApps = parseSoonApps(process.env.SOON_APPS),
 }) {
+  const extraSoon = new Set(soonApps);
+  const linkSoon = (name) => extraSoon.has(name === 'game' ? 'tomojan' : name); // ともじゃん の入口の名前は game
+  const soonScript = extraSoon.size
+    ? `\n// このサーバーで動いていないアプリ（SOON_APPS）\nObject.assign(COMING_SOON, ${JSON.stringify(Object.fromEntries(soonApps.map((id) => [id, BUILTIN_GAMES.find((g) => g.id === id)?.name ?? id])))});\n`
+    : '';
   // ゲームセンターが閉まっていたら、ゲームセンターの画面にもどす（キツネが「閉店！」と言う）
   const handleLibrary = createLibraryApi({ store, dir: libraryDir, sendJson, maxPageBytes });
   const arcadeFor = (me) => arcadeStatus(me ? ageGroup(me.birthdate) : 'child', clock());
@@ -739,7 +752,8 @@ export function createApp({
   }
 
   // 見る人に合わせたゲーム一覧
-  const visibleGames = (me) => gamesFor(store.listExtGames(), me ? ageGroup(me.birthdate) : 'child');
+  const visibleGames = (me) => gamesFor(store.listExtGames(), me ? ageGroup(me.birthdate) : 'child')
+    .map((g) => (g.builtin && extraSoon.has(g.id) ? { ...g, soon: true } : g));
 
   // ---- インディーズ・個人のゲームとの連結（キットを使う）----
   // /api/link/x/<ゲームのID>/start ・ /ticket/:通行証 ・ /results
@@ -824,6 +838,10 @@ export function createApp({
     if (action === 'start' && req.method === 'GET' && !ticketId) {
       if (!me) {
         res.writeHead(302, { Location: `/login.html?next=${encodeURIComponent(pathname)}` });
+        return res.end() || true;
+      }
+      if (linkSoon(name)) { // このサーバーでは動いていない → 地図にもどす（つながらない画面に飛ばさない）
+        res.writeHead(302, { Location: '/?soon=1', 'Cache-Control': 'no-store' });
         return res.end() || true;
       }
       if (ARCADE_APPS.includes(name) && !arcadeFor(me).open) return closedRedirect(res);
@@ -914,7 +932,8 @@ export function createApp({
     const file = resolve(base, `.${rel}`);
     if (file !== base && !file.startsWith(base + sep)) throw new HttpError(403, 'Forbidden');
     try {
-      const data = await readFile(file);
+      let data = await readFile(file);
+      if (soonScript && pathname === '/shared/soon.js') data = Buffer.concat([data, Buffer.from(soonScript)]);
       res.writeHead(200, { 'Content-Type': MIME[extname(file)] || 'application/octet-stream' });
       res.end(data);
     } catch {
