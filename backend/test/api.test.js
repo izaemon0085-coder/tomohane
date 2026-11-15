@@ -4,7 +4,7 @@ import http from 'node:http';
 import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createApp } from '../server.js';
+import { createApp, parseSoonApps } from '../server.js';
 import { createStore } from '../store.js';
 import { createSimulation } from '../simulation.js';
 import { MEETING_SCRIPT } from '../agents.js';
@@ -2140,4 +2140,40 @@ test('寄付：振込先は大人だけに見せる・1円から1,000円まで�
   } finally {
     await call('/api/donations/settings', { method: 'PUT', as: admin, body: { on: false } });
   }
+});
+
+test('このサーバーで動いていないアプリ（SOON_APPS）：一覧・地図で「アップデート予定」、入口からは地図にもどす', async () => {
+  assert.deepEqual(parseSoonApps(' tomojan, ghost,,metaverse,ghost,<x>'), ['tomojan', 'ghost', 'metaverse']);
+  assert.deepEqual(parseSoonApps(undefined), []);
+
+  // 本番（AWS）のように、ともじゃん・ゴースト・2Dメタバースがないサーバー（店は同じ）
+  const app2 = createApp({ store, sim, videoDir, libraryDir, clock: () => NOON_JST, soonApps: ['tomojan', 'ghost', 'metaverse'] });
+  const server2 = http.createServer(app2);
+  await new Promise((r) => server2.listen(0, r));
+  const base2 = `http://localhost:${server2.address().port}`;
+  try {
+    const me = await signup('サーバーちがいの人');
+    const list = await (await fetch(`${base2}/api/games`, { headers: { Cookie: me.cookie } })).json();
+    for (const id of ['tomojan', 'ghost', 'metaverse']) {
+      const g = list.find((x) => x.id === id);
+      assert.equal(g.soon, true, id);
+      assert.equal(g.play, null, id);
+    }
+    const r = await fetch(`${base2}/api/games/ghost/recommend`, { method: 'PUT', headers: { Cookie: me.cookie, 'Content-Type': 'application/json' }, body: '{"comment":"x"}' });
+    assert.equal(r.status, 409, 'アップデート予定はおすすめできない');
+    for (const path of ['/api/link/game-start', '/api/link/ghost-start', '/api/link/metaverse-start']) {
+      const res = await fetch(base2 + path, { redirect: 'manual', headers: { Cookie: me.cookie } });
+      assert.equal(res.headers.get('location'), '/?soon=1', path);
+    }
+    // 画面（地図・アカウント）が読む shared/soon.js にも、このサーバーの分が足される
+    const soon = await (await fetch(`${base2}/shared/soon.js`)).text();
+    assert.match(soon, /Object\.assign\(COMING_SOON, \{"tomojan":"ともじゃん（じゃんけん）","ghost":"ゴーストエージェント","metaverse":"2Dメタバース（仮）"\}\)/);
+    assert.match(await (await fetch(`${base2}/`)).text(), /data-app="ghost"/, 'グラウンドにも札がつく');
+  } finally {
+    server2.close();
+  }
+  // ふだんのサーバー（このパソコン）は今までどおり
+  assert.doesNotMatch(await (await fetch(`${base}/shared/soon.js`)).text(), /Object\.assign/);
+  const list = (await call('/api/games')).data;
+  assert.equal(list.find((g) => g.id === 'ghost').soon, false);
 });

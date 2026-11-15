@@ -98,6 +98,11 @@ for (const el of document.querySelectorAll('[data-app]')) {
   el.addEventListener('click', tell);
   el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tell(); } });
 }
+// このサーバーでは動いていないアプリの入口から、もどされてきたとき
+if (new URLSearchParams(location.search).has('soon')) {
+  toast('🐕 そのアプリは、アップデート予定っす！ 準備ができたら、新聞でお知らせするっす', 4000);
+  history.replaceState(null, '', location.pathname);
+}
 
 // カギのかかったガレージ：押すと「カギがかかっています」と出るだけ
 const mapHouses = document.querySelector('#map-houses');
