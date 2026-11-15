@@ -34,6 +34,15 @@ function addPasswordEyes() {
 }
 addPasswordEyes();
 
+// パスワードを覚える：ブラウザ（Chrome など）の「パスワードを保存しますか？」を出す。
+// ともはね のページ・サーバーには保存しない（ブラウザのパスワード管理にまかせる）。聞けないブラウザでは何もしない
+async function offerToSave(id, password, name) {
+  try {
+    if (!id || !password || !('PasswordCredential' in window) || !navigator.credentials?.store) return;
+    await navigator.credentials.store(new window.PasswordCredential({ id, password, name: name || id }));
+  } catch { /* ことわられた・使えないときは、そのまま */ }
+}
+
 function guide(face, name, text) {
   $('#guide-face').src = `/shared/avatars/${face}.svg`;
   $('#guide-name').textContent = `${name}から`;
@@ -186,6 +195,7 @@ $('#password-form').addEventListener('submit', async (e) => {
   }
   try {
     const r = await api('/auth/password', { method: 'POST', body: { current: f.current.value, next: f.next.value } });
+    await offerToSave(r.me.loginId, f.next.value, r.me.name);
     e.target.reset();
     $('#password-box').open = false;
     rememberMe(r.me);
@@ -420,6 +430,7 @@ $('#panel-login').addEventListener('submit', async (e) => {
   const r = await submit(e.target, '/auth/login', ['loginId', 'password']);
   if (!r) return;
   rememberMe(r.me);
+  await offerToSave(e.target.elements.loginId.value.trim(), e.target.elements.password.value.trim(), r.me.name);
   // 退会の手続き中なら、取り消せるようにアカウントのページを出す
   if (r.me.leaving) {
     toast(`🐕 ${WELCOME_BACK.text}　退会を取り消すなら、下のボタンっす`, 6000);
@@ -434,6 +445,7 @@ $('#panel-register').addEventListener('submit', async (e) => {
   const r = await submit(e.target, '/auth/register', ['loginId', 'name', 'password', 'birthdate', 'inviteCode'], { agreeTerms: e.target.elements.agreeTerms.checked });
   if (!r) return;
   rememberMe(r.me);
+  await offerToSave(e.target.elements.loginId.value.trim(), e.target.elements.password.value.trim(), r.me.name);
   pendingCodes = r.recoveryCodes;
   $('#auth').hidden = true;
   $('#header').innerHTML = headerHtml('login');
@@ -460,6 +472,7 @@ $('#panel-recover').addEventListener('submit', async (e) => {
   const r = await submit(e.target, '/auth/recover', ['loginId', 'code', 'newPassword']);
   if (!r) return;
   rememberMe(r.me);
+  await offerToSave(e.target.elements.loginId.value.trim(), e.target.elements.newPassword.value.trim(), r.me.name);
   toast(`パスワードを変えました。回復コードはあと ${r.codesLeft} つです`, 5000);
   render(r.me);
 });
