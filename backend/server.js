@@ -805,8 +805,8 @@ export function createApp({
     vtomo: { link: vtomoLink, setId: () => {}, results: null },
     // 2Dメタバース（仮）：ログインだけ。年齢の区分で町を分けるのに使う。歩いた場所やあいさつは、ともはねに来ない
     metaverse: { link: metaverseLink, setId: () => {}, results: null },
-    // うたとも（仮）（タップで曲作り）：ログインだけ。作った曲は うたとも の中にあって、ともはねには来ない（広場に知らせるのは本人が下書きから送る）
-    utatomo: { link: utatomoLink, setId: () => {}, results: null },
+    // うたとも（タップで曲作り）：ログインと「運営かどうか」（公認の音を運営が聞いて決める）。作った曲は うたとも の中にあって、ともはねには来ない（広場に知らせるのは本人が下書きから送る）
+    utatomo: { link: utatomoLink, setId: () => {}, results: null, admin: true },
   };
   // アプリのアドレス。このパソコン（localhost）のアドレスのとき、スマホから開いても届くように、いま開いているアドレスに合わせる
   function gameUrlFor(req, link) {
