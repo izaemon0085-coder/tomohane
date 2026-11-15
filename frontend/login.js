@@ -11,6 +11,29 @@ const ROLE = { admin: '運営（管理者）', user: 'ユーザー' };
 
 const nextUrl = () => safeNext(new URLSearchParams(location.search).get('next'));
 
+// パスワードの欄に「👁 表示／🙈 かくす」のボタン（入れたものを確かめられる）。送るとき・切りかえるときは、またかくす
+function addPasswordEyes() {
+  for (const input of document.querySelectorAll('input[type="password"]')) {
+    const wrap = document.createElement('span');
+    wrap.className = 'pw-wrap';
+    input.replaceWith(wrap);
+    const eye = document.createElement('button');
+    eye.type = 'button';
+    eye.className = 'pw-eye';
+    const set = (show) => {
+      input.type = show ? 'text' : 'password';
+      eye.textContent = show ? '🙈 かくす' : '👁 表示';
+      eye.setAttribute('aria-pressed', String(show));
+      eye.setAttribute('aria-label', show ? 'パスワードをかくす' : 'パスワードを表示する');
+    };
+    eye.addEventListener('click', (e) => { e.preventDefault(); set(input.type === 'password'); input.focus(); });
+    input.form?.addEventListener('submit', () => set(false), true);
+    wrap.append(input, eye);
+    set(false);
+  }
+}
+addPasswordEyes();
+
 function guide(face, name, text) {
   $('#guide-face').src = `/shared/avatars/${face}.svg`;
   $('#guide-name').textContent = `${name}から`;

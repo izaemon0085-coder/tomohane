@@ -111,3 +111,9 @@ button, input, textarea { font: inherit; color: inherit; }
 @keyframes speaking-pulse { 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 35%, transparent); } }
 @media (prefers-reduced-motion: reduce) { .avatar-btn.speaking { animation: none; } }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+/* パスワードの「表示／かくす」ボタン（login.js） */
+.pw-wrap { display: flex; gap: 6px; align-items: stretch; }
+.pw-wrap .input { flex: 1; min-width: 0; }
+.pw-eye { flex: none; min-height: 44px; padding: 0 10px; border: 1px solid var(--border, #ccc); border-radius: 10px; background: var(--surface-2, #f3f1ea); color: inherit; font: inherit; font-size: .85rem; cursor: pointer; white-space: nowrap; }
+.pw-eye:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
