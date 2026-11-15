@@ -20,6 +20,7 @@
 //                 図書館の2人は、図書館（library.html）にだけいる
 //   🕊️ ハト    … お知らせの郵便屋さん。「クルックー！」。図書館・おうちの人・目安箱のお知らせを届ける（🔔 のページにだけいる）
 
+import { callName } from '../shared/honor.js';
 import { isHarsh } from '../shared/precheck.js';
 export { normalizeOshi } from '../shared/cafe.js';
 
@@ -289,37 +290,37 @@ export function randomMood(agent, random = Math.random) {
   return pick(MOODS[agent.role], random);
 }
 
-// キーワードごとの返事（{name} は相手の名前）
+// キーワードごとの返事（{name} は相手の呼び名＝名前＋本人がえらんだ「さん」「さま」など。shared/honor.js の callName）
 const REPLIES = {
   harsh: {
-    guardian: 'ほう…{name}さん、その言葉は少しトゲがありますな。ここは「好き」を語る場所。やさしい言葉に言いかえてみませんか。',
-    explainer: '{name}さん、言葉は相手に残る。もう少しやわらかく言ってみよう。',
-    moodmaker: '{name}さん、ちょっとこわい言葉かも…。やさしい言葉だと、もっと伝わるよ 🌷',
-    companion: '{name}さん、その言葉はちょっと痛いっす…。なにかイヤなことあったっすか？ 話聞くっす',
+    guardian: 'ほう…{name}、その言葉は少しトゲがありますな。ここは「好き」を語る場所。やさしい言葉に言いかえてみませんか。',
+    explainer: '{name}、言葉は相手に残る。もう少しやわらかく言ってみよう。',
+    moodmaker: '{name}、ちょっとこわい言葉かも…。やさしい言葉だと、もっと伝わるよ 🌷',
+    companion: '{name}、その言葉はちょっと痛いっす…。なにかイヤなことあったっすか？ 話聞くっす',
   },
   first: {
-    companion: '{name}さん、はじめましてっす！ ともはねへようこそっす！ わからないことがあったら、なんでも聞いてほしいっす 🐾',
-    guardian: 'ほう、{name}さん、はじめまして。ここはやさしい場所です。安心してくつろいでくだされ。',
-    explainer: '{name}さん、はじめまして。ようこそ。困ったことがあれば解説しよう。',
-    moodmaker: '{name}さん、はじめまして〜！ ようこそ ♪ 推しの話、聞かせてね！',
+    companion: '{name}、はじめましてっす！ ともはねへようこそっす！ わからないことがあったら、なんでも聞いてほしいっす 🐾',
+    guardian: 'ほう、{name}、はじめまして。ここはやさしい場所です。安心してくつろいでくだされ。',
+    explainer: '{name}、はじめまして。ようこそ。困ったことがあれば解説しよう。',
+    moodmaker: '{name}、はじめまして〜！ ようこそ ♪ 推しの話、聞かせてね！',
   },
   lonely: {
-    companion: '{name}さん、オレがいるっす！ ひとりじゃないっす。ゆっくりでいいから、話してほしいっす 🐾',
-    guardian: '{name}さん、夜の見張りはわたしの仕事。眠れぬなら、少しここで話していきなされ。',
-    explainer: '{name}さん、無理はしないで。ここにはいつでも話せる仲間がいる。',
-    moodmaker: '{name}さん、おつかれさま。ひとりじゃないよ、ここにいるからね 🌷',
+    companion: '{name}、オレがいるっす！ ひとりじゃないっす。ゆっくりでいいから、話してほしいっす 🐾',
+    guardian: '{name}、夜の見張りはわたしの仕事。眠れぬなら、少しここで話していきなされ。',
+    explainer: '{name}、無理はしないで。ここにはいつでも話せる仲間がいる。',
+    moodmaker: '{name}、おつかれさま。ひとりじゃないよ、ここにいるからね 🌷',
   },
   morning: {
-    explainer: 'おはよう、{name}さん。今日もいい推し活を。',
-    moodmaker: 'おはよう、{name}さん！ 今日も推しが尊い一日になりますように ♪',
-    guardian: 'おはようございます、{name}さん。わたしはこれからひと眠り…ほう。',
-    companion: 'おはようございますっす、{name}さん！ 今日もいっしょに楽しむっす！',
+    explainer: 'おはよう、{name}。今日もいい推し活を。',
+    moodmaker: 'おはよう、{name}！ 今日も推しが尊い一日になりますように ♪',
+    guardian: 'おはようございます、{name}。わたしはこれからひと眠り…ほう。',
+    companion: 'おはようございますっす、{name}！ 今日もいっしょに楽しむっす！',
   },
   night: {
-    explainer: 'おやすみ、{name}さん。しっかり休むのも推し活のうちだ。',
-    moodmaker: 'おやすみなさい、{name}さん。子守唄うたっておくね 🌙',
-    guardian: 'おやすみなさい、{name}さん。夜の見張りはおまかせを。ほう。',
-    companion: 'おやすみなさいっす、{name}さん！ いい夢見るっす 🌙',
+    explainer: 'おやすみ、{name}。しっかり休むのも推し活のうちだ。',
+    moodmaker: 'おやすみなさい、{name}。子守唄うたっておくね 🌙',
+    guardian: 'おやすみなさい、{name}。夜の見張りはおまかせを。ほう。',
+    companion: 'おやすみなさいっす、{name}！ いい夢見るっす 🌙',
   },
   live: {
     explainer: '当日は回線が混みやすい。早めにログインしておくのがおすすめだ。',
@@ -340,10 +341,10 @@ const REPLIES = {
     companion: 'おめでとうございますっす！ みんなでお祝いするっす！ 🎂',
   },
   oshi: {
-    explainer: '{name}さんの推しの話、もっと聞かせてほしい。',
-    moodmaker: '{name}さんの推し語り、だいすき！ もっと聞きたいな ♪',
-    guardian: 'ほう、{name}さんの推しへの想い、しかと受け取りましたぞ。',
-    companion: '{name}さんの推し、オレも知りたいっす！ どんなところが好きっすか？',
+    explainer: '{name}の推しの話、もっと聞かせてほしい。',
+    moodmaker: '{name}の推し語り、だいすき！ もっと聞きたいな ♪',
+    guardian: 'ほう、{name}の推しへの想い、しかと受け取りましたぞ。',
+    companion: '{name}の推し、オレも知りたいっす！ どんなところが好きっすか？',
   },
   question: {
     explainer: 'いい質問だ。まずは小さく試してみるのが一番早い。分からなければまた聞いてくれ。',
@@ -353,10 +354,10 @@ const REPLIES = {
   },
 };
 const GENERIC = {
-  explainer: ['共有ありがとう、{name}さん。', 'なるほど、参考になる。'],
-  moodmaker: ['すてき！ 読んでてにこにこしちゃった ♪', '{name}さんの投稿、元気もらえる〜 🌷'],
-  guardian: ['ほう、良い話ですな。', '{name}さん、今日もおだやかな投稿をありがとう。'],
-  companion: ['いいっすね！ しっぽふりふりっす 🐾', '{name}さん、また話しかけてほしいっす！'],
+  explainer: ['共有ありがとう、{name}。', 'なるほど、参考になる。'],
+  moodmaker: ['すてき！ 読んでてにこにこしちゃった ♪', '{name}の投稿、元気もらえる〜 🌷'],
+  guardian: ['ほう、良い話ですな。', '{name}、今日もおだやかな投稿をありがとう。'],
+  companion: ['いいっすね！ しっぽふりふりっす 🐾', '{name}、また話しかけてほしいっす！'],
 };
 
 export function replyToPost(agent, post, authorName, random = Math.random, { isFirstPost = false } = {}) {
@@ -434,12 +435,12 @@ const KNOCK = {
 // カフェでの返事。はじめてカフェに書いた人には、マスターのタヌキがあいさつする
 const CAFE_REPLIES = {
   first: {
-    master: '{name}さん、いらっしゃい。はじめてだね。まあ、ゆっくりしていきなよ。コーヒーはサービスだよ ☕',
-    staff: '{name}さま、いらっしゃいませ。{table}にご案内しました。ごゆっくりどうぞ。',
+    master: '{name}、いらっしゃい。はじめてだね。まあ、ゆっくりしていきなよ。コーヒーはサービスだよ ☕',
+    staff: '{name}、いらっしゃいませ。{table}にご案内しました。ごゆっくりどうぞ。',
   },
   oshi: {
-    master: '{name}さんの推しの話、いいねえ。コーヒーがさめるまで、ゆっくり聞かせてよ。',
-    staff: '{name}さまの推しのお話、テーブルのみなさまにも、きちんとお届けしました。',
+    master: '{name}の推しの話、いいねえ。コーヒーがさめるまで、ゆっくり聞かせてよ。',
+    staff: '{name}の推しのお話、テーブルのみなさまにも、きちんとお届けしました。',
   },
   question: {
     master: 'うーん、どうだろうねえ。ゆっくり考えようか。テーブルのみんなも、知ってたら教えてあげてね。',
@@ -447,8 +448,8 @@ const CAFE_REPLIES = {
   },
 };
 const CAFE_GENERIC = {
-  master: ['{name}さん、いい話だねえ。まあ、ゆっくりしていきなよ。', 'ふむふむ。{name}さん、おかわりいるかい？ ☕'],
-  staff: ['{name}さま、ありがとうございます。お席はこちらで合っていますか？', '{name}さまのお話、しっかり受け取りました。ごゆっくりどうぞ。'],
+  master: ['{name}、いい話だねえ。まあ、ゆっくりしていきなよ。', 'ふむふむ。{name}、おかわりいるかい？ ☕'],
+  staff: ['{name}、ありがとうございます。お席はこちらで合っていますか？', '{name}のお話、しっかり受け取りました。ごゆっくりどうぞ。'],
 };
 export function cafeReply(agent, post, authorName, tableName, random = Math.random, { isFirstVisit = false } = {}) {
   let key = null;
@@ -471,10 +472,10 @@ export function meetingLine(step, topic, random = Math.random) {
 export function respondToHuman(agent, humanName, humanText) {
   const s = snippet(humanText);
   return {
-    explainer: `${humanName}さん、意見ありがとう。「${s}」は仕組みとして取り入れられる。`,
-    moodmaker: `${humanName}さんの「${s}」、すっごくいい！ それ入れようよ ♪`,
-    guardian: `${humanName}さん、ほう、「${s}」ですか。安全面からも良い考えですな。`,
-    companion: `${humanName}さんの「${s}」、最高っす！ オレも賛成っす！ 🐾`,
+    explainer: `${humanName}、意見ありがとう。「${s}」は仕組みとして取り入れられる。`,
+    moodmaker: `${humanName}の「${s}」、すっごくいい！ それ入れようよ ♪`,
+    guardian: `${humanName}、ほう、「${s}」ですか。安全面からも良い考えですな。`,
+    companion: `${humanName}の「${s}」、最高っす！ オレも賛成っす！ 🐾`,
   }[agent.role];
 }
 
@@ -496,7 +497,7 @@ export function summarizeMeeting(meeting, usersById) {
   const humans = [...new Set(
     meeting.messages
       .filter((m) => usersById[m.authorId]?.kind === 'human')
-      .map((m) => usersById[m.authorId].name),
+      .map((m) => callName(usersById[m.authorId])),
   )];
   // 人間への返事（「○○さんの…」「○○さん、…」で始まる発言）は除いて、台本の意見を拾う
   const scripted = (role) => meeting.messages.filter((m) =>
@@ -516,6 +517,6 @@ export function summarizeMeeting(meeting, usersById) {
     `③ 安全（フクロウ）：${first('guardian')}`,
     `④ しくみ（ヤマネコ）：${last('explainer')}`,
   ];
-  if (humans.length) lines.push(`ゲスト参加：${humans.map((n) => `${n}さん`).join('、')}の意見も反映します。`);
+  if (humans.length) lines.push(`ゲスト参加：${humans.join('、')}の意見も反映します。`);
   return lines.join('\n');
 }

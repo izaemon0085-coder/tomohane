@@ -1,4 +1,5 @@
 // バックエンド：REST API + SSE + 3つのフロント（フロントエンド / サイドフロント / サブフロント）の配信。
+import { callName } from '../shared/honor.js';
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join, resolve, sep } from 'node:path';
@@ -59,6 +60,7 @@ function publicUser(u) {
   return {
     id, kind, name, handle, emoji, avatar: avatar ?? null, color: color ?? null, roleLabel: roleLabel ?? null,
     ...(kind === 'agent' ? { place: u.place ?? 'house' } : {}), // キャラの持ち場（家・カフェなど）。名前のリンク先を決めるのに使う
+    ...(kind === 'human' ? { code: u.code ?? null, honor: u.honor ?? 'san' } : {}), // 名前の下のコード（変えられない）・キャラが呼ぶときの呼び方
   };
 }
 
@@ -349,8 +351,8 @@ export function createApp({
       ].slice(0, LIMITS.books);
       const people = Object.values(users)
         .filter((u) => u.kind === 'human' && u.id !== viewer && ageGroup(u.birthdate) !== 'child'
-          && !store.isLeavingUser(u.id) && !store.isBlockedBy(viewer, u.id) && hit(u.name))
-        .slice(0, LIMITS.people).map((u) => ({ id: u.id, name: u.name, bio: u.bio ?? '' }));
+          && !store.isLeavingUser(u.id) && !store.isBlockedBy(viewer, u.id) && (hit(u.name) || (u.code && normalizeText(u.code) === q)))
+        .slice(0, LIMITS.people).map((u) => ({ id: u.id, name: u.name, code: u.code ?? null, bio: u.bio ?? '' }));
       return { q: raw, tag: null, posts, books, people };
     }],
 
@@ -375,6 +377,9 @@ export function createApp({
       return { ...base, limited: false, bio: u.bio ?? '', oshi, posts, books };
     }],
     ['POST', /^\/api\/profile\/bio$/, ({ me, body }) => ({ bio: store.setBio(needLogin(me).id, body.bio).bio })],
+    // 表示名・呼び方を変える（名前の下のコードは変えられない）
+    ['POST', /^\/api\/profile\/name$/, ({ me, body }) => ({ me: meView(store.setName(needLogin(me).id, body.name)) })],
+    ['POST', /^\/api\/profile\/honor$/, ({ me, body }) => ({ me: meView(store.setHonor(needLogin(me).id, body.honor)) })],
 
     // ---- 🔔 お知らせ（ハトの郵便屋さん）：図書館・おうちの人・目安箱のこと。本人だけが見る ----
     ['GET', /^\/api\/notices$/, ({ me }) => {
@@ -613,9 +618,11 @@ export function createApp({
         })),
         farewells: store.farewellsFor(u.id).map((x) => ({
           id: x.id, from: x.fromName ?? store.usersById()[x.fromId]?.name ?? '？', text: x.text, at: x.at,
+          fromCall: store.usersById()[x.fromId] ? callName(store.usersById()[x.fromId]) : x.fromName ? `${x.fromName}さん` : '？', // キャラが呼ぶときの呼び名
         })),
         apologies: store.apologiesFor(u.id).map((r) => ({
           id: r.id, from: publicUser(store.usersById()[r.authorId])?.name ?? '？', at: r.apology.at,
+          fromCall: store.usersById()[r.authorId] ? callName(store.usersById()[r.authorId]) : '？',
         })),
       };
     }],

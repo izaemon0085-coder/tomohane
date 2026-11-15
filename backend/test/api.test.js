@@ -2177,3 +2177,44 @@ test('このサーバーで動いていないアプリ（SOON_APPS）：一覧�
   const list = (await call('/api/games')).data;
   assert.equal(list.find((g) => g.id === 'ghost').soon, false);
 });
+
+test('名前の下のコード（6〜12文字・だれとも同じにならない・変えられない）と、キャラの呼び方', async () => {
+  const a = await signup('コードの人A');
+  const b = await signup('コードの人B');
+  const meA = (await call('/api/auth/me', { as: a })).data;
+  const meB = (await call('/api/auth/me', { as: b })).data;
+  for (const m of [meA, meB]) {
+    assert.match(m.code, /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6,12}$/, 'まぎらわしい文字（0・O・1・I・L）は使わない');
+    assert.equal(m.honor, 'san', 'はじめは「さん」');
+  }
+  assert.notEqual(meA.code, meB.code);
+
+  // 名前を変えてもコードは変わらない。コードを送っても無視される
+  const r = await call('/api/profile/name', { method: 'POST', as: a, body: { name: 'コードの人あたらしい', code: 'AAAAAA' } });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.me.name, 'コードの人あたらしい');
+  assert.equal(r.data.me.code, meA.code);
+  assert.equal((await call('/api/profile/name', { method: 'POST', as: a, body: { name: 'コードの人B' } })).status, 409, '人と同じ名前はだめ');
+  assert.equal((await call('/api/profile/name', { method: 'POST', as: a, body: { name: 'シバ' } })).status, 409, 'キャラの名前はだめ');
+  assert.equal((await call('/api/profile/name', { method: 'POST', body: { name: 'x' } })).status, 401);
+
+  // 呼び方：決まった中からだけ
+  assert.equal((await call('/api/profile/honor', { method: 'POST', as: a, body: { honor: 'sensei' } })).status, 400);
+  const h = await call('/api/profile/honor', { method: 'POST', as: a, body: { honor: 'chan' } });
+  assert.equal(h.status, 200);
+  assert.equal(h.data.me.honor, 'chan');
+  assert.equal(h.data.me.code, meA.code);
+
+  // ほかの人にも、名前の下のコードが見える（投稿の作者）。キャラは「ちゃん」で呼ぶ
+  const post = (await call('/api/posts', { method: 'POST', as: a, body: { text: '推しの話をきいてほしい' } })).data;
+  const author = (await call('/api/posts')).data.find((p) => p.id === post.id)?.author;
+  assert.equal(author.code, meA.code);
+  assert.equal(author.honor, 'chan');
+  const { callName } = await import('../../shared/honor.js');
+  assert.equal(callName({ name: 'みかん', honor: 'chan' }), 'みかんちゃん');
+  assert.equal(callName({ name: 'みかん', honor: 'none' }), 'みかん');
+  assert.equal(callName({ name: 'みかん' }), 'みかんさん');
+  // コードでもさがせる（# をつけるとハッシュタグになるので、コードだけで）
+  const found = (await call(`/api/search?q=${encodeURIComponent(meA.code)}`, { as: b })).data.people;
+  assert.ok(found.some((u) => u.code === meA.code));
+});

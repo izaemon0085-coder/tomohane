@@ -14,7 +14,7 @@ let me = null;
 
 function entryHtml(c, e) {
   return `<li class="lib-entry${c.adoptedEntryId === e.id ? ' adopted' : ''}">
-    <img src="${escapeHtml(e.image)}" alt="${escapeHtml(e.name)}さんの絵" loading="lazy">
+    <img src="${escapeHtml(e.image)}" alt="${escapeHtml(e.name)}の絵" loading="lazy">
     <span class="small"><strong>${escapeHtml(e.name)}</strong>さん${c.adoptedEntryId === e.id ? ' 🏅 選ばれました' : ''}</span>
     ${e.comment ? `<span class="small">${escapeHtml(e.comment)}</span>` : ''}
     ${e.mine && c.adoptedEntryId !== e.id ? `<button class="btn ghost small" type="button" data-withdraw="${escapeHtml(e.id)}" data-call="${escapeHtml(c.id)}">応募を取り下げる</button>` : ''}
@@ -29,7 +29,7 @@ function callHtml(c) {
       <div>
         <p class="call-kind">${callLabel(c)} を募集${c.status !== 'open' ? '（しめきり）' : ''}</p>
         <h2>${escapeHtml(c.book.title)}</h2>
-        <p class="muted small">${escapeHtml(c.book.author)}さん・${c.book.kind === 'novel' ? '小説' : '漫画'}・${g.emoji} ${escapeHtml(g.name)}・${AGE[c.book.minAge]}</p>
+        <p class="muted small">${escapeHtml(c.book.author)}・${c.book.kind === 'novel' ? '小説' : '漫画'}・${g.emoji} ${escapeHtml(g.name)}・${AGE[c.book.minAge]}</p>
         ${c.book.blurb ? `<p class="small">${escapeHtml(c.book.blurb)}</p>` : ''}
       </div>
     </div>

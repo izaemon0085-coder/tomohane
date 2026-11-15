@@ -74,10 +74,11 @@ export function recommendFor({ games: all, recs, usersById, user }) {
   return { game: games[0], reason: 'すぐ遊べる', comment: null };
 }
 
+// authorName は呼び名（callName：名前＋本人がえらんだ「さん」など）
 export function gameRecommendReply(rec, authorName) {
-  if (!rec) return `${authorName}さん、いまは遊べるゲームがないっす…。ゲームセンター（/games.html）をのぞいてみてほしいっす！`;
+  if (!rec) return `${authorName}、いまは遊べるゲームがないっす…。ゲームセンター（/games.html）をのぞいてみてほしいっす！`;
   const said = rec.comment ? `「${rec.comment}」って声もあるっす！` : '';
-  return `${authorName}さんには「${rec.game.name}」がおすすめっす！ ${rec.reason}っす。${said} ゲームセンター（/games.html）から遊べるっす 🎮`;
+  return `${authorName}には「${rec.game.name}」がおすすめっす！ ${rec.reason}っす。${said} ゲームセンター（/games.html）から遊べるっす 🎮`;
 }
 
 // 見る人の年齢の区分に合わせたゲーム一覧（ログインしていない人には、子どもと同じものだけ）

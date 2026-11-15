@@ -1,4 +1,5 @@
 // 🔍 さがす：投稿・図書館の本・人・#タグ（見てよいものだけ。サーバーがしぼる）
+import { codeLabel } from '/shared/honor.js';
 import { api, headerHtml, escapeHtml, timeAgo } from '/shared/api.js';
 import { linkifyTags } from '/shared/search.js';
 
@@ -19,7 +20,7 @@ function show(r) {
     : r.tag ? `${r.q} のタグがついた投稿` : `「${r.q}」のさがした結果`;
   $('#sec-people').hidden = !r.people.length;
   $('#people').innerHTML = r.people.map((u) => `<li><a href="/profile.html?id=${encodeURIComponent(u.id)}">
-    <strong>${escapeHtml(u.name)}</strong>さん${u.bio ? `<span class="muted small">${escapeHtml(u.bio)}</span>` : ''}</a></li>`).join('');
+    <strong>${escapeHtml(u.name)}</strong>${u.code ? `<span class="user-code">${escapeHtml(codeLabel(u.code))}</span>` : ''}${u.bio ? `<span class="muted small">${escapeHtml(u.bio)}</span>` : ''}</a></li>`).join('');
   $('#sec-books').hidden = !r.books.length;
   $('#books').innerHTML = r.books.map((b) => `<li><a class="lib-book" href="/library.html?book=${encodeURIComponent(b.id)}">
     <span class="book-cover" style="--cover:${escapeHtml(b.cover.color)}" aria-hidden="true"><span class="cover-emoji">${escapeHtml(b.cover.emoji)}</span></span>

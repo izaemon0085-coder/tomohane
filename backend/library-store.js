@@ -1,6 +1,7 @@
 // 図書館の本（ユーザーが書いた小説・漫画）を store の中で持つ。db.json の books に保存される
 // ・下書き → （ネズミのまとめた案・運営の手伝い）→ 同意して出す → 棚に並ぶ
 // ・お話や文章を変えるのは、作者だけ。ネズミと運営は「案」を出すだけ
+import { callName as callNameOf } from '../shared/honor.js';
 import { HttpError } from './store.js';
 import { GENRE_IDS } from '../shared/cafe.js';
 import { shelfAllows } from '../shared/library.js';
@@ -330,7 +331,7 @@ export function createLibraryStore({ state, now, emit, newId, userById, ageGroup
       }
       const entry = { id: newId('e'), userId, image, comment: text, consentAt: now(), at: now() };
       call.entries.push(entry);
-      notify(call.authorId, { kind: 'library', text: `「${book.title}」の${callName(call)}の募集に、${user.name}さんが応募してくれたよ`, link: deskLink(book.id) });
+      notify(call.authorId, { kind: 'library', text: `「${book.title}」の${callName(call)}の募集に、${callNameOf(user)}が応募してくれたよ`, link: deskLink(book.id) });
       emit('call', call);
       return entry;
     },

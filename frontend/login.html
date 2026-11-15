@@ -77,6 +77,7 @@
     <!-- ログインしているとき -->
     <section id="account" class="card panel" hidden aria-labelledby="account-title">
       <h1 id="account-title"></h1>
+      <p id="account-code" class="user-code" title="名前の下のコード（変えられません）"></p>
       <!-- 退会の手続き中（7日のあいだは取り消せる） -->
       <section id="leaving" class="family leaving" hidden aria-labelledby="leaving-title">
         <h2 id="leaving-title">🌸 退会の手続き中</h2>
@@ -164,6 +165,23 @@
           <button class="btn ghost" type="submit">保存</button>
         </form>
       </section>
+      <!-- 名前と呼び方（名前の下のコードは変えられない） -->
+      <details class="family" id="name-box">
+        <summary>🏷️ 名前と呼び方を変える</summary>
+        <form id="name-form">
+          <p class="muted small">名前の下のコード（<strong id="name-code"></strong>）は、だれとも同じにならない、あなただけの印です。<strong>名前を変えてもコードは変わりません</strong>（変えることもできません）。</p>
+          <label class="field">表示名（20文字まで）<input class="input" name="name" maxlength="20" autocomplete="nickname" required></label>
+          <p class="error" role="alert"></p>
+          <button class="btn" type="submit">名前を変える</button>
+        </form>
+        <form id="honor-form">
+          <fieldset class="honor-choices">
+            <legend>キャラに、なんて呼ばれたい？</legend>
+            <div id="honor-list" class="row wrap"></div>
+          </fieldset>
+          <p class="say-line small" id="honor-sample"></p>
+        </form>
+      </details>
       <!-- パスワードを変える（ログイン中）。ほかの端末のログインは切れる -->
       <details class="family" id="password-box">
         <summary>🔑 パスワードを変える</summary>

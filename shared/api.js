@@ -192,7 +192,7 @@ export function headerHtml(current) {
     <button type="button" class="kisekae-btn" data-open-customize title="推しカラーや飾りで画面をきせかえ">🎨 きせかえ</button>
     ${me ? `<a class="notice-bell"${current === 'notices' ? ' aria-current="page"' : ''} href="/notices.html" title="お知らせ（ハトの郵便屋さん）" aria-label="お知らせ">🔔<span class="notice-count" data-notice-count hidden></span></a>` : ''}
     ${me
-    ? `<a class="me" href="/login.html" title="アカウント・ログアウト">${escapeHtml(me.name)} さん</a>`
+    ? `<a class="me" href="/login.html" title="アカウント・ログアウト">${escapeHtml(me.name)}</a>`
     : '<a class="me" href="/login.html" data-login-link>ログイン</a>'}
   </div>`;
 }

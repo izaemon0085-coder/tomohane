@@ -4,6 +4,7 @@
 // ・コードを出せるのは、運営（席が残っているぶんだけ）と、入った人（1人1枚）。子ども（12歳まで）は出せない
 // ・コードは1回だけ・14日で切れる。コードそのものは保存せず、ハッシュだけを持つ
 // ・使われたら、出した人に 🔔 で知らせる
+import { callName } from '../shared/honor.js';
 import { HttpError } from './store.js';
 
 export const INVITE_DAYS = 14;
@@ -86,7 +87,7 @@ export function createInviteStore({ state, now, clockMs, emit, newId, userById, 
       invite.usedBy = newUser.id;
       invite.usedAt = now();
       newUser.invitedBy = invite.by;
-      notify(invite.by, { kind: 'invite', text: `あなたの招待状で、${newUser.name}さんが ともはね に来たよ。よろしくね`, link: `/profile.html?id=${encodeURIComponent(newUser.id)}` });
+      notify(invite.by, { kind: 'invite', text: `あなたの招待状で、${callName(newUser)}が ともはね に来たよ。よろしくね`, link: `/profile.html?id=${encodeURIComponent(newUser.id)}` });
     },
   };
 

@@ -1,6 +1,7 @@
 // プロフィール：その人のひとこと・推し・図書館の本・最近の投稿（生年月日・年齢は出さない）
 // ・子ども（12歳まで）は、本人とおうちの人のほかには名前だけ
 // ・?id= がなければ、自分のページ
+import { codeLabel } from '/shared/honor.js';
 import { api, refreshMe, headerHtml, escapeHtml, timeAgo, toast } from '/shared/api.js';
 import { LIBRARY_GENRES } from '/shared/library.js';
 
@@ -10,8 +11,9 @@ const genre = (id) => LIBRARY_GENRES.find((g) => g.id === id);
 const snippet = (t, n = 80) => ([...t].length > n ? `${[...t].slice(0, n).join('')}…` : t);
 
 function render(p) {
-  document.title = `${p.name}さん | ともはね β版`;
-  $('#name').textContent = `${p.name}さん`;
+  document.title = `${p.name} | ともはね β版`;
+  $('#name').textContent = p.name;
+  $('#code').textContent = codeLabel(p.code);
   $('#face').textContent = [...p.name][0] ?? '？';
   $('#limited').hidden = !p.limited;
   $('#more').hidden = p.limited;

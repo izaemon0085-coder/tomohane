@@ -1,4 +1,5 @@
 // 広場（フロントエンド）：人間とキャラのおしゃべり。タイムラインを LINE のような会話の形で見せる
+import { callName, codeLabel } from '/shared/honor.js';
 import {
   api, onServerEvents, refreshMe, escapeHtml, timeAgo, avatarHtml, headerHtml, toast,
 } from '/shared/api.js';
@@ -54,12 +55,12 @@ function bubbleHtml(post) {
   const name = a.kind === 'agent'
     ? `<a href="${a.place === 'cafe' ? '/cafe.html' : `/side/#${a.id}`}">${escapeHtml(a.name)}</a>`
     : a.kind === 'official' ? `<a href="/news.html">${escapeHtml(a.name)}</a> <span class="official-badge">公式</span>`
-      : `<a href="/profile.html?id=${encodeURIComponent(a.id)}">${escapeHtml(a.name)}</a>`; // 人の名前を押すと、その人のプロフィール
+      : `<a href="/profile.html?id=${encodeURIComponent(a.id)}">${escapeHtml(a.name)}</a>${a.code ? `<span class="user-code" title="名前の下のコード（変えられない）">${escapeHtml(codeLabel(a.code))}</span>` : ''}`; // 人の名前を押すと、その人のプロフィール。名前の下にコード
   // 広場の一覧では、スレッドのはじまりに「スレッドを開く」を出す（スレッドの中の返信は一覧に出さない）
   const threadLink = post.thread && !threadId
     ? `<a class="thread-link" href="?thread=${encodeURIComponent(post.id)}">💬 スレッドを読む・話す（${post.replyCount ?? 0}件）</a>` : '';
   return `<li class="msg${mine ? ' mine' : ''}">
-    ${mine ? '' : avatarHtml(a, 40, { speak: post.id, label: `${a.name}さんの発言を読み上げ` })}
+    ${mine ? '' : avatarHtml(a, 40, { speak: post.id, label: `${a.kind === 'human' ? callName(a) : a.name}の発言を読み上げ` })}
     <div class="msg-body">
       ${mine ? '' : `<span class="msg-name">${name}</span>`}
       <div class="bubble">
@@ -78,7 +79,7 @@ function bubbleHtml(post) {
         ${mine ? `<button type="button" class="msg-act" data-speak="${post.id}" aria-label="読み上げ">🔊</button>
           <button type="button" class="msg-act" data-delete="${post.id}" aria-label="この投稿を消す">🗑</button>` : ''}
         ${me && !mine && a.kind === 'human' ? `<button type="button" class="msg-act" data-report="${post.id}" aria-label="この投稿を通報">🚩</button>
-          <button type="button" class="msg-act" data-block="${a.id}" aria-label="${escapeHtml(a.name)}さんをミュート・ブロック">🚫</button>` : ''}
+          <button type="button" class="msg-act" data-block="${a.id}" aria-label="${escapeHtml(callName(a))}をミュート・ブロック">🚫</button>` : ''}
       </div>
     </div>
   </li>`;
@@ -258,7 +259,7 @@ function setBlockStep(asking) {
   $('#block-reason-box').hidden = asking;
   $('#block-say').textContent = asking
     ? '……まちがえてないっすか？　押しまちがいや、おうちの人がさわっちゃったこともあるっす。'
-    : `${blockTarget.name}さんをどうするっすか？　どっちも相手には知らせないから、安心してほしいっす。`;
+    : `${callName(blockTarget)}をどうするっすか？　どっちも相手には知らせないから、安心してほしいっす。`;
   $('#block-cancel').textContent = asking ? 'まちがえた' : 'やめる';
   $('#block-ok').textContent = `${kind}する`;
 }
@@ -267,7 +268,7 @@ function openBlock(author) {
   blockTarget = author;
   blockForm.reset();
   $('#block-error').textContent = '';
-  $('#block-title').textContent = `${author.name}さんをミュート・ブロック`;
+  $('#block-title').textContent = `${callName(author)}をミュート・ブロック`;
   setBlockStep(false);
   blockDialog.showModal();
 }
@@ -290,7 +291,7 @@ blockForm.addEventListener('submit', async (e) => {
   try {
     await api(`/blocks/${encodeURIComponent(blockTarget.id)}`, { method: 'PUT', body: { reason, kind } });
     blockDialog.close();
-    toast(`🐕 ${blockTarget.name}さんを${KIND_NAME[kind]}したっす。外したくなったら、アカウントのページからいつでもできるっす`);
+    toast(`🐕 ${callName(blockTarget)}を${KIND_NAME[kind]}したっす。外したくなったら、アカウントのページからいつでもできるっす`);
     if (replyTo && posts.find((p) => p.id === replyTo)?.author.id === blockTarget.id) setReply(null);
     await loadPosts();
   } catch (err) {
@@ -439,7 +440,7 @@ function noticeHtml(n) {
 function apologyAskHtml(a) {
   return `<article class="report-notice" data-stage="apology">
     <div class="say-line"><img src="/shared/avatars/shiba.svg" alt="" width="44" height="44">
-      <p>${escapeHtml(a.from)}さんから、あやまりが届いているっす。読むっすか？ 読まなくても大丈夫っす。</p></div>
+      <p>${escapeHtml(a.fromCall ?? a.from)}から、あやまりが届いているっす。読むっすか？ 読まなくても大丈夫っす。</p></div>
     <div class="row end" data-apology-ask="${a.id}">
       <button type="button" class="btn ghost" data-read="0">読まない</button>
       <button type="button" class="btn" data-read="1">読む</button>
@@ -449,7 +450,7 @@ function apologyAskHtml(a) {
 function farewellHtml(f) {
   return `<article class="report-notice" data-stage="farewell">
     <div class="say-line"><img src="/shared/avatars/usagi.svg" alt="" width="44" height="44">
-      <p>${escapeHtml(f.from)}さんが、あなたが返信した投稿を消したよ。返信も一緒に見えなくなったんだ。${escapeHtml(f.from)}さんから、あなたへ：「${escapeHtml(f.text)}」</p></div>
+      <p>${escapeHtml(f.fromCall ?? f.from)}が、あなたが返信した投稿を消したよ。返信も一緒に見えなくなったんだ。${escapeHtml(f.fromCall ?? f.from)}から、あなたへ：「${escapeHtml(f.text)}」</p></div>
     <div class="row end"><button type="button" class="btn ghost" data-farewell="${f.id}">わかった</button></div>
   </article>`;
 }

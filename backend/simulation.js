@@ -1,4 +1,5 @@
 // エージェントの生活シミュレーション：家での暮らし（サイドフロント）と会議の進行（サブフロント）を動かす。
+import { callName } from '../shared/honor.js';
 import * as brain from './agents.js';
 import { HttpError, ageGroup } from './store.js';
 import { gamesFor, isGameQuestion, recommendFor, gameRecommendReply } from './games.js';
@@ -65,7 +66,7 @@ export function createSimulation(store, {
         .find((p) => p.authorId !== agent.id && !p.likes.includes(agent.id) && !p.practiceOwner);
       if (target) {
         store.toggleLike(target.id, agent.id);
-        store.addDiary(agent.id, `${store.getUser(target.authorId).name}さんの投稿にいいねした`);
+        store.addDiary(agent.id, `${callName(store.getUser(target.authorId))}の投稿にいいねした`);
       }
     } else if (roll < 0.9) {
       const activity = brain.homeActivity(agent, random);
@@ -95,11 +96,11 @@ export function createSimulation(store, {
     const author = store.getUser(post.authorId);
     const reply = store.createPost({
       authorId: agent.id,
-      text: brain.replyToPost(agent, post, author.name, random, { isFirstPost: !post.replyTo && isFirstPostOf(post) }),
+      text: brain.replyToPost(agent, post, callName(author), random, { isFirstPost: !post.replyTo && isFirstPostOf(post) }),
       replyTo: post.id,
     });
     // 練習モードの子どもの名前は、家の日記（だれでも読める）に書かない
-    store.addDiary(agent.id, post.practiceOwner ? '練習中の小さなお客さんに返事をした' : `${author.name}さんに返信した`);
+    store.addDiary(agent.id, post.practiceOwner ? '練習中の小さなお客さんに返事をした' : `${callName(author)}に返信した`);
     return reply;
   }
 
@@ -132,8 +133,8 @@ export function createSimulation(store, {
       games: gamesFor(store.listExtGames(), ageGroup(author.birthdate) ?? 'child'),
       recs: store.listGameRecs(), usersById: store.usersById(), user: author,
     });
-    const reply = store.createPost({ authorId: agent.id, text: gameRecommendReply(rec, author.name), replyTo: post.id });
-    store.addDiary(agent.id, post.practiceOwner ? '練習中の小さなお客さんにゲームをすすめた' : `${author.name}さんにゲームをすすめた`);
+    const reply = store.createPost({ authorId: agent.id, text: gameRecommendReply(rec, callName(author)), replyTo: post.id });
+    store.addDiary(agent.id, post.practiceOwner ? '練習中の小さなお客さんにゲームをすすめた' : `${callName(author)}にゲームをすすめた`);
     return reply;
   }
 
@@ -154,10 +155,10 @@ export function createSimulation(store, {
     const table = store.getTable(post.table);
     const reply = store.createPost({
       authorId: agent.id,
-      text: brain.cafeReply(agent, post, author.name, table.name, random, { isFirstVisit }),
+      text: brain.cafeReply(agent, post, callName(author), table.name, random, { isFirstVisit }),
       replyTo: post.id,
     });
-    store.addDiary(agent.id, post.practiceOwner ? 'カフェで練習中の小さなお客さんに声をかけた' : `カフェで${author.name}さんに声をかけた`);
+    store.addDiary(agent.id, post.practiceOwner ? 'カフェで練習中の小さなお客さんに声をかけた' : `カフェで${callName(author)}に声をかけた`);
     return reply;
   }
 
@@ -277,7 +278,7 @@ export function createSimulation(store, {
       store.updateMeeting(meeting.id, { pendingHumanId: null });
       store.addMeetingMessage(meeting.id, {
         authorId: agent.id,
-        text: brain.respondToHuman(agent, store.getUser(human.authorId).name, human.text),
+        text: brain.respondToHuman(agent, callName(store.getUser(human.authorId)), human.text),
       });
       return store.getMeeting(meeting.id);
     }

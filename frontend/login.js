@@ -1,5 +1,6 @@
 // ログイン・はじめる（登録）・パスワードを忘れた・アカウント
 // ログインのしるしはサーバーのクッキー（JavaScript からは読めない）。ここでは画面の写しだけを更新する
+import { callName, codeLabel, HONORS } from '/shared/honor.js';
 import { api, refreshMe, rememberMe, logout, headerHtml, escapeHtml, toast, timeAgo, safeNext } from '/shared/api.js';
 import { REPORT_REASONS } from '/shared/report.js';
 import { isComingSoon, SOON_LABEL } from '/shared/soon.js';
@@ -69,7 +70,8 @@ function render(me) {
   $('#auth').hidden = Boolean(me);
   $('#account').hidden = !me;
   if (!me) return;
-  $('#account-title').textContent = `${me.name} さん`;
+  $('#account-title').textContent = me.name;
+  $('#account-code').textContent = codeLabel(me.code);
   $('#acc-login').textContent = me.loginId;
   $('#acc-age').textContent = AGE[me.ageGroup] ?? '―';
   $('#acc-role').textContent = ROLE[me.role] ?? me.role;
@@ -85,7 +87,41 @@ function render(me) {
   renderReportAdmin(me);
   renderCafeAdmin(me);
   renderInvites(me);
+  renderNameBox(me);
 }
+
+// ---- 🏷️ 名前と呼び方（名前の下のコードは変えられない） ----
+function renderNameBox(me) {
+  $('#name-code').textContent = codeLabel(me.code);
+  const f = $('#name-form');
+  if (document.activeElement !== f.elements.name) f.elements.name.value = me.name;
+  $('#honor-list').innerHTML = HONORS.map((h) => `<label class="honor-choice"><input type="radio" name="honor" value="${h.id}"${h.id === (me.honor ?? 'san') ? ' checked' : ''}> ${escapeHtml(h.label.replace('〇〇', me.name))}</label>`).join('');
+  $('#honor-sample').textContent = `🐕 シバ：「${callName(me)}、おかえりなさいっす！」`;
+}
+$('#name-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const err = e.target.querySelector('.error');
+  err.textContent = '';
+  try {
+    const r = await api('/profile/name', { method: 'POST', body: { name: e.target.elements.name.value } });
+    rememberMe(r.me);
+    render(r.me);
+    toast(`🏷️ 名前を「${r.me.name}」にしました（コード ${codeLabel(r.me.code)} はそのまま）`, 5000);
+  } catch (ex) {
+    err.textContent = ex.offline ? 'つながっていません。つながってから、もう一度どうぞ' : ex.message;
+  }
+});
+$('#honor-form').addEventListener('change', async (e) => {
+  if (e.target.name !== 'honor') return;
+  try {
+    const r = await api('/profile/honor', { method: 'POST', body: { honor: e.target.value } });
+    rememberMe(r.me);
+    renderNameBox(r.me);
+    toast(`🐕 これからは「${callName(r.me)}」って呼ぶっす！`, 4000);
+  } catch (ex) {
+    toast(ex.message, 5000);
+  }
+});
 
 // ---- ✉️ 招待状（クローズドβ） ----
 async function renderInvites(me) {
@@ -106,7 +142,7 @@ async function renderInvites(me) {
   $('#invite-why').textContent = s.on && !s.canIssue ? s.reason : '';
   const dateJa = (iso) => new Date(iso).toLocaleDateString('ja-JP', { month: 'long', day: 'numeric' });
   $('#invite-list').innerHTML = s.mine.map((i) => `<li class="row wrap">
-    <span>${i.used ? `✅ ${escapeHtml(i.usedName)}さんが使いました` : i.expired ? '⌛ 切れました' : `📨 まだ使われていません（${dateJa(i.expiresAt)}まで）`}</span>
+    <span>${i.used ? `✅ ${escapeHtml(i.usedName)}が使いました` : i.expired ? '⌛ 切れました' : `📨 まだ使われていません（${dateJa(i.expiresAt)}まで）`}</span>
     ${!i.used && !i.expired ? `<button class="btn ghost small" type="button" data-invite-cancel="${escapeHtml(i.id)}">取り消す</button>` : ''}</li>`).join('');
 }
 $('#invite-issue').addEventListener('click', async () => {
@@ -297,12 +333,13 @@ async function renderBlocks() {
     ? list.map((b) => {
       const id = escapeHtml(b.user?.id ?? '');
       const name = escapeHtml(b.user?.name ?? '？');
+      const call = escapeHtml(b.user ? callName(b.user) : '？'); // キャラが呼ぶときの呼び名
       const other = b.kind === 'mute' ? 'block' : 'mute';
-      return `<li><strong>${name}</strong>
+      return `<li><strong>${name}</strong>${b.user?.code ? `<span class="user-code">${escapeHtml(codeLabel(b.user.code))}</span>` : ''}
       <span class="muted small">${KIND_NAME[b.kind] ?? ''}（${escapeHtml(timeAgo(b.createdAt))}）</span>
       <div class="row wrap">
-        <button type="button" class="btn ghost" data-switch="${id}" data-kind="${other}" data-name="${name}">${KIND_NAME[other]}にする</button>
-        <button type="button" class="btn ghost" data-unblock="${id}" data-name="${name}">外す</button>
+        <button type="button" class="btn ghost" data-switch="${id}" data-kind="${other}" data-name="${call}">${KIND_NAME[other]}にする</button>
+        <button type="button" class="btn ghost" data-unblock="${id}" data-name="${call}">外す</button>
       </div></li>`;
     }).join('')
     : '<li class="muted small">ミュート・ブロックした人はいません</li>';
@@ -315,11 +352,11 @@ $('#block-list').addEventListener('click', async (e) => {
     if (sw) {
       // 切りかえだけ。前に書いた理由はそのまま残す（keepReason）
       await api(`/blocks/${encodeURIComponent(sw.dataset.switch)}`, { method: 'PUT', body: { kind: sw.dataset.kind, keepReason: true } });
-      toast(`🐕 ${sw.dataset.name} さんを${KIND_NAME[sw.dataset.kind]}にしたっす`);
+      toast(`🐕 ${sw.dataset.name}を${KIND_NAME[sw.dataset.kind]}にしたっす`);
     } else {
-      if (!confirm(`${un.dataset.name} さんのミュート・ブロックを外しますか？`)) return;
+      if (!confirm(`${un.dataset.name}のミュート・ブロックを外しますか？`)) return;
       await api(`/blocks/${encodeURIComponent(un.dataset.unblock)}`, { method: 'DELETE' });
-      toast(`🐕 ${un.dataset.name} さんを外したっす`);
+      toast(`🐕 ${un.dataset.name}を外したっす`);
     }
     renderBlocks();
   } catch (err) {
@@ -359,13 +396,13 @@ async function renderFamily(me) {
       ? `<ul class="posts">${c.recentPosts.map((p) => `<li>${escapeHtml(p.text)} <span class="muted">（${escapeHtml(timeAgo(p.createdAt))}）</span></li>`).join('')}</ul>`
       : '<p class="muted small">広場の投稿はまだありません</p>';
     const id = escapeHtml(c.id);
-    const name = escapeHtml(c.name);
+    const name = escapeHtml(callName(c)); // キャラ・確認の文で使う呼び名
     const until = c.leaving?.guardianUntil ?? c.leaving?.until;
     const leave = c.leaving
       ? `<p class="note-line">🌸 退会の手続き中です。${escapeHtml(dateJa(c.leaving.until))} に本人は入れなくなり、${escapeHtml(dateJa(until))} にアカウントと投稿などが消えます。機種変更などのまちがいなら、それまでここで取り消せます。</p>
         <div class="row wrap"><button type="button" class="btn ghost" data-leave="${id}" data-name="${name}">退会を取り消す</button></div>`
       : '';
-    return `<li><strong>${name}</strong> <span class="muted small">${escapeHtml(games)}</span>${posts}${leave}
+    return `<li><strong>${escapeHtml(c.name)}</strong>${c.code ? `<span class="user-code">${escapeHtml(codeLabel(c.code))}</span>` : ''} <span class="muted small">${escapeHtml(games)}</span>${posts}${leave}
       <button type="button" class="btn ghost" data-unlink="${id}" data-name="${name}">つなぐのをやめる</button></li>`;
   }).join('');
 }
@@ -380,10 +417,10 @@ $('#family-issue').addEventListener('click', async () => {
 $('#family-children').addEventListener('click', async (e) => {
   const lv = e.target.closest('[data-leave]');
   if (lv) {
-    if (!confirm(`${lv.dataset.name} さんの退会を取り消しますか？`)) return;
+    if (!confirm(`${lv.dataset.name}の退会を取り消しますか？`)) return;
     try {
       await api(`/guardian/children/${encodeURIComponent(lv.dataset.leave)}/leave-cancel`, { method: 'POST' });
-      toast(`🐕 取り消したっす。${lv.dataset.name}さん、おかえりなさいっす！`, 5000);
+      toast(`🐕 取り消したっす。${lv.dataset.name}、おかえりなさいっす！`, 5000);
       renderFamily(await refreshMe());
     } catch (err) {
       toast(err.message, 5000);
@@ -391,7 +428,7 @@ $('#family-children').addEventListener('click', async (e) => {
     return;
   }
   const btn = e.target.closest('[data-unlink]');
-  if (!btn || !confirm(`${btn.dataset.name} さんと、つなぐのをやめますか？`)) return;
+  if (!btn || !confirm(`${btn.dataset.name}と、つなぐのをやめますか？`)) return;
   try {
     await api(`/guardian/children/${btn.dataset.unlink}`, { method: 'DELETE' });
     toast('つなぐのをやめました');
@@ -405,7 +442,7 @@ $('#family-join').addEventListener('submit', async (e) => {
   const r = await submit(e.target, '/guardian/join', ['code']);
   if (!r) return;
   e.target.reset();
-  toast(`${r.name} さんとつながりました`, 5000);
+  toast(`${r.name}とつながりました`, 5000);
   renderFamily(await refreshMe());
 });
 

@@ -25,9 +25,10 @@ export const SEND_OFF = [
 export const WELCOME_BACK = { face: 'shiba', name: 'シバ', text: 'おかえりなさいっす！！ もどってきてくれて、うれしいっす！' };
 
 // おうちの人に届く、シバの日記
+// name は呼び名（shared/honor.js の callName＝名前＋本人がえらんだ「さん」など）
 export const FAMILY_DIARY = {
-  leave: (name) => `きょう、${name}さんが ともはね からの旅立ちを決めたっす。みんなで明るく見送ったっす！ ${LEAVE_DAYS}日たつと、${name}さんは ともはね に入れなくなるっす。機種変更などのまちがいだったら、${GUARDIAN_LEAVE_DAYS}日までなら、おうちの人がここで取り消せるっす。`,
-  back: (name) => `${name}さんが、もどってきてくれたっす！ うれしいっす！`,
-  guardianBack: (name) => `おうちの人が、${name}さんの退会を取り消したっす。${name}さん、おかえりなさいっす！`,
-  gone: (name) => `${name}さんが旅立ったっす。いっしょに遊べて楽しかったっす。また会える日を楽しみにしてるっす。`,
+  leave: (name) => `きょう、${name}が ともはね からの旅立ちを決めたっす。みんなで明るく見送ったっす！ ${LEAVE_DAYS}日たつと、${name}は ともはね に入れなくなるっす。機種変更などのまちがいだったら、${GUARDIAN_LEAVE_DAYS}日までなら、おうちの人がここで取り消せるっす。`,
+  back: (name) => `${name}が、もどってきてくれたっす！ うれしいっす！`,
+  guardianBack: (name) => `おうちの人が、${name}の退会を取り消したっす。${name}、おかえりなさいっす！`,
+  gone: (name) => `${name}が旅立ったっす。いっしょに遊べて楽しかったっす。また会える日を楽しみにしてるっす。`,
 };
