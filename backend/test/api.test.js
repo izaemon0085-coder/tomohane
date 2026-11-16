@@ -1,7 +1,8 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp, parseSoonApps } from '../server.js';
@@ -11,6 +12,7 @@ import { MEETING_SCRIPT } from '../agents.js';
 import { qrMatrix } from '../../shared/qrcode.js';
 import { precheck, isHarsh } from '../../shared/precheck.js';
 import { createKokotomoClient } from '../kokotomo.js';
+import { checkGame as checkKoboGame, ohanashiGame, toCode as toKoboCode } from '../../shared/kobo/game.js';
 
 let server;
 let app;
@@ -2247,5 +2249,89 @@ test('前からいる人のコードは、読みこんだときにすぐ保存�
     assert.equal(b, a, '2回目に読みこんでも同じコード');
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('ビーバー一家の工房のゲーム：出す → 運営が遊んで並べる → ゲームセンターで遊べる（閉店・下げる）', async () => {
+  const kid = await signup('工房のこども', { birthdate: '2017-05-05' });
+  const other = await signup('工房を見る人');
+  const admin = await signup('工房の運営');
+  store.getUser(admin.id).role = 'admin';
+  const village = checkKoboGame(ohanashiGame()).game;
+  const code = toKoboCode(village);
+
+  // ログインしていないと出せない・こわれたコード・まだ遊べないゲームは出せない
+  assert.equal((await call('/api/kobo', { method: 'POST', body: { code } })).status, 401);
+  assert.equal((await call('/api/kobo', { method: 'POST', as: kid, body: { code: 'こわれた' } })).status, 400);
+  const stuck = checkKoboGame(ohanashiGame()).game;
+  stuck.rules = []; // 門番と話しても扉があかない → ゴールに行けない
+  const bad = await call('/api/kobo', { method: 'POST', as: kid, body: { code: toKoboCode(stuck) } });
+  assert.equal(bad.status, 400);
+  assert.match(bad.data.error, /まだ遊べない/);
+  const rude = checkKoboGame(ohanashiGame()).game;
+  rude.npcs[0].lines = ['殺してやる'];
+  assert.equal((await call('/api/kobo', { method: 'POST', as: kid, body: { code: toKoboCode(rude) } })).status, 400, 'せりふも送る前のチェック');
+
+  // こどもも出せる → 運営が見るまでは、ほかの人には見えない
+  const sent = await call('/api/kobo', { method: 'POST', as: kid, body: { code } });
+  assert.equal(sent.status, 201);
+  assert.equal(sent.data.status, 'pending');
+  assert.equal(sent.data.title, 'おはなしの村');
+  const id = sent.data.id;
+  assert.equal((await call('/api/kobo/mine', { as: kid })).data.length, 1);
+  assert.equal((await call(`/api/kobo/${id}`, { as: other })).status, 404, '並ぶ前は見えない');
+  assert.equal((await call(`/api/kobo/${id}`, { as: kid })).data.status, 'pending', '出した本人はためせる');
+  assert.equal((await call('/api/games', { as: other })).data.some((g) => g.id === `kobo-${id}`), false);
+
+  // 運営だけが見て並べる
+  assert.equal((await call('/api/kobo/review', { as: kid })).status, 403);
+  assert.equal((await call(`/api/kobo/${id}/status`, { method: 'POST', as: kid, body: { status: 'listed' } })).status, 403);
+  assert.equal((await call('/api/kobo/review', { as: admin })).data.find((g) => g.id === id).owner, '工房のこども');
+  const tried = await call(`/api/kobo/${id}`, { as: admin });
+  assert.deepEqual(tried.data.game.npcs, village.npcs, '運営はためしに遊べる');
+  assert.equal((await call(`/api/kobo/${id}/status`, { method: 'POST', as: admin, body: { status: 'bad' } })).status, 400);
+  assert.equal((await call(`/api/kobo/${id}/status`, { method: 'POST', as: admin, body: { status: 'listed' } })).data.status, 'listed');
+
+  // ゲームセンターに並ぶ（ログインしていない人にも・おすすめもできる）
+  const listed = (await call('/api/games')).data.find((g) => g.id === `kobo-${id}`);
+  assert.equal(listed.name, 'おはなしの村');
+  assert.equal(listed.kobo, true);
+  assert.equal(listed.play, `/kobo-play.html?id=${id}`);
+  assert.match(listed.maker, /工房のこども/);
+  assert.equal(listed.ads || listed.purchases, false);
+  assert.equal((await call(`/api/games/kobo-${id}/recommend`, { method: 'PUT', as: other, body: { comment: '村の人がかわいい' } })).status, 200);
+  const played = await call(`/api/kobo/${id}`, { as: other });
+  assert.equal(played.data.author, '工房のこども');
+  assert.deepEqual(played.data.game.map, village.map);
+  for (const f of ['/kobo-play.html', '/kobo-submit.html', '/shared/kobo/game.js', '/shared/kobo/board.js', '/shared/kobo/parts.js']) {
+    assert.equal((await fetch(base + f)).status, 200, f);
+  }
+
+  // 閉店中は遊べない（出した本人・運営はためせる）
+  try {
+    arcadeNow = new Date(Date.UTC(2026, 10, 8, 14, 30)); // 日本時間 23時30分：こどもは閉店・大人は開店
+    assert.equal((await call(`/api/kobo/${id}`)).status, 423, 'ログインしていない人はこどもと同じ');
+    assert.equal((await call(`/api/kobo/${id}`, { as: other })).status, 200);
+    assert.equal((await call(`/api/kobo/${id}`, { as: kid })).status, 200);
+  } finally { arcadeNow = NOON_JST; }
+
+  // 出せる数（見てもらっているのは3つまで）
+  for (let i = 0; i < 3; i++) assert.equal((await call('/api/kobo', { method: 'POST', as: other, body: { code } })).status, 201);
+  assert.equal((await call('/api/kobo', { method: 'POST', as: other, body: { code } })).status, 429);
+
+  // 下げられるのは本人だけ
+  assert.equal((await call(`/api/kobo/${id}`, { method: 'DELETE', as: other })).status, 404);
+  assert.equal((await call(`/api/kobo/${id}`, { method: 'DELETE', as: kid })).status, 200);
+  assert.equal((await call('/api/games')).data.some((g) => g.id === `kobo-${id}`), false);
+});
+
+test('工房のしくみの写し（shared/kobo/）が、工房・Vとも・ともはね の元とずれていない', (t) => {
+  const strip = (s) => s.replace(/\r\n/g, '\n').split('\n').filter((l) => !l.startsWith('// ※')).join('\n');
+  const here = (p) => fileURLToPath(new URL(`../../${p}`, import.meta.url));
+  const pairs = [['shared/kobo/game.js', '../kobo/public/game.js'], ['shared/kobo/board.js', '../kobo/public/board.js'],
+    ['shared/kobo/parts.js', '../vtomo/public/parts.js'], ['shared/kobo/precheck.js', 'shared/precheck.js']];
+  for (const [mine, orig] of pairs) {
+    if (!existsSync(here(orig))) { t.diagnostic(`${orig} がとなりにない（GitHub の上ではとばす）`); continue; }
+    assert.equal(strip(readFileSync(here(mine), 'utf8')), strip(readFileSync(here(orig), 'utf8')), mine);
   }
 });

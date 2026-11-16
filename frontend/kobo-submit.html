@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>工房のゲームを出す | ともはね β版</title>
+  <link rel="stylesheet" href="/shared/base.css">
+  <link rel="stylesheet" href="/shared/playground.css">
+  <link rel="stylesheet" href="/shared/customize.css">
+  <link rel="stylesheet" href="/shared/network.css">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="site-header" id="header"></header>
+  <main class="page kobo-page">
+    <h1>🦫 工房のゲームをゲームセンターに出す</h1>
+    <section class="card panel say-line">
+      <img src="/shared/avatars/kitsune.svg" alt="" width="48" height="48">
+      <div><p class="muted small">店長のキツネ</p>
+      <p id="kitsune">工房のゲームだね！ 運営が遊んで確かめてから、台に並べるよ。</p></div>
+    </section>
+    <section class="card panel" id="preview" hidden aria-labelledby="game-title">
+      <h2 id="game-title"></h2>
+      <canvas id="board" class="kobo-board" role="img" aria-label="ゲームの地図"></canvas>
+      <ul class="kobo-facts" id="facts"></ul>
+      <p class="small" id="check" aria-live="polite"></p>
+    </section>
+    <section class="card panel" id="send-box" hidden>
+      <p class="note-line" id="need-login" hidden>出すには、ログインしてください。<a id="login-link" href="/login.html?next=/kobo-submit.html">ログイン</a></p>
+      <div id="send-area" hidden>
+        <p class="muted small">出すのは、地図・星・しかけ・村の人のせりふ・キャラの部品のえらび方だけです。作った人として、あなたの名前が台にのります。広告・課金はありません。</p>
+        <button type="button" class="btn" id="send">🦉 運営に見てもらう</button>
+      </div>
+      <p class="error" role="alert" id="send-err"></p>
+    </section>
+    <p class="note-line" id="none" hidden>ゲームが見つかりません。工房の親方の作業台で「🎮 ゲームセンターに出す」を押してください。</p>
+    <p><a href="/games.html">← ゲームセンターへ</a></p>
+  </main>
+  <script type="module" src="/kobo-submit.js"></script>
+  <script type="module" src="/shared/customize.js"></script>
+  <script type="module" src="/shared/network.js"></script>
+  <script type="module" src="/shared/playground.js"></script>
+</body>
+</html>

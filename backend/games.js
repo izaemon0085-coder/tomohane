@@ -81,8 +81,17 @@ export function gameRecommendReply(rec, authorName) {
   return `${authorName}には「${rec.game.name}」がおすすめっす！ ${rec.reason}っす。${said} ゲームセンター（/games.html）から遊べるっす 🎮`;
 }
 
+// 工房のゲーム（運営が並べたもの）を、一覧の形に。遊ぶのは ともはね の中（/kobo-play.html）だけ
+export const KOBO_PREFIX = 'kobo-';
+export function koboEntry(g, authorName) {
+  return {
+    id: `${KOBO_PREFIX}${g.id}`, koboId: g.id, name: g.title, maker: `${authorName}（ビーバー一家の工房）`, kobo: true,
+    description: 'ビーバー一家の工房で作られたゲーム。星を集めて🚩をめざそう', tags: ['工房', 'ひとり'],
+    minAge: 'child', ads: false, purchases: false, start: `/kobo-play.html?id=${encodeURIComponent(g.id)}`,
+  };
+}
 // 見る人の年齢の区分に合わせたゲーム一覧（ログインしていない人には、子どもと同じものだけ）
-export function gamesFor(extGames, group = 'child') {
+export function gamesFor(extGames, group = 'child', koboGames = []) {
   const ext = extGames.filter((g) => g.status === 'listed').map((g) => ({ ...g, start: `/api/link/x/${g.id}/start` }));
-  return [...BUILTIN_GAMES.map((g) => ({ ...g, builtin: true })), ...ext].filter((g) => visibleFor(g, group));
+  return [...BUILTIN_GAMES.map((g) => ({ ...g, builtin: true })), ...ext, ...koboGames].filter((g) => visibleFor(g, group));
 }

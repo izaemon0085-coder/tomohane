@@ -730,3 +730,19 @@ html[data-oshi-color] .oshi-hero { color: var(--accent-text); }
   .utatomo-spot { left: 1%; top: 50%; } /* スマホでは、ポストの下の道ばた */
   .utatomo-spot .soon-badge { display: none; }
 }
+
+/* 🦫 ビーバー一家の工房の台（/kobo-play.html・/kobo-submit.html） */
+.kobo-page { display: grid; gap: 14px; }
+.kobo-page h1 { margin: 0; font-size: 1.3rem; }
+.kobo-board { width: 100%; max-width: 800px; height: auto; display: block; margin: 8px auto 0; border-radius: 10px; touch-action: manipulation; image-rendering: pixelated; }
+.kobo-board:focus-visible { outline: 3px solid #f2a93b; outline-offset: 2px; }
+.kobo-facts { margin: 8px 0 0; padding-left: 1.2em; display: grid; gap: 2px; }
+.kobo-missions { display: flex; flex-wrap: wrap; gap: 4px 10px; margin: 6px 0 0; }
+.kobo-missions .is-done { color: var(--muted); text-decoration: line-through; }
+.kobo-talk { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border: 2px solid var(--accent); border-radius: 14px; background: var(--surface); }
+.kobo-talk[hidden] { display: none; }
+.kobo-talk-face { font-size: 2rem; line-height: 1; }
+.kobo-talk-body { flex: 1; min-width: 0; }
+.kobo-talk-body p { margin: 2px 0 0; }
+.kobo-pad { display: grid; grid-template-columns: repeat(3, 52px); gap: 4px; justify-content: center; margin: 8px 0; }
+.kobo-pad button { width: 52px; height: 48px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface-2); cursor: pointer; touch-action: manipulation; }

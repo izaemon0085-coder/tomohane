@@ -17,9 +17,11 @@ import { shelfAllows, SAMPLE_BOOKS } from '../shared/library.js';
 import { MAX_QUERY, LIMITS, normalizeText, tagsOf } from '../shared/search.js';
 import { MAX_VIDEO_BYTES, removeVideo, saveVideo, serveVideo } from './letters.js';
 import { createKokotomoClient } from './kokotomo.js';
+import { fromCode as fromKoboCode, checkPlayable as checkKoboPlayable } from '../shared/kobo/game.js';
 import { createGameLink, GHOST_URL, MISETOMO_URL, KOROTOMO_URL, SORATOMO_URL, HAATOMO_URL, TOMORU_URL, VTOMO_URL, METAVERSE_URL, UTATOMO_URL, KOETOMO_URL } from './gamelink.js';
 import {
   BUILTIN_GAMES, SLUG, visibleFor, recommendFor, gamesFor, hashSecret, newGameSecret, secretMatches,
+  koboEntry,
 } from './games.js';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -218,6 +220,10 @@ function needAdmin(me) {
   return me;
 }
 // 申しこんだ人・運営が見るゲームの情報（合言葉のハッシュと、申しこんだ人の ID は出さない）
+// 工房のゲーム：出した人・運営が見る一覧（中身の地図は GET /api/kobo/:id で）
+function koboMineView(g) {
+  return { id: g.id, title: g.title, status: g.status, createdAt: g.createdAt, reviewedAt: g.reviewedAt ?? null };
+}
 function extGameView(g) {
   const { secretHash: _s, ownerId: _o, ...rest } = g;
   return rest;
@@ -402,7 +408,7 @@ export function createApp({
         }));
         return {
           id: g.id, name: g.name, maker: g.maker, description: g.description, tags: g.tags, minAge: g.minAge,
-          ads: g.ads, purchases: g.purchases, builtin: Boolean(g.builtin), play: g.soon ? null : g.start, soon: Boolean(g.soon),
+          ads: g.ads, purchases: g.purchases, builtin: Boolean(g.builtin), kobo: Boolean(g.kobo), play: g.soon ? null : g.start, soon: Boolean(g.soon),
           recCount: recs.filter((r) => r.gameId === g.id).length, myRec: mine ? { comment: mine.comment } : null, voices,
           myRecord: me?.extGames?.[g.id] ?? null,
         };
@@ -442,6 +448,37 @@ export function createApp({
       needAdmin(me);
       if (!['listed', 'rejected', 'pending'].includes(body.status)) throw new HttpError(400, '状態が正しくありません');
       return extGameView(store.setExtGameStatus(params[0], body.status));
+    }],
+
+    // ---- 🦫 ビーバー一家の工房のゲーム：出す → 運営が見てゲームセンターに並べる。遊ぶのは ともはね の中だけ ----
+    // 中身は shared/kobo/game.js（工房と同じしくみ）で確かめる。名前・せりふは送る前のチェックずみ
+    ['POST', /^\/api\/kobo$/, ({ body, me }) => {
+      const u = needLogin(me);
+      const r = fromKoboCode(String(body.code ?? ''));
+      if (!r.ok) throw new HttpError(400, r.error);
+      const c = checkKoboPlayable(r.game);
+      if (!c.ok) throw new HttpError(400, `まだ遊べないところがあります：${c.problems[0].text}`);
+      return [201, koboMineView(store.submitKoboGame(u.id, r.game))];
+    }],
+    ['GET', /^\/api\/kobo\/mine$/, ({ me }) => store.listKoboGames().filter((g) => g.ownerId === needLogin(me).id).map(koboMineView)],
+    ['GET', /^\/api\/kobo\/review$/, ({ me }) => {
+      needAdmin(me);
+      const users = store.usersById();
+      return store.listKoboGames().map((g) => ({ ...koboMineView(g), owner: users[g.ownerId]?.name ?? '？' }));
+    }],
+    ['POST', /^\/api\/kobo\/([\w-]+)\/status$/, ({ params, body, me }) => {
+      needAdmin(me);
+      if (!['listed', 'rejected', 'pending'].includes(body.status)) throw new HttpError(400, '状態が正しくありません');
+      return koboMineView(store.setKoboGameStatus(params[0], body.status));
+    }],
+    ['DELETE', /^\/api\/kobo\/([\w-]+)$/, ({ params, me }) => store.withdrawKoboGame(needLogin(me).id, params[0])],
+    // 遊ぶ：並んでいるゲーム（出した本人と運営は、並ぶ前でも見られる）。ゲームセンターが閉まっていたら遊べない
+    ['GET', /^\/api\/kobo\/([\w-]+)$/, ({ params, me }) => {
+      const g = store.koboGame(params[0]);
+      const insider = Boolean(me && g && (g.ownerId === me.id || me.role === 'admin'));
+      if (!g || (!insider && (g.status !== 'listed' || store.isLeavingUser(g.ownerId)))) throw new HttpError(404, 'ゲームが見つかりません');
+      if (!insider && !arcadeFor(me).open) throw new HttpError(423, '🦊 いまは閉店中！ また明日「もう一回！」しよう');
+      return { id: g.id, title: g.title, status: g.status, author: store.usersById()[g.ownerId]?.name ?? '？', game: g.game };
     }],
 
     // ---- ともはね新聞・アンケート（結果はキャラの座談会で伝える。正確な数とひとことは運営だけ） ----
@@ -760,7 +797,11 @@ export function createApp({
   }
 
   // 見る人に合わせたゲーム一覧
-  const visibleGames = (me) => gamesFor(store.listExtGames(), me ? ageGroup(me.birthdate) : 'child')
+  const listedKobo = () => {
+    const users = store.usersById();
+    return store.listKoboGames().filter((g) => g.status === 'listed' && !store.isLeavingUser(g.ownerId)).map((g) => koboEntry(g, users[g.ownerId]?.name ?? '？'));
+  };
+  const visibleGames = (me) => gamesFor(store.listExtGames(), me ? ageGroup(me.birthdate) : 'child', listedKobo())
     .map((g) => (g.builtin && extraSoon.has(g.id) ? { ...g, soon: true } : g));
 
   // ---- インディーズ・個人のゲームとの連結（キットを使う）----
