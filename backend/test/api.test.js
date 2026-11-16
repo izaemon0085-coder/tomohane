@@ -742,7 +742,7 @@ test('やみとも：ともはねでログインだけ（セーブは やみと�
   assert.equal(loc.pathname, '/auth/callback');
   const info = (await call(`/api/link/yamitomo-ticket/${loc.searchParams.get('ticket')}`, { headers: S })).data;
   assert.equal(info.ageGroup, 'child', 'こどもも遊べる');
-  assert.equal('admin' in info, false);
+  assert.equal(info.admin, false, '運営かどうかを渡す（ネタの鍋）');
   assert.match(info.gameId, /^y_/);
   assert.equal((await call(`/api/link/yamitomo-ticket/${loc.searchParams.get('ticket')}`, { headers: S })).status, 404, '通行証は1回だけ');
   assert.equal((await call('/api/link/yamitomo-results', { method: 'POST', headers: S, body: { gameId: info.gameId } })).status, 404, '結果は受けとらない');

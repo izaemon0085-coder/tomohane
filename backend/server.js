@@ -872,8 +872,8 @@ export function createApp({
     // うたとも（タップで曲作り）：ログインと「運営かどうか」（公認の音を運営が聞いて決める）。作った曲は うたとも の中にあって、ともはねには来ない（広場に知らせるのは本人が下書きから送る）
     utatomo: { link: utatomoLink, setId: () => {}, results: null, admin: true },
     koetomo: { link: koetomoLink, setId: () => {}, results: null }, // こえとも：年齢の区分で保存できるかを決める（声は ともはね に来ない）
-    // やみとも（仮）：ログインだけ。セーブ（ゲームの状態）は やみとも の中にあって、ともはね には来ない
-    yamitomo: { link: yamitomoLink, setId: () => {}, results: null },
+    // やみとも（仮）：ログインと「運営かどうか」（ネタの鍋＝ユーザーのアイデアを運営だけが見て採用する）。セーブは やみとも の中にあって、ともはね には来ない
+    yamitomo: { link: yamitomoLink, setId: () => {}, results: null, admin: true },
   };
   // アプリのアドレス。このパソコン（localhost）のアドレスのとき、スマホから開いても届くように、いま開いているアドレスに合わせる
   function gameUrlFor(req, link) {
