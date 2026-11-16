@@ -174,6 +174,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
   state.letters ??= [];
   state.sessions ??= [];
   state.extGames ??= []; // インディーズ・個人のゲーム（申しこみ → 運営が見て一覧に出す）
+  state.koboGames ??= []; // ビーバー一家の工房で作ったゲーム（出す → 運営が見てゲームセンターに並べる）
   state.gameRecs ??= []; // ゲームのおすすめ { gameId, userId, comment, createdAt }
   state.newsVotes ??= []; // 新聞のアンケート { newsId（アンケートの id）, userId, choice, comment, createdAt }
   state.blocks ??= []; // ミュート・ブロック { userId（した人）, targetId（された人）, kind（'mute' | 'block'）, reason（キャラだけが読む）, createdAt }
@@ -297,6 +298,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
     state.suggestions = state.suggestions.filter((x) => x.userId !== id || x.status === 'picked');
     for (const x of state.suggestions) if (x.userId === id) x.userId = null;
     state.extGames = state.extGames.filter((g) => g.ownerId !== id);
+    state.koboGames = state.koboGames.filter((g) => g.ownerId !== id);
     for (const u of state.users) if (u.guardianIds?.includes(id)) u.guardianIds = u.guardianIds.filter((x) => x !== id);
     state.users = state.users.filter((u) => u.id !== id);
     return letters.map((l) => l.video).filter(Boolean);
@@ -571,6 +573,34 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       g.status = status;
       emit('game', { gameId: id });
       return g;
+    },
+    // ---- ビーバー一家の工房のゲーム（中身は shared/kobo/game.js の checkGame を通したものだけ） ----
+    listKoboGames: () => state.koboGames,
+    koboGame: (id) => state.koboGames.find((g) => g.id === id) ?? null,
+    submitKoboGame(userId, game) {
+      requireUser(userId);
+      const mine = state.koboGames.filter((g) => g.ownerId === userId);
+      if (mine.filter((g) => g.status === 'pending').length >= 3) throw new HttpError(429, '運営が見ているゲームが3つあります。見終わるまで待ってください');
+      if (mine.length >= 10) throw new HttpError(429, '出せるゲームは1人10こまでです。古いゲームを下げてから出してください');
+      const entry = { id: newId('kb'), ownerId: userId, title: game.title, game, status: 'pending', createdAt: now() };
+      state.koboGames.push(entry);
+      emit('game', { gameId: entry.id });
+      return entry;
+    },
+    setKoboGameStatus(id, status) {
+      const g = state.koboGames.find((x) => x.id === id);
+      if (!g) throw new HttpError(404, 'ゲームが見つかりません');
+      g.status = status;
+      g.reviewedAt = now();
+      emit('game', { gameId: id });
+      return g;
+    },
+    withdrawKoboGame(userId, id) {
+      const g = state.koboGames.find((x) => x.id === id);
+      if (!g || g.ownerId !== userId) throw new HttpError(404, 'ゲームが見つかりません');
+      state.koboGames = state.koboGames.filter((x) => x.id !== id);
+      emit('game', { gameId: id });
+      return { ok: true };
     },
     setExtGameResults(gameSlug, playerId, { plays, best }) {
       const user = state.users.find((u) => u.extGameIds?.[gameSlug] === playerId);

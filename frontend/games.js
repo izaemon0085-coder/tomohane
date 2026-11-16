@@ -21,8 +21,11 @@ const CABINET = {
   soratomo: { icon: '🛰️🌍', color: '#1b2560', attract: '衛星をうごかそう' },
   metaverse: { icon: '🏙️🚶', color: '#3a7d5c', attract: '町を歩こう' },
 };
+// 工房（ビーバー一家）で作られた台
+const KOBO_CABINET = { icon: '🦫⭐', color: '#a8693c', attract: '星をあつめて🚩へ' };
+const cabinetOf = (g) => CABINET[g.id] ?? (g.kobo ? KOBO_CABINET : null);
 function screenHtml(g, closed) {
-  const c = CABINET[g.id] ?? { icon: '🕹️', attract: 'スタートをおしてね' };
+  const c = cabinetOf(g) ?? { icon: '🕹️', attract: 'スタートをおしてね' };
   const msg = g.soon ? '🛠 じゅんび中' : closed ? '🌙 閉店中' : c.attract;
   return `<div class="cab-screen${g.soon || closed ? ' is-off' : ''}" aria-hidden="true">
       <span class="cab-icon">${c.icon}</span><span class="cab-attract">${msg}</span></div>`;
@@ -33,14 +36,14 @@ function gameHtml(g, isNew = false) {
   const voices = g.voices.map((v) => `<li>${v.oshi ? `<span class="oshi-badge">${escapeHtml(v.oshi)}推し</span> ` : ''}${escapeHtml(v.name)}「${escapeHtml(v.comment)}」</li>`).join('');
   const marks = [
     g.soon ? `<strong>${SOON_LABEL}</strong>` : null,
-    g.builtin ? 'ともはね' : `🛠️ ${escapeHtml(g.maker)}`,
+    g.builtin ? 'ともはね' : `${g.kobo ? '🦫' : '🛠️'} ${escapeHtml(g.maker)}`,
     AGE[g.minAge],
   ].filter(Boolean).map((t) => `<span class="game-tag">${t}</span>`).join('');
-  return `<li class="card game-card cabinet" style="--cab:${(CABINET[g.id] ?? { color: '#2f9e8f' }).color}">
+  return `<li class="card game-card cabinet" style="--cab:${(cabinetOf(g) ?? { color: '#2f9e8f' }).color}">
     <div class="cab-marquee"><h2>${escapeHtml(g.name)}</h2>${isNew ? '<span class="cab-new">NEW</span>' : ''}</div>
     ${screenHtml(g, closed)}
     <div class="game-head">
-      <span class="muted small">${g.builtin ? 'ともはねの台' : 'インディーズ・個人の台'}</span>
+      <span class="muted small">${g.builtin ? 'ともはねの台' : g.kobo ? 'ビーバー一家の工房の台' : 'インディーズ・個人の台'}</span>
       <span class="rec-count" title="おすすめの数">💖 ${g.recCount}</span>
     </div>
     <p>${escapeHtml(g.description)}</p>
@@ -164,6 +167,37 @@ async function loadReview() {
       ${g.status !== 'rejected' ? `<button type="button" class="btn ghost" data-status="rejected" data-id="${escapeHtml(g.id)}">見送る</button>` : ''}
     </div></li>`).join('') || '<li class="muted">申しこみはまだありません</li>';
 }
+// 工房のゲーム：出した本人の一覧（取り下げられる）・運営の確認（ためしに遊んでから並べる）
+async function loadKoboMine() {
+  if (!me) return;
+  const mine = await api('/kobo/mine').catch(() => []);
+  $('#kobo-mine').innerHTML = mine.map((g) => `<li>🦫 ${escapeHtml(g.title)} … ${STATUS[g.status] ?? g.status}
+    <a class="btn ghost small" href="/kobo-play.html?id=${encodeURIComponent(g.id)}">▶ ためす</a>
+    <button type="button" class="btn ghost small" data-kobo-withdraw="${escapeHtml(g.id)}">下げる</button></li>`).join('');
+}
+$('#kobo-mine').addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-kobo-withdraw]');
+  if (!b || !confirm('このゲームをゲームセンターから下げますか？（工房のゲームコードがあれば、また出せます）')) return;
+  await api(`/kobo/${encodeURIComponent(b.dataset.koboWithdraw)}`, { method: 'DELETE' });
+  toast('下げました'); loadKoboMine(); loadGames();
+});
+async function loadKoboReview() {
+  if (me?.role !== 'admin') return;
+  const list = await api('/kobo/review').catch(() => []);
+  $('#kobo-review-list').innerHTML = list.map((g) => `<li>
+    <strong>🦫 ${escapeHtml(g.title)}</strong>（作った人：${escapeHtml(g.owner)}）… ${STATUS[g.status] ?? g.status}
+    <div class="row wrap">
+      <a class="btn ghost" href="/kobo-play.html?id=${encodeURIComponent(g.id)}">▶ ためしに遊ぶ</a>
+      ${g.status !== 'listed' ? `<button type="button" class="btn" data-kobo-status="listed" data-id="${escapeHtml(g.id)}">並べる</button>` : ''}
+      ${g.status !== 'rejected' ? `<button type="button" class="btn ghost" data-kobo-status="rejected" data-id="${escapeHtml(g.id)}">見送る</button>` : ''}
+    </div></li>`).join('') || '<li class="muted">工房のゲームはまだありません</li>';
+}
+$('#kobo-review-list').addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-kobo-status]');
+  if (!b) return;
+  await api(`/kobo/${encodeURIComponent(b.dataset.id)}/status`, { method: 'POST', body: { status: b.dataset.koboStatus } });
+  loadKoboReview(); loadGames();
+});
 $('#review-list').addEventListener('click', async (e) => {
   const b = e.target.closest('[data-status]');
   if (!b) return;
@@ -186,4 +220,6 @@ loadGames();
 loadPick();
 loadMine();
 loadReview();
-onServerEvents({ game: () => { loadGames(); loadPick(); } });
+loadKoboMine();
+loadKoboReview();
+onServerEvents({ game: () => { loadGames(); loadPick(); loadKoboMine(); loadKoboReview(); } });

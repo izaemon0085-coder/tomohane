@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>工房の台 | ともはね β版</title>
+  <link rel="stylesheet" href="/shared/base.css">
+  <link rel="stylesheet" href="/shared/playground.css">
+  <link rel="stylesheet" href="/shared/customize.css">
+  <link rel="stylesheet" href="/shared/network.css">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="site-header" id="header"></header>
+  <main class="page kobo-page">
+    <section class="card panel" id="stage" hidden aria-labelledby="game-title">
+      <div class="row between"><h1 id="game-title"></h1><span class="muted small" id="stars"></span></div>
+      <p class="muted small" id="by"></p>
+      <p class="note-line" id="trial" hidden>🦉 まだ台に並ぶ前の、ためし遊びです（出した人と運営だけが見られます）。</p>
+      <canvas id="board" class="kobo-board" role="img" aria-label="ゲームの地図。矢印キーで歩きます" tabindex="0"></canvas>
+      <p class="kobo-missions small" id="missions"></p>
+      <div class="kobo-talk" id="talk" hidden aria-live="polite">
+        <span class="kobo-talk-face" id="talk-face" aria-hidden="true"></span>
+        <div class="kobo-talk-body"><b id="talk-name"></b><p id="talk-line"></p></div>
+        <button type="button" class="btn small" id="talk-next">つぎへ ▶</button>
+      </div>
+      <div class="kobo-pad" id="pad" aria-label="動かすボタン">
+        <span></span><button type="button" data-move="up" aria-label="上へ">▲</button><span></span>
+        <button type="button" data-move="left" aria-label="左へ">◀</button><span></span><button type="button" data-move="right" aria-label="右へ">▶</button>
+        <span></span><button type="button" data-move="down" aria-label="下へ">▼</button><span></span>
+      </div>
+      <p class="small" id="msg" aria-live="polite"></p>
+      <div class="row wrap"><button type="button" class="btn ghost" id="again">🔁 もう一回！</button><a class="btn ghost" href="/games.html">← ゲームセンターへ</a></div>
+      <p class="muted small">矢印キー・WASD・ボタンで歩きます。村の人のほうへ歩くと話しかけます（Enter・スペースでつぎへ）。星をぜんぶ集めて、ミッションもすませてから🚩へ。</p>
+    </section>
+    <p class="note-line" id="none" hidden></p>
+  </main>
+  <script type="module" src="/kobo-play.js"></script>
+  <script type="module" src="/shared/customize.js"></script>
+  <script type="module" src="/shared/network.js"></script>
+  <script type="module" src="/shared/playground.js"></script>
+</body>
+</html>
