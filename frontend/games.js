@@ -20,6 +20,7 @@ const CABINET = {
   korotomo: { icon: '🤖⭐', color: '#3b7dc4', attract: '星をあつめよう' },
   soratomo: { icon: '🛰️🌍', color: '#1b2560', attract: '衛星をうごかそう' },
   metaverse: { icon: '🏙️🚶', color: '#3a7d5c', attract: '町を歩こう' },
+  yamitomo: { icon: '🍲🌀', color: '#3a2950', attract: '転生しよう' },
 };
 // 工房（ビーバー一家）で作られた台
 const KOBO_CABINET = { icon: '🦫⭐', color: '#a8693c', attract: '星をあつめて🚩へ' };

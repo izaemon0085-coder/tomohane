@@ -733,6 +733,31 @@ test('こえとも：ともはねでログインだけ。年齢の区分を渡�
   assert.equal((await call('/api/link/koetomo-results', { method: 'POST', headers: S, body: { gameId: info.gameId } })).status, 404);
 });
 
+test('やみとも：ともはねでログインだけ（セーブは やみとも の中）・ゲームセンターの台・閉店中は入れない', async () => {
+  const me = await signup('転生する人', { birthdate: '2016-04-01' });
+  const S = { 'X-Link-Secret': 'tomohane-dev-link-secret' };
+  const r = await fetch(`${base}/api/link/yamitomo-start`, { redirect: 'manual', headers: { Cookie: me.cookie } });
+  const loc = new URL(r.headers.get('location'));
+  assert.equal(loc.origin, 'http://localhost:4800');
+  assert.equal(loc.pathname, '/auth/callback');
+  const info = (await call(`/api/link/yamitomo-ticket/${loc.searchParams.get('ticket')}`, { headers: S })).data;
+  assert.equal(info.ageGroup, 'child', 'こどもも遊べる');
+  assert.equal('admin' in info, false);
+  assert.match(info.gameId, /^y_/);
+  assert.equal((await call(`/api/link/yamitomo-ticket/${loc.searchParams.get('ticket')}`, { headers: S })).status, 404, '通行証は1回だけ');
+  assert.equal((await call('/api/link/yamitomo-results', { method: 'POST', headers: S, body: { gameId: info.gameId } })).status, 404, '結果は受けとらない');
+  // ゲームセンターの台（このサーバーでは動いていないので、アップデート予定の札）
+  const g = (await call('/api/games')).data.find((x) => x.id === 'yamitomo');
+  assert.equal(g.soon, true);
+  assert.equal(g.ads || g.purchases, false);
+  // こどもは21時に閉店
+  try {
+    arcadeNow = new Date(Date.UTC(2026, 10, 8, 12, 30)); // 日本時間 21時30分
+    const closed = await fetch(`${base}/api/link/yamitomo-start`, { redirect: 'manual', headers: { Cookie: me.cookie } });
+    assert.equal(closed.headers.get('location'), '/games.html?closed=1');
+  } finally { arcadeNow = NOON_JST; }
+});
+
 test('ころとも：ともはねのゲームとして、ゴールの回数と遊んだ回数だけ受けとる', async () => {
   const me = await signup('ころともの人');
   const S = { 'X-Link-Secret': 'tomohane-dev-link-secret' };
@@ -797,16 +822,16 @@ test('保護者とつなぐ：大人がコードを出し、子どもが入れ�
   assert.equal((await call('/api/guardian')).status, 401);
 });
 
-test('ゲーム一覧：5つのゲーム・おすすめ（一言つき）・同じ推しの人のおすすめをシバが広場で答える', async () => {
+test('ゲーム一覧：6つのゲーム・おすすめ（一言つき）・同じ推しの人のおすすめをシバが広場で答える', async () => {
   const a = await signup('ゲーム好きA');
   const b = await signup('ゲーム好きB');
   await call(`/api/users/${a.id}/oshi`, { method: 'PUT', as: a, body: { name: 'ほしぞらユニット' } });
   await call(`/api/users/${b.id}/oshi`, { method: 'PUT', as: b, body: { name: 'ほしぞらユニット' } });
 
   const list = (await call('/api/games')).data;
-  assert.deepEqual(list.map((g) => g.id), ['tomojan', 'ghost', 'korotomo', 'soratomo', 'metaverse']);
-  // ころとも・そらともはアップデート予定：一覧には出るが、遊べない・おすすめできない
-  assert.deepEqual(list.filter((g) => g.soon).map((g) => g.id), ['korotomo', 'soratomo']);
+  assert.deepEqual(list.map((g) => g.id), ['tomojan', 'ghost', 'korotomo', 'soratomo', 'metaverse', 'yamitomo']);
+  // ころとも・そらとも・やみともはアップデート予定：一覧には出るが、遊べない・おすすめできない
+  assert.deepEqual(list.filter((g) => g.soon).map((g) => g.id), ['korotomo', 'soratomo', 'yamitomo']);
   assert.ok(list.filter((g) => g.soon).every((g) => g.play === null));
   assert.equal((await call('/api/games/soratomo/recommend', { method: 'PUT', as: a, body: { comment: 'x' } })).status, 409);
   assert.ok(!list.some((g) => g.id === 'tomoai'));

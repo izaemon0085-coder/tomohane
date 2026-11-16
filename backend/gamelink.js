@@ -15,6 +15,7 @@ export const VTOMO_URL = (process.env.VTOMO_URL || 'http://localhost:4200').repl
 export const METAVERSE_URL = (process.env.METAVERSE_URL || 'http://localhost:4300').replace(/\/+$/, ''); // 2Dメタバース（仮）
 export const KOETOMO_URL = (process.env.KOETOMO_URL || 'http://localhost:4600').replace(/\/+$/, ''); // こえとも（仮）：声をアニメの声に
 export const UTATOMO_URL = (process.env.UTATOMO_URL || 'http://localhost:4400').replace(/\/+$/, ''); // うたとも（タップで曲作り）
+export const YAMITOMO_URL = (process.env.YAMITOMO_URL || 'http://localhost:4800').replace(/\/+$/, ''); // やみとも（仮）：闇鍋の転生 RPG
 // ゲームのアプリと ともはね で同じ値にする合言葉（サーバーどうしの確認用）。本番では必ず設定する
 export const LINK_SECRET = process.env.LINK_SECRET || 'tomohane-dev-link-secret';
 const TICKET_MS = 60 * 1000; // 通行証は1分だけ・1回だけ
