@@ -211,6 +211,10 @@ $('#header').innerHTML = headerHtml('games');
 try { arcade = await api('/arcade'); } catch { /* オフラインなら開いているあつかい（サーバーでも止める） */ }
 $('#kitsune-say').textContent = kitsuneLine(arcade);
 document.body.classList.toggle('arcade-closed', !arcade.open);
+if (new URLSearchParams(location.search).get('family')) {
+  toast('🐕 ゲームは、おうちの人との決まりで、いまはお休みっす。アカウントのページで決まりを見られるっす', 6000);
+  history.replaceState(null, '', location.pathname);
+}
 if (new URLSearchParams(location.search).get('closed')) {
   toast('🦊 いまは閉店中！ また明日「もう一回！」しよう', 5000);
   history.replaceState(null, '', location.pathname);

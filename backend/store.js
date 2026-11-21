@@ -19,6 +19,7 @@ import { createLibraryStore } from './library-store.js';
 import { createInviteStore } from './invites.js';
 import { createDonationStore } from './donations.js';
 import { MAX_PASSKEYS, MAX_PASSKEY_LABEL } from './webauthn.js';
+import { KIDS_TABLE, familyStop, normalizeRules, DEFAULT_FAMILY_RULES } from '../shared/family-rules.js';
 
 export const MAX_POST_LENGTH = 280;
 export const MAX_NAME_LENGTH = 20;
@@ -183,7 +184,8 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
   state.reports ??= []; // 通報 { id, postId, reporterId, authorId, reason, level, status, createdAt, apology }
   // カフェのテーブル：フリーテーブル＋ジャンル（はじめの6つ）。前の保存データにも足りない分を足す
   state.tables ??= [];
-  for (const t of [FREE_TABLE, ...GENRE_TABLES]) {
+  // 🧸 こどもテーブル（子どもの部屋）：12歳までの人とキャラが書ける。おうちの人は見守りで読むだけ
+  for (const t of [FREE_TABLE, ...GENRE_TABLES, KIDS_TABLE]) {
     if (!state.tables.some((x) => x.id === t.id)) state.tables.push({ ...t, createdAt: now() });
   }
   state.tableRequests ??= []; // ジャンルのリクエスト { id, userId, text, createdAt }（運営が見て、テーブルを足す）
@@ -220,6 +222,19 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
   const isLeaving = (u) => Boolean(u?.leaving?.at);
   // 練習モード：おうちの人とつながる前の子ども（12歳まで）。書いたものは、本人とキャラにだけ見える
   const isPractice = (u) => u?.kind === 'human' && ageGroup(u.birthdate, new Date(clockMs())) === 'child' && !(u.guardianIds?.length);
+  // 👪 おうちの人との決まり（子どもだけ）。だめなときはシバのことばで止める
+  const isChild = (u) => u?.kind === 'human' && ageGroup(u.birthdate, new Date(clockMs())) === 'child';
+  const familyCheck = (u, what) => {
+    if (!isChild(u)) return;
+    const stop = familyStop(u.familyRules ?? DEFAULT_FAMILY_RULES, what, new Date(clockMs()));
+    if (stop) throw new HttpError(403, stop);
+  };
+  // こどもテーブルを見られる人：子ども・子どもとつながっているおうちの人（見守り）
+  const canSeeKids = (viewerId) => {
+    const v = viewerId ? userById(viewerId) : null;
+    if (!v) return false;
+    return isChild(v) || state.users.some((u) => u.guardianIds?.includes(v.id));
+  };
   const PRACTICE_MSG = 'おうちの人とつながったら、できるようになるっす！（アカウントのページの「おうちの人とつなぐ」から）';
   // 子ども（おうちの人とつながっている）は、7日で入れなくなる（データは14日まで残して、おうちの人が取り消せる）
   const isClosed = (u) => Boolean(u?.leaving?.guarded) && Date.parse(u.leaving.at) + LEAVE_MS <= clockMs();
@@ -725,6 +740,34 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       return { ok: true };
     },
     childrenOf: (guardianId) => state.users.filter((u) => u.guardianIds?.includes(guardianId)),
+    // 👪 おうちの人との決まり。決めるのは、つながっているおうちの人（子どもと話しあってから）
+    familyRulesOf(child) {
+      const r = child.familyRules;
+      return { ...normalizeRules(r ?? DEFAULT_FAMILY_RULES), decided: Boolean(r), decidedAt: r?.decidedAt ?? null, decidedBy: r?.decidedBy ?? null, ackAt: r?.ackAt ?? null };
+    },
+    setFamilyRules(guardianId, childId, input, { talked = false } = {}) {
+      const child = requireUser(childId);
+      if (!child.guardianIds?.includes(guardianId)) throw new HttpError(404, 'つながっていません');
+      if (talked !== true) throw new HttpError(400, '「子どもと話しあって決めた」にチェックしてください');
+      const guardian = requireUser(guardianId);
+      child.familyRules = { ...normalizeRules(input), decidedAt: now(), decidedBy: guardianId, ackAt: null };
+      notify(child.id, { kind: 'family', text: `${callName(guardian)}と決めた「おうちの人との決まり」が届いたよ。アカウントのページで見て、「話しあった・わかった」を押してね`, link: '/login.html#family-rules' });
+      emit('user', { id: child.id });
+      return this.familyRulesOf(child);
+    },
+    ackFamilyRules(childId) {
+      const child = requireUser(childId);
+      if (!child.familyRules) throw new HttpError(404, 'まだ、おうちの人との決まりは届いていません');
+      child.familyRules.ackAt = now();
+      for (const g of child.guardianIds ?? []) notify(g, { kind: 'family', text: `${callName(child)}が、おうちの人との決まりに「話しあった・わかった」を押したよ`, link: '/login.html' });
+      emit('user', { id: child.id });
+      return this.familyRulesOf(child);
+    },
+    canSeeKidsTable: (viewerId) => canSeeKids(viewerId),
+    familyStopFor(user, what) {
+      if (!isChild(user)) return null;
+      return familyStop(user.familyRules ?? DEFAULT_FAMILY_RULES, what, new Date(clockMs()));
+    },
     guardiansOf: (childId) => (userById(childId)?.guardianIds ?? []).map(userById).filter(Boolean),
 
     // ---- ゲームのアプリとの連結 ----
@@ -1003,6 +1046,10 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       // 練習モードの投稿には、本人とキャラしか返事できない（ほかの人には見えていない）
       if (parent?.practiceOwner && author.kind === 'human' && parent.practiceOwner !== author.id) throw new HttpError(404, '投稿が見つかりません');
       const where = parent ? parent.table ?? null : table ? this.getTable(table).id : null;
+      if (author.kind === 'human') {
+        if (where === KIDS_TABLE.id && !isChild(author)) throw new HttpError(403, 'こどもテーブルに書けるのは、12歳までの人だけです（おうちの人は見守り）');
+        familyCheck(author, where === KIDS_TABLE.id ? 'kids' : where ? 'cafe' : 'plaza');
+      }
       const post = { id: newId('p'), authorId, text: clean, replyTo: replyTo || null, likes: [], createdAt: now() };
       if (where) post.table = where;
       // 練習モードの子どもの投稿と、それへの返事（キャラの返事もふくむ）は、その子にだけ見える
@@ -1191,6 +1238,8 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
 
     // viewerId の人に見せてよい投稿か（ログインしていなければ viewerId は null）
     canSee(post, viewerId) {
+      // こどもテーブルは、子どもと、つながっているおうちの人だけ
+      if (post.table === KIDS_TABLE.id && post.authorId !== viewerId && !canSeeKids(viewerId)) return false;
       // 練習モードの投稿は、その子にだけ見える
       if (post.practiceOwner && post.practiceOwner !== viewerId) return false;
       // 通報で止まっている投稿は、書いた本人にだけ見える。通報した人には、その投稿はもう出さない
@@ -1333,6 +1382,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       if (user.kind !== 'human') throw new HttpError(400, '投書できるのは、人間のユーザーだけです');
       if (isPractice(user)) throw new HttpError(403, `新聞はみんなが読むので、${PRACTICE_MSG}`);
       if (okToPrint !== true) throw new HttpError(400, '「新聞にのせてもいい」にチェックしてください');
+      familyCheck(user, 'plaza');
       const clean = cleanText(text, MAX_READER_LETTER, '投書');
       const pen = String(penName ?? '').trim();
       if ([...pen].length > MAX_PEN_NAME) throw new HttpError(400, `ペンネームは${MAX_PEN_NAME}文字以内にしてください`);
@@ -1387,6 +1437,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
     createMeeting({ topic, createdBy, participantIds }) {
       const clean = cleanText(topic, MAX_TOPIC_LENGTH, '議題');
       if (createdBy && isPractice(requireUser(createdBy))) throw new HttpError(403, `会議をひらくのは、${PRACTICE_MSG}`);
+      if (createdBy) familyCheck(requireUser(createdBy), 'meeting');
       const meeting = {
         id: newId('m'), topic: clean, createdBy: createdBy || null, participantIds,
         status: 'open', turn: 0, pendingHumanId: null, speakerId: null,
@@ -1401,6 +1452,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       if (meeting.status !== 'open') throw new HttpError(409, 'この会議はすでに終了しています');
       const author = requireUser(authorId);
       if (isPractice(author)) throw new HttpError(403, `会議室で話すのは、${PRACTICE_MSG}`);
+      familyCheck(author, 'meeting');
       const msg = { id: newId('mm'), authorId, text: cleanText(text, MAX_POST_LENGTH, '発言'), createdAt: now() };
       rejectBlocked(author, msg.text);
       meeting.messages.push(msg);
@@ -1423,6 +1475,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
     createLetter({ authorId, to, from, note = '', typeface = DEFAULT_TYPEFACE }) {
       const author = requireUser(authorId);
       if (author.kind !== 'human') throw new HttpError(400, '手紙を書けるのは人間のユーザーだけです');
+      familyCheck(author, 'letters');
       if (state.letters.filter((l) => l.authorId === authorId).length >= MAX_LETTERS_PER_USER) {
         throw new HttpError(400, `手紙は${MAX_LETTERS_PER_USER}通までです。古い手紙を消してからつくってください`);
       }

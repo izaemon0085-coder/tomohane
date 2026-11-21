@@ -6,6 +6,7 @@ import { extname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createStore, HttpError, ageGroup, SESSION_DAYS } from './store.js';
 import { createSimulation } from './simulation.js';
+import { KIDS_TABLE } from '../shared/family-rules.js';
 import { createChallenges, readAssertion, verifyAssertion, verifyRegistration, WebAuthnError, MAX_PASSKEYS } from './webauthn.js';
 import { publishedIssues, findPoll, pollTalk } from '../shared/news.js';
 import { lanAddresses } from './net.js';
@@ -134,12 +135,13 @@ function leavingView(u) {
 }
 
 // おうちの人が見る、つながった子どものようす（広場の投稿は誰でも見えるもの。手紙・推しページ・パスワードなどは出さない）
-function childView(c, posts, usersById) {
+function childView(c, posts, usersById, familyRules = null) {
   return {
     ...publicUser(c), ageGroup: ageGroup(c.birthdate),
     game: c.game ?? null, ghost: c.ghost ?? null, korotomo: c.korotomo ?? null, soratomo: c.soratomo ?? null,
     recentPosts: posts.filter((p) => p.authorId === c.id).slice(0, 5).map((p) => postView(p, usersById)),
     leaving: leavingView(c),
+    familyRules,
   };
 }
 
@@ -277,6 +279,10 @@ export function createApp({
   const handleLibrary = createLibraryApi({ store, dir: libraryDir, sendJson, maxPageBytes });
   const passkeyChallenges = createChallenges();
   const arcadeFor = (me) => arcadeStatus(me ? ageGroup(me.birthdate) : 'child', clock());
+  function familyRedirect(res) {
+    res.writeHead(302, { Location: '/games.html?family=1', 'Cache-Control': 'no-store' });
+    return res.end() || true;
+  }
   function closedRedirect(res) {
     res.writeHead(302, { Location: '/games.html?closed=1', 'Cache-Control': 'no-store' });
     return res.end() || true;
@@ -317,10 +323,16 @@ export function createApp({
       const users = store.usersById();
       return {
         guardians: store.guardiansOf(u.id).map(publicUser),
-        children: store.childrenOf(u.id).map((c) => childView(c, store.listPosts(), users)),
+        children: store.childrenOf(u.id).map((c) => childView(c, store.listPosts(), users, store.familyRulesOf(c))),
+        // 子ども本人には、自分の決まり（おうちの人とつながっているとき）
+        myRules: store.guardiansOf(u.id).length ? store.familyRulesOf(u) : null,
         diary: store.familyDiaryFor(u.id).map((d) => ({ id: d.id, text: d.text, at: d.at })),
       };
     }],
+    // 👪 おうちの人との決まり：おうちの人が（子どもと話しあってから）決める・子どもが「話しあった・わかった」
+    ['PUT', /^\/api\/guardian\/children\/([\w-]+)\/rules$/, ({ params, body, me }) =>
+      store.setFamilyRules(needLogin(me).id, params[0], body.rules, { talked: body.talked === true })],
+    ['POST', /^\/api\/guardian\/rules\/ack$/, ({ me }) => store.ackFamilyRules(needLogin(me).id)],
     ['POST', /^\/api\/guardian\/code$/, ({ me }) => [201, store.issueGuardianCode(needLogin(me).id)]],
     ['POST', /^\/api\/guardian\/join$/, ({ body, me }) => publicUser(store.acceptGuardianCode(needLogin(me).id, body.code))],
     ['DELETE', /^\/api\/guardian\/children\/([\w-]+)$/, ({ params, me }) => store.unlinkChild(needLogin(me).id, params[0])],
@@ -493,6 +505,8 @@ export function createApp({
       const insider = Boolean(me && g && (g.ownerId === me.id || me.role === 'admin'));
       if (!g || (!insider && (g.status !== 'listed' || store.isLeavingUser(g.ownerId)))) throw new HttpError(404, 'ゲームが見つかりません');
       if (!insider && !arcadeFor(me).open) throw new HttpError(423, '🦊 いまは閉店中！ また明日「もう一回！」しよう');
+      const familyStop = !insider && me ? store.familyStopFor(me, 'games') : null;
+      if (familyStop) throw new HttpError(403, familyStop);
       return { id: g.id, title: g.title, status: g.status, author: store.usersById()[g.ownerId]?.name ?? '？', game: g.game };
     }],
 
@@ -616,6 +630,7 @@ export function createApp({
       const users = store.usersById();
       const table = query.get('table');
       if (table) store.getTable(table);
+      if (table === KIDS_TABLE.id && !store.canSeeKidsTable(me?.id ?? null)) throw new HttpError(403, 'こどもテーブルは、12歳までの人と、おうちの人（見守り）だけが見られます');
       const posts = store.listPosts()
         .filter((p) => (table ? p.table === table : !p.table) && store.canSee(p, me?.id ?? null));
       const replyCount = {};
@@ -653,7 +668,7 @@ export function createApp({
     ['DELETE', /^\/api\/blocks\/([\w-]+)$/, ({ params, me }) => store.unblockUser(needLogin(me).id, params[0])],
 
     // ---- カフェのテーブル（決まった並び）と、それぞれの投稿の数 ----
-    ['GET', /^\/api\/cafe\/tables$/, () => store.listTables().map((t) => ({
+    ['GET', /^\/api\/cafe\/tables$/, ({ me }) => store.listTables().filter((t) => t.id !== KIDS_TABLE.id || store.canSeeKidsTable(me?.id ?? null)).map((t) => ({
       id: t.id, kind: t.kind, name: t.name, emoji: t.emoji, note: t.note ?? '', parent: t.parent ?? null,
       postCount: store.listPosts().filter((p) => p.table === t.id && !p.hidden && !p.orphaned && !p.practiceOwner).length,
     }))],
@@ -919,6 +934,7 @@ export function createApp({
       }
       if (!visibleFor(game, ageGroup(me.birthdate))) throw new HttpError(403, 'このゲームは、年齢の区分に合わないので遊べません');
       if (!arcadeFor(me).open) return closedRedirect(res);
+      if (store.familyStopFor(me, 'games')) return familyRedirect(res);
       const ticket = link.issue(me.id);
       res.writeHead(302, { Location: `${game.url}/auth/callback?ticket=${ticket}`, 'Cache-Control': 'no-store' });
       return res.end() || true;
@@ -990,6 +1006,7 @@ export function createApp({
         return res.end() || true;
       }
       if (ARCADE_APPS.includes(name) && !arcadeFor(me).open) return closedRedirect(res);
+      if (ARCADE_APPS.includes(name) && store.familyStopFor(me, 'games')) return familyRedirect(res);
       const ticket = link.issue(me.id);
       res.writeHead(302, { Location: `${gameUrlFor(req, link)}/auth/callback?ticket=${ticket}`, 'Cache-Control': 'no-store' });
       return res.end() || true;
