@@ -112,6 +112,7 @@
             <button type="button" class="btn ghost" id="family-issue">つなぐコードを出す</button>
             <p class="family-code" id="family-code" aria-live="polite"></p>
           </div>
+          <p class="note-line small">👪 つながったら、<a href="/family-guide.html" target="_blank" rel="noopener">家族の話しあいの案内</a>を子どもと一緒に読んで、「おうちの人との決まり」を決めてください（下の子どもの名前の「決まり」から）。</p>
           <ul class="family-list" id="family-children"></ul>
           <div id="family-diary-box" hidden>
             <h3 class="family-diary-title">📔 シバの日記（おうちの人だけに見えます）</h3>
@@ -119,6 +120,14 @@
           </div>
         </div>
         <div id="family-child" hidden>
+          <!-- 👪 おうちの人との決まり（おうちの人と話しあって決めたもの） -->
+          <section class="family-rules-kid" id="family-rules" hidden aria-labelledby="family-rules-title">
+            <h3 id="family-rules-title">👪 おうちの人との決まり</h3>
+            <ul class="rule-list" id="family-rules-list"></ul>
+            <p class="small" id="family-rules-when"></p>
+            <button type="button" class="btn" id="family-rules-ack">話しあった・わかった</button>
+            <p class="muted small"><a href="/family-guide.html" target="_blank" rel="noopener">家族の話しあいの案内</a>を、おうちの人と一緒に見てね。決まりを変えたいときも、おうちの人と話してね。</p>
+          </section>
           <form id="family-join" class="row wrap">
             <label class="field">おうちの人のコード（例：abcd-2345）
               <input class="input" name="code" autocomplete="off" autocapitalize="none" required></label>

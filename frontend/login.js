@@ -5,6 +5,7 @@ import { api, refreshMe, rememberMe, logout, headerHtml, escapeHtml, toast, time
 import { REPORT_REASONS } from '/shared/report.js';
 import { isComingSoon, SOON_LABEL } from '/shared/soon.js';
 import { FAREWELL_CHOICES, SEND_OFF, WELCOME_BACK } from '/shared/leave.js';
+import { FAMILY_SWITCHES } from '/shared/family-rules.js';
 
 const $ = (sel) => document.querySelector(sel);
 const AGE = { child: '子ども（12歳まで）', teen: '中高生（13〜17歳）', adult: '大人（18歳から）' };
@@ -379,6 +380,7 @@ async function renderFamily(me) {
     $('#family-guardians').textContent = data.guardians.length
       ? `つながっているおうちの人：${data.guardians.map((g) => g.name).join('、')}`
       : 'まだ、おうちの人とつながっていません。';
+    renderMyRules(data.myRules);
     return;
   }
   const diary = data.diary ?? [];
@@ -404,9 +406,79 @@ async function renderFamily(me) {
         <div class="row wrap"><button type="button" class="btn ghost" data-leave="${id}" data-name="${name}">退会を取り消す</button></div>`
       : '';
     return `<li><strong>${escapeHtml(c.name)}</strong>${c.code ? `<span class="user-code">${escapeHtml(codeLabel(c.code))}</span>` : ''} <span class="muted small">${escapeHtml(games)}</span>${posts}${leave}
+      ${c.ageGroup === 'child' ? rulesFormHtml(c) : ''}
       <button type="button" class="btn ghost" data-unlink="${id}" data-name="${name}">つなぐのをやめる</button></li>`;
   }).join('');
 }
+
+// ---- 👪 おうちの人との決まり（A カギ・C こどもテーブル・D スイッチ・夜9時）。子どもと話しあってから決める ----
+function rulesFormHtml(c) {
+  const r = c.familyRules ?? { lock: false, kidsRoom: true, night: true, switches: {} };
+  const on = (v) => (v !== false ? ' checked' : '');
+  const state = !r.decided
+    ? '<p class="note-line small">まだ決めていません（いまは、ふだんどおり使えて、夜9時から朝6時は書けません）。</p>'
+    : `<p class="small">${escapeHtml(dateJa(r.decidedAt))}に決めました。${r.ackAt ? `✅ ${escapeHtml(callName(c))}が ${escapeHtml(dateJa(r.ackAt))}に「話しあった・わかった」を押しました。` : `⏳ ${escapeHtml(callName(c))}の「話しあった・わかった」を待っています。`}</p>`;
+  return `<details class="rules-box"><summary>👪 ${escapeHtml(callName(c))}との決まり</summary>
+    ${state}
+    <p class="muted small"><a href="/family-guide.html" target="_blank" rel="noopener">家族の話しあいの案内</a>を一緒に読んで、話しあってから決めてください。</p>
+    <form class="rules-form" data-rules="${escapeHtml(c.id)}">
+      <fieldset><legend>🔒 A カギ</legend>
+        <label class="row"><input type="checkbox" name="lock"${r.lock ? ' checked' : ''}> カギをかける（書くのは全部お休み。読む・いいね・目安箱はできる）</label></fieldset>
+      <fieldset><legend>🎚️ D スイッチ（使える場所）</legend>
+        ${FAMILY_SWITCHES.map((s) => `<label class="row"><input type="checkbox" name="sw-${s.id}"${on(r.switches?.[s.id])}> ${escapeHtml(s.label)}</label>`).join('')}</fieldset>
+      <fieldset><legend>🧸 C 子どもの部屋</legend>
+        <label class="row"><input type="checkbox" name="kidsRoom"${on(r.kidsRoom)}> カフェの「こどもテーブル」で話す（12歳までの人とキャラだけ。おうちの人は見守りで読める）</label></fieldset>
+      <fieldset><legend>🌙 夜のお休み</legend>
+        <label class="row"><input type="checkbox" name="night"${on(r.night)}> 夜9時から朝6時までは書かない（読むのはできる）</label></fieldset>
+      <label class="row talked"><input type="checkbox" name="talked" required> <strong>${escapeHtml(callName(c))}と話しあって決めた</strong></label>
+      <p class="error" role="alert"></p>
+      <button class="btn" type="submit">この決まりにする</button>
+    </form></details>`;
+}
+function renderMyRules(r) {
+  $('#family-rules').hidden = !r;
+  if (!r) return;
+  const yes = '⭕';
+  const no = '💤 お休み';
+  const lines = [
+    r.lock ? ['🔒 カギ', 'かかっている（書くのはお休み。読む・いいねはできるよ）'] : null,
+    ...FAMILY_SWITCHES.map((s) => [s.label, r.lock && s.id !== 'games' ? no : r.switches[s.id] ? yes : no]),
+    ['🧸 こどもテーブル', r.lock ? no : r.kidsRoom ? yes : no],
+    ['🌙 夜9時から朝6時', r.night ? '書くのはお休み（読むのはできるよ）' : '書いてもいい'],
+  ].filter(Boolean);
+  $('#family-rules-list').innerHTML = lines.map(([k, v]) => `<li><span>${escapeHtml(k)}</span><strong>${escapeHtml(v)}</strong></li>`).join('');
+  $('#family-rules-when').textContent = !r.decided
+    ? '🐕 まだ、おうちの人と決まりを決めていないっす。いまは、ふだんどおりで、夜9時から朝6時は書くのがお休みっす。'
+    : r.ackAt ? `✅ ${dateJa(r.ackAt)}に「わかった」を押したよ。` : '🐕 おうちの人と話しあったら、下のボタンを押してほしいっす！';
+  $('#family-rules-ack').hidden = !r.decided || Boolean(r.ackAt);
+}
+$('#family-rules-ack').addEventListener('click', async () => {
+  try {
+    renderMyRules(await api('/guardian/rules/ack', { method: 'POST' }));
+    toast('🐕 ありがとうっす！ おうちの人にも伝えたっす', 4000);
+  } catch (err) {
+    toast(err.message, 5000);
+  }
+});
+$('#family-children').addEventListener('submit', async (e) => {
+  const form = e.target.closest('[data-rules]');
+  if (!form) return;
+  e.preventDefault();
+  const f = form.elements;
+  const err = form.querySelector('.error');
+  err.textContent = '';
+  const rules = {
+    lock: f.lock.checked, kidsRoom: f.kidsRoom.checked, night: f.night.checked,
+    switches: Object.fromEntries(FAMILY_SWITCHES.map((s) => [s.id, f[`sw-${s.id}`].checked])),
+  };
+  try {
+    await api(`/guardian/children/${encodeURIComponent(form.dataset.rules)}/rules`, { method: 'PUT', body: { rules, talked: f.talked.checked } });
+    toast('👪 決まりを保存しました。子どもの画面に届いて、「話しあった・わかった」を押してもらえます', 6000);
+    renderFamily(await refreshMe());
+  } catch (ex) {
+    err.textContent = ex.offline ? 'つながっていません。つながってから、もう一度どうぞ' : ex.message;
+  }
+});
 $('#family-issue').addEventListener('click', async () => {
   try {
     const r = await api('/guardian/code', { method: 'POST' });

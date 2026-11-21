@@ -36,8 +36,15 @@ const fakeKokotomoFetch = async (url) => {
   return { ok: true, json: async () => body };
 };
 
+// 子どもは夜9時から朝6時まで書けない（おうちの人との決まり）。テストを夜に流しても同じ結果になるように、
+// データの時計だけは「きょうの日本時間のお昼」から進める（時間はふつうに進む）
+const DAY_OFFSET = (() => {
+  const jstDay = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
+  return Date.parse(`${jstDay}T03:00:00Z`) - Date.now();
+})();
+const storeNow = () => Date.now() + DAY_OFFSET; // データの時計（ミリ秒）
 before(async () => {
-  store = createStore();
+  store = createStore({ now: () => new Date(Date.now() + DAY_OFFSET).toISOString() });
   sim = createSimulation(store, {
     random: () => 0, replyDelayMs: null, checkInternet: async () => true, lanAddresses: () => ['192.168.0.10'],
   });
@@ -202,7 +209,7 @@ test('保存データに新しいキャラが自動で引っ越してくる', as
   writeFileSync(file, JSON.stringify(state));
   const loaded = createStore({ file });
   assert.equal(loaded.listAgents().length, 13);
-  assert.deepEqual(loaded.listTables().map((t) => t.id), ['free', 'idol', 'anime', 'game', 'vtuber', 'sports', 'other'], 'カフェのテーブルも用意される');
+  assert.deepEqual(loaded.listTables().map((t) => t.id), ['free', 'idol', 'anime', 'game', 'vtuber', 'sports', 'other', 'kids'], 'カフェのテーブルも用意される（こどもテーブルも）');
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -1367,7 +1374,7 @@ test('退会：パスワードで申しこむ → 7日のあいだは投稿が�
   const r = await call('/api/auth/leave', { method: 'POST', as: leaver, body: { password: leaver.password, farewell: 'ありがとう' } });
   assert.equal(r.status, 200);
   const until = Date.parse(r.data.me.leaving.until);
-  assert.ok(Math.abs(until - (Date.now() + 7 * DAY)) < 60000, '7日後に消える');
+  assert.ok(Math.abs(until - (storeNow() + 7 * DAY)) < 60000, '7日後に消える');
   assert.equal((await call('/api/auth/leave', { method: 'POST', as: leaver, body: { password: leaver.password, farewell: 'ありがとう' } })).status, 409);
 
   // 7日のあいだ：投稿は本人にだけ見える。新しく投稿はできない
@@ -1383,11 +1390,11 @@ test('退会：パスワードで申しこむ → 7日のあいだは投稿が�
 
   // もう一度申しこんで、7日たつ前は消えない
   await call('/api/auth/leave', { method: 'POST', as: leaver, body: { password: leaver.password, farewell: 'ありがとう' } });
-  await app.purgeLeavers(Date.now() + 6 * DAY);
+  await app.purgeLeavers(storeNow() + 6 * DAY);
   assert.equal((await call('/api/auth/me', { as: leaver })).data.name, '退会する人');
 
   // 7日たつと消える：ログインできない・手紙は開けない・返信した人にひとことが届く
-  await app.purgeLeavers(Date.now() + 7 * DAY + 1000);
+  await app.purgeLeavers(storeNow() + 7 * DAY + 1000);
   assert.equal((await call('/api/auth/me', { as: leaver })).data, null, 'ログインのしるしも消える');
   assert.equal((await call('/api/auth/login', { method: 'POST', body: { loginId: leaver.loginId, password: leaver.password } })).status, 401);
   assert.equal((await call(`/api/open/${letter.token}`)).status, 404, '手紙も消える');
@@ -1436,7 +1443,7 @@ test('退会：運営は退会できない。子どもは一人で退会でき�
 
   // もう一度申しこんで、8日たった（本人は入れない・取り消せない、まだ消えていない）
   await call('/api/auth/leave', { method: 'POST', as: kid, body: { password: kid.password } });
-  store.getUser(kid.id).leaving.at = new Date(Date.now() - 8 * DAY).toISOString();
+  store.getUser(kid.id).leaving.at = new Date(storeNow() - 8 * DAY).toISOString();
   assert.equal((await call('/api/auth/me', { as: kid })).data, null, '7日すぎると本人は入れない');
   assert.equal((await call('/api/auth/login', { method: 'POST', body: { loginId: kid.loginId, password: kid.password } })).status, 403);
   await app.purgeLeavers();
@@ -1450,9 +1457,9 @@ test('退会：運営は退会できない。子どもは一人で退会でき�
 
   // 14日たつと消える。日記に「旅立った」
   await call('/api/auth/leave', { method: 'POST', as: kid, body: { password: kid.password } });
-  await app.purgeLeavers(Date.now() + 13 * DAY);
+  await app.purgeLeavers(storeNow() + 13 * DAY);
   assert.ok(store.listUsers().some((u) => u.id === kid.id));
-  await app.purgeLeavers(Date.now() + 14 * DAY + 1000);
+  await app.purgeLeavers(storeNow() + 14 * DAY + 1000);
   view = (await call('/api/guardian', { as: dad })).data;
   assert.equal(view.children.some((c) => c.id === kid.id), false);
   assert.match(view.diary[0].text, /旅立ったっす/);
@@ -1855,7 +1862,7 @@ test('図書館：退会して7日たつと、その人の本・募集・応募�
   const before = readdirSync(libraryDir).length;
 
   await call('/api/auth/leave', { method: 'POST', as: leaver, body: { password: leaver.password, farewell: 'ありがとう' } });
-  await app.purgeLeavers(Date.now() + 7 * DAY + 1000);
+  await app.purgeLeavers(storeNow() + 7 * DAY + 1000);
 
   assert.ok(!(await call('/api/library')).data.books.some((b) => b.id === mine.id), '書いた本は消える');
   const kept = (await call('/api/library/mine', { as: author })).data.find((b) => b.id === book.id);

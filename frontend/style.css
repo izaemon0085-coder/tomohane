@@ -787,3 +787,24 @@ html[data-oshi-color] .oshi-hero { color: var(--accent-text); }
 .kobo-talk-body p { margin: 2px 0 0; }
 .kobo-pad { display: grid; grid-template-columns: repeat(3, 52px); gap: 4px; justify-content: center; margin: 8px 0; }
 .kobo-pad button { width: 52px; height: 48px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface-2); cursor: pointer; touch-action: manipulation; }
+
+/* 👪 おうちの人との決まり・家族の話しあいの案内 */
+.rules-box { margin: 8px 0; border: 1px solid var(--border); border-radius: 10px; padding: 6px 12px; }
+.rules-box summary { font-weight: 700; cursor: pointer; }
+.rules-form { display: grid; gap: 8px; }
+.rules-form fieldset { border: 1px dashed var(--border); border-radius: 8px; padding: 6px 10px; margin: 0; }
+.rules-form legend { font-weight: 700; font-size: .92rem; }
+.rules-form .talked { background: var(--surface-2); border-radius: 8px; padding: 6px 10px; }
+.family-rules-kid { border: 2px solid var(--accent); border-radius: 12px; padding: 8px 14px; margin-bottom: 12px; }
+.family-rules-kid h3 { margin: 4px 0 8px; }
+.rule-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; }
+.rule-list li { display: flex; justify-content: space-between; gap: 10px; border-bottom: 1px dashed var(--border); padding: 3px 0; }
+.family-guide h2 { font-size: 1.08rem; margin: 20px 0 6px; }
+.family-guide ul, .family-guide ol { padding-left: 1.3em; line-height: 1.8; }
+.guide-item { border-left: 4px solid var(--accent); padding: 2px 12px; margin: 10px 0; }
+.guide-item h3 { margin: 4px 0; font-size: 1rem; }
+.guide-item p { margin: 4px 0; }
+.guide-item .kid { background: var(--surface-2); border-radius: 8px; padding: 4px 8px; }
+@media print {
+  .site-header, .family-guide .row, .playground, .customize-panel { display: none !important; }
+}
