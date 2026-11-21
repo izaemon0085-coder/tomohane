@@ -6,6 +6,7 @@ import { extname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createStore, HttpError, ageGroup, SESSION_DAYS } from './store.js';
 import { createSimulation } from './simulation.js';
+import { createChallenges, readAssertion, verifyAssertion, verifyRegistration, WebAuthnError, MAX_PASSKEYS } from './webauthn.js';
 import { publishedIssues, findPoll, pollTalk } from '../shared/news.js';
 import { lanAddresses } from './net.js';
 import { REPORT_REASONS, STAGES, findReason, stageOf } from '../shared/report.js';
@@ -116,6 +117,8 @@ function meView(u) {
     leaving: leavingView(u),
     practice: u.kind === 'human' && ageGroup(u.birthdate) === 'child' && !(u.guardianIds?.length), // 練習モード（おうちの人とつながる前の子ども）
     termsVersion: u.termsAgreed?.version ?? null, // 同意した利用規約の版（新しい版とちがえば、もう一度同意してもらう）
+    // 🔑 登録したパスキー（名前と日付だけ。カギは返さない）
+    passkeys: (u.passkeys ?? []).map((p) => ({ id: p.id, label: p.label, createdAt: p.createdAt, lastUsedAt: p.lastUsedAt ?? null })),
   };
 }
 
@@ -186,10 +189,20 @@ function readCookie(req, name) {
   }
   return null;
 }
+const isHttps = (req) => Boolean(req.socket.encrypted) || req.headers['x-forwarded-proto'] === 'https';
+// maxAge が null のときは、ブラウザを閉じたら消えるクッキー（「このまま入っておく」にしなかったとき）
 function sessionCookie(req, token, maxAge) {
   // https のとき（AWS 版など）だけ Secure を付ける。家の Wi-Fi（http）でも使えるように
-  const secure = req.socket.encrypted || req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
-  return `${SESSION_COOKIE}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}${secure}`;
+  const secure = isHttps(req) ? '; Secure' : '';
+  const age = maxAge === null ? '' : `; Max-Age=${maxAge}`;
+  return `${SESSION_COOKIE}=${token}; HttpOnly; SameSite=Lax; Path=/${age}${secure}`;
+}
+// パスキーの「どのサイトのカギか」（rpId）と、ページの場所（origin）。リクエストの Host から決める
+// （TOMOHANE_RP_ID があれば、そちらを使う）
+function passkeySite(req) {
+  let url;
+  try { url = new URL(`${isHttps(req) ? 'https' : 'http'}://${req.headers.host}`); } catch { throw new HttpError(400, 'ページの場所が読めません'); }
+  return { rpId: process.env.TOMOHANE_RP_ID || url.hostname, origin: url.origin };
 }
 
 async function readJson(req) {
@@ -262,6 +275,7 @@ export function createApp({
     : '';
   // ゲームセンターが閉まっていたら、ゲームセンターの画面にもどす（キツネが「閉店！」と言う）
   const handleLibrary = createLibraryApi({ store, dir: libraryDir, sendJson, maxPageBytes });
+  const passkeyChallenges = createChallenges();
   const arcadeFor = (me) => arcadeStatus(me ? ageGroup(me.birthdate) : 'child', clock());
   function closedRedirect(res) {
     res.writeHead(302, { Location: '/games.html?closed=1', 'Cache-Control': 'no-store' });
@@ -749,6 +763,49 @@ export function createApp({
   ];
 
   // ---- ログイン（クッキーを書くので、ふつうのルートとは別に扱う） ----
+  // ---- 🔑 パスキー：登録（ログイン中）・ログイン・消す ----
+  async function handlePasskey(req, res, action, body, me, login) {
+    const { rpId, origin } = passkeySite(req);
+    try {
+      if (action === 'passkey-register-options') {
+        const user = needLogin(me);
+        if ((user.passkeys?.length ?? 0) >= MAX_PASSKEYS) throw new HttpError(400, `パスキーは${MAX_PASSKEYS}つまでです。使わないものを消してから足してください`);
+        sendJson(res, 200, {
+          challenge: passkeyChallenges.issue(user.id),
+          rp: { id: rpId, name: 'ともはね' },
+          // user.id は名前などをふくまない、ともはね の中の番号
+          user: { id: Buffer.from(user.id).toString('base64url'), name: user.loginId, displayName: user.name },
+          pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -8 }, { type: 'public-key', alg: -257 }],
+          excludeCredentials: store.passkeyIds(user.id).map((id) => ({ type: 'public-key', id })),
+          authenticatorSelection: { residentKey: 'required', userVerification: 'preferred' },
+          attestation: 'none',
+          timeout: 120000,
+        });
+      } else if (action === 'passkey-register') {
+        const user = needLogin(me);
+        const cred = verifyRegistration({ body, rpId, origin, challenges: passkeyChallenges, userId: user.id });
+        sendJson(res, 200, { passkeys: store.addPasskey(user.id, { ...cred, label: body.label }) });
+      } else if (action === 'passkey-login-options') {
+        sendJson(res, 200, { challenge: passkeyChallenges.issue(), rpId, userVerification: 'preferred', timeout: 120000 });
+      } else if (action === 'passkey-login') {
+        const assertion = readAssertion({ body, origin, challenges: passkeyChallenges });
+        const found = store.passkeyOwner(assertion.id);
+        if (!found) throw new HttpError(401, 'このパスキーは ともはね に登録されていません（消したパスキーかもしれません）');
+        const { signCount } = verifyAssertion({ assertion, passkey: found.passkey, rpId });
+        if (store.isClosedUser(found.user)) throw new HttpError(403, '退会しました。まちがいだったときは、おうちの人に取り消してもらってください（14日まで）');
+        store.passkeyUsed(found.user.id, found.passkey.id, signCount);
+        login(store.getUser(found.user.id));
+      } else if (action === 'passkey-delete') {
+        sendJson(res, 200, { passkeys: store.removePasskey(needLogin(me).id, String(body.id ?? '')) });
+      } else {
+        throw new HttpError(404, 'API が見つかりません');
+      }
+    } catch (err) {
+      if (err instanceof WebAuthnError) throw new HttpError(400, err.message);
+      throw err;
+    }
+  }
+
   async function handleAuth(req, res, pathname, me) {
     if (!pathname.startsWith('/api/auth/')) return false;
     const action = pathname.slice('/api/auth/'.length);
@@ -758,9 +815,11 @@ export function createApp({
     }
     if (req.method !== 'POST') throw new HttpError(404, 'API が見つかりません');
     const body = await readJson(req);
-    const login = (user, extra = {}) => {
-      const token = store.startSession(user.id);
-      res.setHeader('Set-Cookie', sessionCookie(req, token, SESSION_DAYS * 86400));
+    // 「このまま入っておく」（30日）。送られてこないときは、前と同じく入ったままにする
+    const remember = body.remember !== false;
+    const login = (user, extra = {}, keep = remember) => {
+      const token = store.startSession(user.id, { remember: keep });
+      res.setHeader('Set-Cookie', sessionCookie(req, token, keep ? SESSION_DAYS * 86400 : null));
       sendJson(res, 200, { me: meView(user), ...extra });
     };
     if (action === 'register') {
@@ -773,7 +832,10 @@ export function createApp({
       login(user, { codesLeft });
     } else if (action === 'password') {
       // ログイン中にパスワードを変える（ほかの端末のログインは切れる。この端末はそのまま使える）
-      login(await store.changePassword(needLogin(me).id, { current: body.current, next: body.next }));
+      const keep = store.sessionRemember(readCookie(req, SESSION_COOKIE));
+      login(await store.changePassword(needLogin(me).id, { current: body.current, next: body.next }), {}, keep);
+    } else if (action.startsWith('passkey-')) {
+      await handlePasskey(req, res, action, body, me, login);
     } else if (action === 'agree') {
       // 利用規約・プライバシーに同意する
       store.agreeTerms(needLogin(me).id, body.version);

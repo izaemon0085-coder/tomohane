@@ -88,6 +88,7 @@ function render(me) {
   renderCafeAdmin(me);
   renderInvites(me);
   renderNameBox(me);
+  renderPasskeys(me);
 }
 
 // ---- 🏷️ 名前と呼び方（名前の下のコードは変えられない） ----
@@ -464,22 +465,113 @@ async function submit(form, path, fields, extra = {}) {
 
 $('#panel-login').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const r = await submit(e.target, '/auth/login', ['loginId', 'password']);
+  const r = await submit(e.target, '/auth/login', ['loginId', 'password'], { remember: e.target.elements.remember.checked });
   if (!r) return;
   rememberMe(r.me);
   await offerToSave(e.target.elements.loginId.value.trim(), e.target.elements.password.value.trim(), r.me.name);
-  // 退会の手続き中なら、取り消せるようにアカウントのページを出す
-  if (r.me.leaving) {
+  afterLogin(r.me);
+});
+// ログインできたあと：退会の手続き中なら、取り消せるようにアカウントのページを出す
+function afterLogin(me) {
+  if (me.leaving) {
     toast(`🐕 ${WELCOME_BACK.text}　退会を取り消すなら、下のボタンっす`, 6000);
-    return render(r.me);
+    return render(me);
   }
   location.href = nextUrl();
+}
+
+// ---- 🔑 パスキー（WebAuthn）。指紋・顔・スマホのロックは端末の中だけで使われ、ともはね には来ない ----
+const passkeyOk = Boolean(window.PublicKeyCredential && window.isSecureContext && navigator.credentials);
+const toBuf = (s) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0)).buffer;
+const toB64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const passkeyError = (e) => (e?.name === 'NotAllowedError' ? 'パスキーを使うのを、やめました（または時間が切れました）'
+  : e?.name === 'InvalidStateError' ? 'この端末のパスキーは、もう登録されています'
+    : e?.offline ? 'つながっていません。つながってから、もう一度どうぞ' : e?.message || 'パスキーが使えませんでした');
+// 名前の例（端末の種類から）
+function deviceLabel() {
+  const ua = navigator.userAgent;
+  const kind = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android' : /Windows/.test(ua) ? 'Windows' : /Mac/.test(ua) ? 'Mac' : 'この端末';
+  return `${kind}のパスキー`;
+}
+$('#passkey-login').hidden = !passkeyOk;
+$('#passkey-login-btn').addEventListener('click', async () => {
+  const form = $('#panel-login');
+  const err = form.querySelector('.error');
+  const btn = $('#passkey-login-btn');
+  err.textContent = '';
+  btn.disabled = true;
+  try {
+    const opt = await api('/auth/passkey-login-options', { method: 'POST' });
+    const cred = await navigator.credentials.get({ publicKey: { challenge: toBuf(opt.challenge), rpId: opt.rpId, userVerification: opt.userVerification, timeout: opt.timeout } });
+    const res = cred.response;
+    const r = await api('/auth/passkey-login', { method: 'POST', body: {
+      id: cred.id, clientDataJSON: toB64(res.clientDataJSON), authenticatorData: toB64(res.authenticatorData), signature: toB64(res.signature),
+      remember: form.elements.remember.checked,
+    } });
+    rememberMe(r.me);
+    afterLogin(r.me);
+  } catch (e) {
+    err.textContent = passkeyError(e);
+  } finally {
+    btn.disabled = false;
+  }
+});
+function renderPasskeys(me) {
+  $('#passkey-add').hidden = !passkeyOk;
+  $('#passkey-unsupported').hidden = passkeyOk;
+  const f = $('#passkey-add');
+  if (!f.elements.label.value) f.elements.label.placeholder = deviceLabel();
+  const day = (iso) => new Date(iso).toLocaleDateString('ja-JP', { month: 'long', day: 'numeric' });
+  $('#passkey-list').innerHTML = me.passkeys?.length
+    ? me.passkeys.map((p) => `<li class="row wrap"><span>🔑 <strong>${escapeHtml(p.label)}</strong>
+      <span class="muted small">（${escapeHtml(day(p.createdAt))}に登録・${p.lastUsedAt ? `${escapeHtml(timeAgo(p.lastUsedAt))}に使った` : 'まだ使っていない'}）</span></span>
+      <button type="button" class="btn ghost small" data-passkey-del="${escapeHtml(p.id)}" data-label="${escapeHtml(p.label)}">消す</button></li>`).join('')
+    : '<li class="muted small">まだ登録していません</li>';
+}
+$('#passkey-add').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const err = e.target.querySelector('.error');
+  const btn = e.target.querySelector('button[type="submit"]');
+  err.textContent = '';
+  btn.disabled = true;
+  try {
+    const opt = await api('/auth/passkey-register-options', { method: 'POST' });
+    const cred = await navigator.credentials.create({ publicKey: {
+      ...opt,
+      challenge: toBuf(opt.challenge),
+      user: { ...opt.user, id: toBuf(opt.user.id) },
+      excludeCredentials: opt.excludeCredentials.map((c) => ({ ...c, id: toBuf(c.id) })),
+    } });
+    const r = await api('/auth/passkey-register', { method: 'POST', body: {
+      id: cred.id, clientDataJSON: toB64(cred.response.clientDataJSON), attestationObject: toB64(cred.response.attestationObject),
+      label: e.target.elements.label.value.trim() || deviceLabel(),
+    } });
+    e.target.reset();
+    renderPasskeys({ passkeys: r.passkeys });
+    rememberMe(await refreshMe());
+    toast('🔑 パスキーを登録しました。つぎからは「パスキーでログイン」で入れます', 5000);
+  } catch (ex) {
+    err.textContent = passkeyError(ex);
+  } finally {
+    btn.disabled = false;
+  }
+});
+$('#passkey-list').addEventListener('click', async (e) => {
+  const btn = e.target.closest('[data-passkey-del]');
+  if (!btn || !confirm(`パスキー「${btn.dataset.label}」を消しますか？（その端末からは、パスキーで入れなくなります）`)) return;
+  try {
+    const r = await api('/auth/passkey-delete', { method: 'POST', body: { id: btn.dataset.passkeyDel } });
+    renderPasskeys({ passkeys: r.passkeys });
+    toast('パスキーを消しました。スマホ・パソコンの設定に残っているパスキーも、消しておくと安心です', 6000);
+  } catch (ex) {
+    toast(passkeyError(ex), 5000);
+  }
 });
 
 let pendingCodes = [];
 $('#panel-register').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const r = await submit(e.target, '/auth/register', ['loginId', 'name', 'password', 'birthdate', 'inviteCode'], { agreeTerms: e.target.elements.agreeTerms.checked });
+  const r = await submit(e.target, '/auth/register', ['loginId', 'name', 'password', 'birthdate', 'inviteCode'], { agreeTerms: e.target.elements.agreeTerms.checked, remember: e.target.elements.remember.checked });
   if (!r) return;
   rememberMe(r.me);
   await offerToSave(e.target.elements.loginId.value.trim(), e.target.elements.password.value.trim(), r.me.name);
@@ -489,6 +581,16 @@ $('#panel-register').addEventListener('submit', async (e) => {
   $('#code-list').innerHTML = pendingCodes.map((c) => `<li><code>${escapeHtml(c)}</code></li>`).join('');
   $('#codes').hidden = false;
   $('#codes').focus?.();
+});
+// 12歳までの人は、はじめは「このまま入っておく」なし（みんなの端末で使うことが多いため。自分でチェックはできる）
+$('#panel-register').elements.birthdate.addEventListener('change', (e) => {
+  const b = new Date(e.target.value);
+  if (Number.isNaN(b.getTime())) return;
+  const t = new Date();
+  const age = t.getFullYear() - b.getFullYear() - (t.getMonth() < b.getMonth() || (t.getMonth() === b.getMonth() && t.getDate() < b.getDate()) ? 1 : 0);
+  const child = age <= 12;
+  $('#panel-register').elements.remember.checked = !child;
+  $('#remember-child').hidden = !child;
 });
 $('#codes-done').addEventListener('change', (e) => { $('#codes-next').disabled = !e.target.checked; });
 $('#save-codes').addEventListener('click', () => {
