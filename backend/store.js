@@ -18,6 +18,7 @@ import {
 import { createLibraryStore } from './library-store.js';
 import { createInviteStore } from './invites.js';
 import { createDonationStore } from './donations.js';
+import { MAX_PASSKEYS, MAX_PASSKEY_LABEL } from './webauthn.js';
 
 export const MAX_POST_LENGTH = 280;
 export const MAX_NAME_LENGTH = 20;
@@ -42,6 +43,7 @@ const hashKey = (key) => createHash('sha256').update(String(key)).digest();
 // パスワードは scrypt（わざと時間のかかる計算）で、元にもどせない形にしてから保存する
 const scrypt = promisify(scryptCb);
 export const SESSION_DAYS = 30;
+export const SHORT_SESSION_HOURS = 12; // 「このまま入っておく」にしないとき
 const RECOVERY_CODES = 8;
 const LOCK_AFTER_FAILS = 5;
 const LOCK_MS = 5 * 60 * 1000;
@@ -489,15 +491,65 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       return user;
     },
     // ログインのしるし（セッション）。トークンそのものは保存せず、ハッシュだけを持つ
-    startSession(userId) {
+    // remember：「このまま入っておく」なら30日。そうでなければ SHORT_SESSION_HOURS で切れる
+    // （クッキーもブラウザを閉じたら消える形にする。消えずに残るブラウザでも、サーバー側で切れる）
+    startSession(userId, { remember = true } = {}) {
       requireUser(userId);
       const token = randomBytes(32).toString('base64url');
       const t = clockMs();
       state.sessions = state.sessions.filter((s) => s.expiresAt > t);
-      state.sessions.push({ hash: hashSession(token), userId, createdAt: t, expiresAt: t + SESSION_DAYS * 86400000 });
+      const life = remember ? SESSION_DAYS * 86400000 : SHORT_SESSION_HOURS * 3600000;
+      state.sessions.push({ hash: hashSession(token), userId, createdAt: t, expiresAt: t + life, remember: Boolean(remember) });
       save();
       return token;
     },
+    // いまのログインが「このまま入っておく」か（パスワードを変えたあと、同じ形でログインしなおすため）
+    sessionRemember(token) {
+      if (!token) return true;
+      const s = state.sessions.find((x) => x.hash === hashSession(token));
+      return s ? s.remember !== false : true;
+    },
+
+    // ---- 🔑 パスキー。しまうのは公開カギだけ（秘密のカギは本人の端末から出ない） ----
+    listPasskeys(userId) {
+      return (requireUser(userId).passkeys ?? []).map((p) => ({ id: p.id, label: p.label, createdAt: p.createdAt, lastUsedAt: p.lastUsedAt ?? null }));
+    },
+    passkeyIds(userId) {
+      return (requireUser(userId).passkeys ?? []).map((p) => p.id);
+    },
+    addPasskey(userId, { id, alg, jwk, signCount, label }) {
+      const user = requireUser(userId);
+      user.passkeys ??= [];
+      if (user.passkeys.length >= MAX_PASSKEYS) throw new HttpError(400, `パスキーは${MAX_PASSKEYS}つまでです。使わないものを消してから足してください`);
+      if (state.users.some((u) => u.passkeys?.some((p) => p.id === id))) throw new HttpError(409, 'このパスキーは、もう登録されています');
+      const name = [...String(label ?? '').trim()].slice(0, MAX_PASSKEY_LABEL).join('') || 'パスキー';
+      user.passkeys.push({ id, alg, jwk, signCount, label: name, createdAt: now(), lastUsedAt: null });
+      save();
+      return this.listPasskeys(userId);
+    },
+    passkeyOwner(credentialId) {
+      for (const user of state.users) {
+        const passkey = user.passkeys?.find((p) => p.id === credentialId);
+        if (passkey) return { user, passkey };
+      }
+      return null;
+    },
+    passkeyUsed(userId, credentialId, signCount) {
+      const p = requireUser(userId).passkeys?.find((x) => x.id === credentialId);
+      if (!p) return;
+      p.signCount = signCount;
+      p.lastUsedAt = now();
+      save();
+    },
+    removePasskey(userId, credentialId) {
+      const user = requireUser(userId);
+      const before = user.passkeys?.length ?? 0;
+      user.passkeys = (user.passkeys ?? []).filter((p) => p.id !== credentialId);
+      if (user.passkeys.length === before) throw new HttpError(404, 'そのパスキーは見つかりません');
+      save();
+      return this.listPasskeys(userId);
+    },
+    isClosedUser: (u) => isClosed(u),
     sessionUser(token) {
       if (!token) return null;
       const h = hashSession(token);

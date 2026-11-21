@@ -28,9 +28,15 @@
       <form id="panel-login" class="card panel" role="tabpanel" aria-labelledby="tab-login">
         <label class="field">ログインID<input class="input" name="loginId" autocomplete="username" autocapitalize="none" required></label>
         <label class="field">パスワード<input class="input" name="password" type="password" autocomplete="current-password" required></label>
+        <label class="row"><input type="checkbox" name="remember" checked> <span>このまま入っておく（30日）</span></label>
         <p class="error" role="alert"></p>
         <button class="btn" type="submit">ログイン</button>
-        <p class="muted small">💾 パスワードは、ブラウザの「パスワードを保存」で覚えておけます（ともはね には保存しません）。家族やみんなで使うパソコン・スマホでは、保存しないでください。一度ログインすると、30日はログインしたままです。</p>
+        <div class="passkey-login" id="passkey-login" hidden>
+          <p class="muted small passkey-or">または</p>
+          <button class="btn ghost" type="button" id="passkey-login-btn">🔑 パスキーでログイン</button>
+          <p class="muted small">指紋・顔・スマホのロックで入れます（先にアカウントのページで登録した人だけ）。</p>
+        </div>
+        <p class="muted small">💾 パスワードは、ブラウザの「パスワードを保存」で覚えておけます（ともはね には保存しません）。家族やみんなで使うパソコン・スマホでは、保存しないで、「このまま入っておく」のチェックも外してください（ブラウザを閉じるとログアウトします）。</p>
       </form>
 
       <form id="panel-register" class="card panel" role="tabpanel" aria-labelledby="tab-register" hidden>
@@ -46,6 +52,7 @@
         <label class="field">生年月日（年齢に合ったページを出すために使います。ほかの人には見えません）
           <input class="input" name="birthdate" type="date" required></label>
         <p class="muted small">前に「名前だけ」で使っていた人は、同じ表示名で登録すると、推しページなどをそのまま引きつげます。</p>
+        <label class="row"><input type="checkbox" name="remember" checked> <span>このまま入っておく（30日）<span class="muted small" id="remember-child" hidden>　🐕 12歳までの人は、はじめはチェックなしっす</span></span></label>
         <label class="row"><input type="checkbox" name="agreeTerms" required> <span><a href="/terms.html" target="_blank" rel="noopener">ともはね の約束（利用規約・プライバシー）</a>を読んで、同意します</span></label>
         <p class="error" role="alert"></p>
         <button class="btn" type="submit">はじめる</button>
@@ -181,6 +188,18 @@
           </fieldset>
           <p class="say-line small" id="honor-sample"></p>
         </form>
+      </details>
+      <!-- 🔑 パスキー（指紋・顔・スマホのロックで入る）。しまうのは公開カギだけ -->
+      <details class="family" id="passkey-box">
+        <summary>🔑 パスキー（指紋・顔でログイン）</summary>
+        <p class="muted small">パスキーを登録すると、つぎからはパスワードを入れずに、指紋・顔・スマホのロックで入れます。ともはね がしまうのは「公開カギ」だけで、指紋や顔の情報は ともはね には来ません（スマホ・パソコンの中だけ）。パスワードと回復コードは、そのまま使えます。</p>
+        <ul class="family-list" id="passkey-list"></ul>
+        <form id="passkey-add" class="row wrap">
+          <label class="field">名前（例：わたしのスマホ。20文字まで）<input class="input" name="label" maxlength="20" autocomplete="off"></label>
+          <button class="btn" type="submit">パスキーを登録する</button>
+          <p class="error" role="alert"></p>
+        </form>
+        <p class="muted small" id="passkey-unsupported" hidden>このブラウザ・このページでは、パスキーが使えません（パスキーは https のページか、このパソコンの localhost だけで使えます）。</p>
       </details>
       <!-- パスワードを変える（ログイン中）。ほかの端末のログインは切れる -->
       <details class="family" id="password-box">
