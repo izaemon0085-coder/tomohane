@@ -7,6 +7,11 @@
 
 export const PAPER_NAME = 'ともはね新聞';
 export const MAX_VOTE_COMMENT = 100;
+// 📮 読者の声（投書欄）：「のせてもいい」と書いた投書から、運営が選んで号にのせる。名前は出さず、ペンネームだけ
+export const MAX_READER_LETTER = 200;
+export const MAX_PEN_NAME = 12;
+export const READER_DEFAULT_NAME = '町の読者';
+export const READER_LETTERS_PER_DAY = 3;
 export const TALK_MIN_VOTES = 5; // これより少ないうちは、だれの答えか分かりやすいので、座談会で話さない
 
 // 公式アカウント。新聞が出るたびに、広場にスレッドを立てる

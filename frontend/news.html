@@ -14,11 +14,41 @@
   <header class="site-header" id="header"></header>
   <main class="page news-page">
     <article class="paper" id="paper" aria-live="polite"></article>
+    <!-- 📝 読者の声（投書欄）：「のせてもいい」投書から運営が選んで号にのせる。名前は出さずペンネームだけ -->
+    <section class="card toushou" id="toushou" aria-labelledby="toushou-title">
+      <h2 id="toushou-title">📝 投書する（読者の声）</h2>
+      <p class="muted small">新聞の感想・町のこと・推しのことなど。運営が選んだ投書は、号の「📮 読者の声」に<strong>ペンネームで</strong>のります（ログインIDや名前は、運営にも新聞にも出ません）。のったあとでも、下の「わたしの投書」からいつでも取り下げられます。</p>
+      <form id="toushou-form" hidden>
+        <label class="field">投書（200文字まで・1日3通まで）<textarea class="input" name="text" maxlength="200" rows="3" required></textarea></label>
+        <label class="field">ペンネーム（12文字まで。なしなら「町の読者」）<input class="input" name="penName" maxlength="12" autocomplete="off"></label>
+        <label class="row"><input type="checkbox" name="okToPrint" required> <span>新聞にのせてもいい（ペンネームで）</span></label>
+        <p class="error" role="alert"></p>
+        <button class="btn" type="submit">投書する</button>
+      </form>
+      <p id="toushou-login" hidden><a href="/login.html?next=/news.html">ログイン</a>すると、投書できます。</p>
+      <p class="note-line small" id="toushou-practice" hidden>🐕 新聞はみんなが読むので、おうちの人とつながったら投書できるっす！（アカウントのページの「おうちの人とつなぐ」から）</p>
+      <div class="say-line" id="toushou-reply" hidden aria-live="polite"></div>
+      <details class="admin-box" id="toushou-mine-box" hidden>
+        <summary>わたしの投書</summary>
+        <ul class="meyasu-admin-list" id="toushou-mine"></ul>
+      </details>
+      <details class="admin-box" id="toushou-admin" hidden>
+        <summary>運営だけ：届いた投書</summary>
+        <p class="small muted">書いた人の名前は出していません（ペンネームと年齢の区分だけ）。のせる号を選んでください。</p>
+        <ul class="meyasu-admin-list" id="toushou-admin-list"></ul>
+      </details>
+    </section>
     <!-- 📮 目安箱：記者が受け取る。答えは「目安箱から」の座談会で -->
     <section class="card meyasu" id="meyasu" aria-labelledby="meyasu-title">
       <h2 id="meyasu-title">📮 目安箱から</h2>
       <div id="meyasu-talk"></div>
-      <h3>📮 目安箱（新聞社の前）</h3>
+      <div class="meyasu-head">
+        <span class="meyasu-post big" aria-hidden="true"><span class="meyasu-post-sign">目安箱</span></span>
+        <div>
+          <h3>📮 目安箱ポスト（新聞社の前）</h3>
+          <p class="muted small">入れた声は 🕊️ハトが、新聞社の記者に届けます。</p>
+        </div>
+      </div>
       <p class="muted small">ともはね へのお願い・こまったこと・アイデアをどうぞ。<strong>だれが書いたかは、運営にも見せません</strong>。とりあげた声は、運営が短くまとめて、この座談会で答えます。</p>
       <p class="muted small">🔒「個人情報（見せて・直して・消して など）」のテーマだけは、本人か確かめるために、運営にあなたの名前が分かります。新聞にはのりません。</p>
       <form id="meyasu-form" hidden>
@@ -28,6 +58,7 @@
         <button class="btn" type="submit">目安箱に入れる</button>
       </form>
       <p id="meyasu-login" hidden><a href="/login.html?next=/news.html">ログイン</a>すると、目安箱に入れられます。</p>
+      <p class="meyasu-dove" id="meyasu-dove" hidden aria-live="polite"><span class="dove" aria-hidden="true">🕊️</span> ハトが、あなたの声を新聞社の記者に届けに行きました</p>
       <div class="say-line" id="meyasu-reply" hidden aria-live="polite"></div>
       <details class="admin-box" id="meyasu-admin" hidden>
         <summary>運営だけ：目安箱に届いた声</summary>
