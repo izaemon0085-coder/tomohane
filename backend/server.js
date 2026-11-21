@@ -501,8 +501,13 @@ export function createApp({
       const votes = store.listNewsVotes();
       const admin = me?.role === 'admin';
       const threads = Object.fromEntries(store.listPosts().filter((p) => p.thread).map((p) => [p.newsIssueId, p.id]));
+      // 📮 読者の声：運営がのせた投書（ペンネームだけ。退会の手続き中の人のものは出さない）。書いた本人には mine
+      const printed = store.listReaderLetters().filter((x) => x.status === 'picked' && !store.isLeavingUser(x.userId))
+        .sort((a, b) => a.pickedAt.localeCompare(b.pickedAt));
+      const readersOf = (issueId) => printed.filter((x) => x.issueId === issueId)
+        .map((x) => ({ id: x.id, penName: x.penName, text: x.text, mine: Boolean(me && x.userId === me.id) }));
       return publishedIssues().map(({ plaza: _p, ...rest }) => {
-        const issue = { ...rest, threadPostId: threads[rest.id] ?? null };
+        const issue = { ...rest, threadPostId: threads[rest.id] ?? null, readers: readersOf(rest.id) };
         if (!issue.poll) return issue;
         const mine = votes.filter((v) => v.newsId === issue.poll.id);
         const counts = Object.fromEntries(issue.poll.choices.map((c) => [c.id, mine.filter((v) => v.choice === c.id).length]));
@@ -536,6 +541,31 @@ export function createApp({
         name: users[v.userId]?.name ?? '？', age: users[v.userId] ? ageGroup(users[v.userId].birthdate) : null,
         choice: v.choice, comment: v.comment, at: v.createdAt,
       }));
+    }],
+
+    // ---- 📮 読者の声（投書欄）：のせてもいい投書から運営が選ぶ。名前は運営にも出さない（ペンネームと年齢の区分だけ） ----
+    ['POST', /^\/api\/news\/letters$/, ({ body, me }) => {
+      const x = store.addReaderLetter(needLogin(me).id, { text: body.text, penName: body.penName, okToPrint: body.okToPrint });
+      return [201, { id: x.id, reply: reporterFor(clock()) }];
+    }],
+    ['GET', /^\/api\/news\/letters\/mine$/, ({ me }) => store.myReaderLetters(needLogin(me).id)
+      .map((x) => ({ id: x.id, penName: x.penName, text: x.text, status: x.status, issueId: x.issueId, at: x.createdAt }))],
+    ['DELETE', /^\/api\/news\/letters\/([\w-]+)$/, ({ params, me }) => {
+      store.withdrawReaderLetter(needLogin(me).id, params[0]);
+      return { ok: true };
+    }],
+    ['GET', /^\/api\/news\/letters$/, ({ me }) => {
+      needAdmin(me);
+      return store.listReaderLetters().map((x) => ({ id: x.id, age: x.age, penName: x.penName, text: x.text, status: x.status, issueId: x.issueId, at: x.createdAt }));
+    }],
+    ['POST', /^\/api\/news\/letters\/([\w-]+)\/pick$/, ({ params, body, me }) => {
+      needAdmin(me);
+      const x = store.pickReaderLetter(params[0], String(body.issueId ?? ''));
+      return { id: x.id, status: x.status, issueId: x.issueId };
+    }],
+    ['POST', /^\/api\/news\/letters\/([\w-]+)\/close$/, ({ params, me }) => {
+      needAdmin(me);
+      return { id: store.closeReaderLetter(params[0]).id, status: 'done' };
     }],
 
     // ---- 📮 目安箱：記者が受け取る。だれが書いたかは運営にも見せない ----

@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 import { SEED_AGENTS, MOODS } from './agents.js';
 import { DEFAULT_TYPEFACE, TYPEFACE_KEYS } from '../shared/typefaces.js';
 import { precheck } from '../shared/precheck.js';
-import { MAX_VOTE_COMMENT, OFFICIAL_ACCOUNTS } from '../shared/news.js';
+import { MAX_VOTE_COMMENT, OFFICIAL_ACCOUNTS, MAX_READER_LETTER, MAX_PEN_NAME, READER_DEFAULT_NAME, READER_LETTERS_PER_DAY, publishedIssues } from '../shared/news.js';
 import { findReason, stageOf, MAX_APOLOGY } from '../shared/report.js';
 import { LEAVE_MS, GUARDIAN_LEAVE_MS, FAMILY_DIARY } from '../shared/leave.js';
 import { MAX_SUGGESTION, MAX_PER_DAY, MAX_SUMMARY, MAX_ANSWER, SUGGEST_TOPICS } from '../shared/suggest.js';
@@ -191,6 +191,9 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
   state.familyDiary ??= []; // おうちの人に届くシバの日記 { id, guardianId, childId, text, at }
   state.notices ??= []; // 🔔 お知らせ（ハトの郵便屋さんが届ける）{ id, userId, kind, text, link, at, readAt }
   state.suggestions ??= []; // 目安箱 { id, userId（運営にも見せない）, age, topic, text, status（new/picked/done）, picked: { summary, answer, at }, createdAt }
+  // 📮 読者の声（投書）{ id, userId, age, text, penName, status（new/picked/done）, issueId（のせた号）, pickedAt, createdAt }
+  // 書いた人の名前は運営にも出さない（ペンネームと年齢の区分だけ）。本人はいつでも取り下げられる（のった号からも消える）
+  state.readerLetters ??= [];
   state.reportSeen ??= []; // 通報された本人が、お知らせを読んだしるし { postId, authorId, at }
   const listeners = new Set();
   const loginFails = new Map(); // ログインID → { count, until }（パスワードの総当たりを防ぐ）
@@ -297,6 +300,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
     state.gameRecs = state.gameRecs.filter((r) => r.userId !== id);
     state.newsVotes = state.newsVotes.filter((v) => v.userId !== id);
     state.tableRequests = state.tableRequests.filter((r) => r.userId !== id);
+    state.readerLetters = state.readerLetters.filter((x) => x.userId !== id); // 投書は、のった号からも消す
     state.suggestions = state.suggestions.filter((x) => x.userId !== id || x.status === 'picked');
     for (const x of state.suggestions) if (x.userId === id) x.userId = null;
     state.extGames = state.extGames.filter((g) => g.ownerId !== id);
@@ -1320,6 +1324,59 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       item.status = 'done';
       item.picked = null;
       emit(wasPicked ? 'news' : 'suggestion', { id: item.id });
+      return item;
+    },
+
+    // ---- 📮 読者の声（投書欄） ----
+    addReaderLetter(userId, { text, penName, okToPrint }) {
+      const user = requireUser(userId);
+      if (user.kind !== 'human') throw new HttpError(400, '投書できるのは、人間のユーザーだけです');
+      if (isPractice(user)) throw new HttpError(403, `新聞はみんなが読むので、${PRACTICE_MSG}`);
+      if (okToPrint !== true) throw new HttpError(400, '「新聞にのせてもいい」にチェックしてください');
+      const clean = cleanText(text, MAX_READER_LETTER, '投書');
+      const pen = String(penName ?? '').trim();
+      if ([...pen].length > MAX_PEN_NAME) throw new HttpError(400, `ペンネームは${MAX_PEN_NAME}文字以内にしてください`);
+      rejectBlocked(user, clean);
+      if (pen) rejectBlocked(user, pen);
+      const since = new Date(clockMs() - 86400000).toISOString();
+      if (state.readerLetters.filter((x) => x.userId === userId && x.createdAt > since).length >= READER_LETTERS_PER_DAY) {
+        throw new HttpError(429, `投書は1日${READER_LETTERS_PER_DAY}通までです。また明日どうぞ`);
+      }
+      const item = {
+        id: newId('rl'), userId, age: ageGroup(user.birthdate, new Date(clockMs())), text: clean, penName: pen || READER_DEFAULT_NAME,
+        status: 'new', issueId: null, pickedAt: null, createdAt: now(),
+      };
+      state.readerLetters.push(item);
+      emit('suggestion', { id: item.id });
+      return item;
+    },
+    listReaderLetters: () => [...state.readerLetters].reverse(),
+    myReaderLetters: (userId) => state.readerLetters.filter((x) => x.userId === userId).reverse(),
+    // 本人が取り下げる（のった号からも消える）
+    withdrawReaderLetter(userId, id) {
+      const item = state.readerLetters.find((x) => x.id === id && x.userId === userId);
+      if (!item) throw new HttpError(404, '投書が見つかりません');
+      state.readerLetters = state.readerLetters.filter((x) => x !== item);
+      emit(item.status === 'picked' ? 'news' : 'suggestion', { id });
+      save();
+    },
+    // 運営：号にのせる（出ている号だけ）
+    pickReaderLetter(id, issueId) {
+      const item = state.readerLetters.find((x) => x.id === id);
+      if (!item) throw new HttpError(404, '投書が見つかりません');
+      if (!publishedIssues(new Date(clockMs())).some((i) => i.id === issueId)) throw new HttpError(400, 'のせる号を選んでください（出ている号だけ）');
+      Object.assign(item, { status: 'picked', issueId, pickedAt: now() });
+      if (item.userId) notify(item.userId, { kind: 'suggest', text: `あなたの投書（${item.penName}）が、新聞の「読者の声」にのったよ`, link: `/news.html?id=${encodeURIComponent(issueId)}` });
+      emit('news', { id });
+      return item;
+    },
+    // 運営：片づける（のせない）。のせたものを片づけると、号からも外れる
+    closeReaderLetter(id) {
+      const item = state.readerLetters.find((x) => x.id === id);
+      if (!item) throw new HttpError(404, '投書が見つかりません');
+      const wasPicked = item.status === 'picked';
+      Object.assign(item, { status: 'done', issueId: null, pickedAt: null });
+      emit(wasPicked ? 'news' : 'suggestion', { id });
       return item;
     },
 

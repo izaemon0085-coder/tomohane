@@ -81,6 +81,11 @@ function render() {
     </div>
     ${issue.talk ? `<section class="paper-box"><h3 class="paper-kicker">${escapeHtml(issue.talk.title)}</h3>${talkHtml(issue.talk.lines)}</section>` : ''}
     ${issue.poll ? pollHtml(issue.poll) : ''}
+    ${issue.readers?.length ? `<section class="paper-box readers" aria-labelledby="readers-title">
+        <h3 class="paper-kicker" id="readers-title">📮 読者の声</h3>
+        <ul class="reader-letters">${issue.readers.map((r) => `<li>${r.mine ? '<p class="mine-chip">📝 あなたの投書</p>' : ''}
+          <p>${escapeHtml(r.text)}</p><p class="reader-pen">（${escapeHtml(r.penName)}）</p></li>`).join('')}</ul>
+      </section>` : ''}
     ${issue.threadPostId
     ? `<p class="to-thread"><a class="btn" href="/plaza.html?thread=${encodeURIComponent(issue.threadPostId)}">💬 この号のスレッドで話す →</a></p>`
     : ''}`;
@@ -200,10 +205,113 @@ $('#meyasu-form').addEventListener('submit', async (e) => {
   try {
     const { reply } = await api('/suggestions', { method: 'POST', body: { topic: f.topic.value, text: f.text.value.trim() } });
     e.target.reset();
+    // 🕊️ハトが届ける → 記者が受け取る
+    $('#meyasu-reply').hidden = true;
+    $('#meyasu-dove').hidden = false;
+    $('#meyasu-dove').classList.remove('fly');
+    void $('#meyasu-dove').offsetWidth;
+    $('#meyasu-dove').classList.add('fly');
+    await new Promise((r) => setTimeout(r, matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 1200));
     $('#meyasu-reply').innerHTML = `<img src="${face(reply.by)}" alt="" width="40" height="40"><p><strong>${escapeHtml(AGENT_NAMES[reply.by] ?? '')} 記者</strong>：${escapeHtml(reply.text)}</p>`;
     $('#meyasu-reply').hidden = false;
   } catch (x) {
     err.textContent = x.offline ? 'つながっていません。つながってから、もう一度どうぞ' : x.message;
+  }
+});
+
+// ---- 📝 読者の声（投書） ----
+const LETTER_STATUS = { new: '📨 運営が読むのを待っています', picked: '📰 新聞にのりました', done: '今回はのりませんでした' };
+const issueName = (id) => {
+  const i = issues.find((x) => x.id === id);
+  return i ? `${issueLabel(i)}（${fmtDate(i.date)}）` : '';
+};
+async function loadToushou() {
+  const me = getMe();
+  const practice = Boolean(me?.practice);
+  $('#toushou-form').hidden = !me || practice;
+  $('#toushou-login').hidden = Boolean(me);
+  $('#toushou-practice').hidden = !practice;
+  $('#toushou-mine-box').hidden = !me;
+  $('#toushou-admin').hidden = me?.role !== 'admin';
+  if (me && $('#toushou-mine-box').open) await loadMyLetters();
+  if (me?.role === 'admin' && $('#toushou-admin').open) await loadLettersAdmin();
+}
+async function loadMyLetters() {
+  const list = await api('/news/letters/mine');
+  $('#toushou-mine').innerHTML = list.length ? list.map((x) => `<li data-id="${escapeHtml(x.id)}">
+      <p class="small muted">${escapeHtml(timeAgo(x.at))}・${escapeHtml(x.penName)}・${LETTER_STATUS[x.status] ?? ''}${x.status === 'picked' ? `（${escapeHtml(issueName(x.issueId))}）` : ''}</p>
+      <p>${escapeHtml(x.text)}</p>
+      <button class="btn ghost small" type="button" data-withdraw>取り下げる</button></li>`).join('') : '<li class="muted small">まだ投書していません</li>';
+}
+async function loadLettersAdmin() {
+  const list = await api('/news/letters');
+  const options = issues.map((i) => `<option value="${escapeHtml(i.id)}">${escapeHtml(issueLabel(i))}（${escapeHtml(fmtDate(i.date))}）</option>`).join('');
+  $('#toushou-admin-list').innerHTML = list.length ? list.map((x) => `<li data-id="${escapeHtml(x.id)}">
+      <p class="small muted">${escapeHtml(AGE_LABEL[x.age] ?? '')}・${escapeHtml(timeAgo(x.at))}・${LETTER_STATUS[x.status] ?? ''}${x.status === 'picked' ? `（${escapeHtml(issueName(x.issueId))}）` : ''}</p>
+      <p>${escapeHtml(x.text)} <span class="muted">（${escapeHtml(x.penName)}）</span></p>
+      ${x.status === 'done' ? '' : `<form class="row wrap letter-pick">
+        <label class="field">のせる号<select class="input" name="issueId">${options}</select></label>
+        <button class="btn" type="submit">${x.status === 'picked' ? 'のせる号を変える' : 'この号にのせる'}</button>
+        <button class="btn ghost" type="button" data-close>片づける</button></form>`}
+    </li>`).join('') : '<li class="muted small">まだ届いていません</li>';
+  for (const li of $('#toushou-admin-list').querySelectorAll('[data-id]')) {
+    const x = list.find((y) => y.id === li.dataset.id);
+    const sel = li.querySelector('select');
+    if (sel && x?.issueId) sel.value = x.issueId;
+  }
+}
+$('#toushou-mine-box').addEventListener('toggle', () => { if ($('#toushou-mine-box').open) loadMyLetters().catch((x) => toast(x.message, 5000)); });
+$('#toushou-admin').addEventListener('toggle', () => { if ($('#toushou-admin').open) loadLettersAdmin().catch((x) => toast(x.message, 5000)); });
+$('#toushou-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = e.target.elements;
+  const err = e.target.querySelector('.error');
+  err.textContent = '';
+  try {
+    const { reply } = await api('/news/letters', { method: 'POST', body: { text: f.text.value.trim(), penName: f.penName.value.trim(), okToPrint: f.okToPrint.checked } });
+    e.target.reset();
+    $('#toushou-reply').innerHTML = `<img src="${face(reply.by)}" alt="" width="40" height="40"><p><strong>${escapeHtml(AGENT_NAMES[reply.by] ?? '')} 記者</strong>：投書をありがとう！ 運営が読んで、のせるかどうか決めます。のったら 🔔 でお知らせします</p>`;
+    $('#toushou-reply').hidden = false;
+    if ($('#toushou-mine-box').open) await loadMyLetters();
+  } catch (x) {
+    err.textContent = x.offline ? 'つながっていません。つながってから、もう一度どうぞ' : x.message;
+  }
+});
+$('#toushou-mine').addEventListener('click', async (e) => {
+  if (!e.target.closest('[data-withdraw]')) return;
+  const li = e.target.closest('[data-id]');
+  if (!confirm('この投書を取り下げますか？（新聞にのっていたら、その号からも消えます）')) return;
+  try {
+    await api(`/news/letters/${encodeURIComponent(li.dataset.id)}`, { method: 'DELETE' });
+    toast('投書を取り下げました');
+    await load();
+    await loadMyLetters();
+  } catch (x) {
+    toast(x.message, 5000);
+  }
+});
+$('#toushou-admin-list').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const li = e.target.closest('[data-id]');
+  try {
+    await api(`/news/letters/${encodeURIComponent(li.dataset.id)}/pick`, { method: 'POST', body: { issueId: e.target.elements.issueId.value } });
+    toast('📮 「読者の声」にのせました');
+    await load();
+    await loadLettersAdmin();
+  } catch (x) {
+    toast(x.message, 5000);
+  }
+});
+$('#toushou-admin-list').addEventListener('click', async (e) => {
+  if (!e.target.closest('[data-close]')) return;
+  const li = e.target.closest('[data-id]');
+  if (!confirm('この投書を片づけますか？（新聞にのっていたら、外れます）')) return;
+  try {
+    await api(`/news/letters/${encodeURIComponent(li.dataset.id)}/close`, { method: 'POST' });
+    await load();
+    await loadLettersAdmin();
+  } catch (x) {
+    toast(x.message, 5000);
   }
 });
 
@@ -213,10 +321,12 @@ await refreshMe().catch(() => null);
 $('#header').innerHTML = headerHtml('news');
 await load();
 await loadMeyasu();
+await loadToushou();
 // 書いている途中で紙面が作りなおされないように、入力中は待つ
 onServerEvents({
   news: () => {
     if (!document.activeElement?.closest('.vote-form')) load();
     if (!document.activeElement?.closest('.meyasu-pick')) loadMeyasu();
+    if (!document.activeElement?.closest('.letter-pick')) loadToushou();
   },
 });
