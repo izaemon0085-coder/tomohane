@@ -835,3 +835,13 @@ html[data-oshi-color] .oshi-hero { color: var(--accent-text); }
 }
 .restaurant-spot:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
 @media (max-width: 600px) { .restaurant-spot { top: 79%; } .restaurant-spot .soon-badge { display: none; } } /* スマホではフクロウの家とアリーナのあいだ */
+
+/* 📚 みんなの知恵ぶくろ */
+.wisdom { margin-top: 16px; display: grid; gap: 10px; }
+.wisdom form { display: grid; gap: 8px; margin-top: 8px; }
+.wisdom form[hidden] { display: none; }
+.wisdom-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.wisdom-list li { border-bottom: 1px dashed var(--border); padding-bottom: 8px; }
+.wisdom-list p { margin: 0; }
+.wisdom-filter .chip { border: 1px solid var(--border); background: var(--surface); border-radius: 999px; padding: 3px 10px; font: inherit; font-size: .85rem; cursor: pointer; }
+.wisdom-filter .chip[aria-pressed="true"] { background: var(--accent); color: #fff; border-color: var(--accent); }

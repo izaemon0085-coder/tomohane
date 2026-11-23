@@ -2,6 +2,7 @@
 import { api, refreshMe, getMe, headerHtml, escapeHtml, toast, timeAgo, onServerEvents, markNewsSeen } from '/shared/api.js';
 import { PAPER_NAME, MAX_VOTE_COMMENT, AGENT_NAMES, issueLabel } from '/shared/news.js';
 import { SUGGEST_TOPICS, topicLabel, MAX_SUMMARY, MAX_ANSWER } from '/shared/suggest.js';
+import { WISDOM_TOPICS, wisdomTopicLabel } from '/shared/wisdom.js';
 
 const $ = (sel) => document.querySelector(sel);
 const AGE = { child: '子ども', teen: '中高生', adult: '大人' };
@@ -315,6 +316,102 @@ $('#toushou-admin-list').addEventListener('click', async (e) => {
   }
 });
 
+// ---- 📚 みんなの知恵ぶくろ ----
+const WISDOM_STATUS = { new: '📨 運営が確かめるのを待っています', picked: '📚 知恵ぶくろにのりました', done: '今回はのりませんでした' };
+let wisdomFilter = '';
+$('#wisdom-topic').innerHTML = WISDOM_TOPICS.map((t) => `<option value="${t.id}">${escapeHtml(t.label)}</option>`).join('');
+const showWisdomHint = () => { $('#wisdom-hint').textContent = WISDOM_TOPICS.find((t) => t.id === $('#wisdom-topic').value)?.hint ?? ''; };
+showWisdomHint();
+$('#wisdom-topic').addEventListener('change', showWisdomHint);
+$('#wisdom-filter').innerHTML = [{ id: '', label: 'ぜんぶ' }, ...WISDOM_TOPICS].map((t) => `<button type="button" class="chip" data-wfilter="${t.id}" aria-pressed="${t.id === ''}">${escapeHtml(t.label)}</button>`).join('');
+$('#wisdom-filter').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-wfilter]');
+  if (!b) return;
+  wisdomFilter = b.dataset.wfilter;
+  for (const x of $('#wisdom-filter').querySelectorAll('[data-wfilter]')) x.setAttribute('aria-pressed', String(x === b));
+  loadWisdom();
+});
+async function loadWisdom() {
+  const me = getMe();
+  const practice = Boolean(me?.practice);
+  $('#wisdom-form').hidden = !me || practice;
+  $('#wisdom-login').hidden = Boolean(me);
+  $('#wisdom-practice').hidden = !practice;
+  $('#wisdom-mine-box').hidden = !me;
+  $('#wisdom-admin').hidden = me?.role !== 'admin';
+  try {
+    const list = (await api('/news/wisdom')).filter((x) => !wisdomFilter || x.topic === wisdomFilter);
+    $('#wisdom-list').innerHTML = list.length
+      ? list.map((x) => `<li>${x.mine ? '<p class="mine-chip">📚 あなたの知恵</p>' : ''}<p class="small muted">${escapeHtml(wisdomTopicLabel(x.topic))}</p>
+          <p>${escapeHtml(x.text)}</p><p class="reader-pen">（${escapeHtml(x.penName)}）</p></li>`).join('')
+      : `<li class="muted small">${wisdomFilter ? 'このテーマの知恵は、まだありません' : 'まだ知恵はありません。いちばん最初の知恵を送ってみてね'}</li>`;
+  } catch { /* オフラインなど */ }
+  if (me && $('#wisdom-mine-box').open) await loadMyWisdom();
+  if (me?.role === 'admin' && $('#wisdom-admin').open) await loadWisdomAdmin();
+}
+async function loadMyWisdom() {
+  const list = await api('/news/wisdom/mine');
+  $('#wisdom-mine').innerHTML = list.length ? list.map((x) => `<li data-id="${escapeHtml(x.id)}">
+      <p class="small muted">${escapeHtml(wisdomTopicLabel(x.topic))}・${escapeHtml(timeAgo(x.at))}・${WISDOM_STATUS[x.status] ?? ''}</p>
+      <p>${escapeHtml(x.text)} <span class="muted">（${escapeHtml(x.penName)}）</span></p>
+      <button class="btn ghost small" type="button" data-wwithdraw>取り下げる</button></li>`).join('') : '<li class="muted small">まだ送っていません</li>';
+}
+async function loadWisdomAdmin() {
+  const list = await api('/news/wisdom/all');
+  $('#wisdom-admin-list').innerHTML = list.length ? list.map((x) => `<li data-id="${escapeHtml(x.id)}">
+      <p class="small muted">${escapeHtml(wisdomTopicLabel(x.topic))}・${escapeHtml(AGE_LABEL[x.age] ?? '')}・${escapeHtml(timeAgo(x.at))}・${WISDOM_STATUS[x.status] ?? ''}</p>
+      <p>${escapeHtml(x.text)} <span class="muted">（${escapeHtml(x.penName)}）</span></p>
+      ${x.status === 'done' ? '' : `<div class="row wrap">${x.status === 'picked' ? '' : '<button class="btn" type="button" data-wpick>のせる</button>'}
+        <button class="btn ghost" type="button" data-wclose>片づける</button></div>`}
+    </li>`).join('') : '<li class="muted small">まだ届いていません</li>';
+}
+$('#wisdom-mine-box').addEventListener('toggle', () => { if ($('#wisdom-mine-box').open) loadMyWisdom().catch((x) => toast(x.message, 5000)); });
+$('#wisdom-admin').addEventListener('toggle', () => { if ($('#wisdom-admin').open) loadWisdomAdmin().catch((x) => toast(x.message, 5000)); });
+$('#wisdom-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = e.target.elements;
+  const err = e.target.querySelector('.error');
+  err.textContent = '';
+  try {
+    const { reply } = await api('/news/wisdom', { method: 'POST', body: { topic: f.topic.value, text: f.text.value.trim(), penName: f.penName.value.trim(), okToPrint: f.okToPrint.checked } });
+    e.target.reset();
+    showWisdomHint();
+    $('#wisdom-reply').innerHTML = `<img src="${face(reply.by)}" alt="" width="40" height="40"><p><strong>${escapeHtml(AGENT_NAMES[reply.by] ?? '')} 記者</strong>：知恵をありがとう！ 運営が確かめてから、知恵ぶくろと教室にのせます。のったら 🔔 でお知らせします</p>`;
+    $('#wisdom-reply').hidden = false;
+    if ($('#wisdom-mine-box').open) await loadMyWisdom();
+  } catch (x) {
+    err.textContent = x.offline ? 'つながっていません。つながってから、もう一度どうぞ' : x.message;
+  }
+});
+$('#wisdom-mine').addEventListener('click', async (e) => {
+  if (!e.target.closest('[data-wwithdraw]')) return;
+  const li = e.target.closest('[data-id]');
+  if (!confirm('この知恵を取り下げますか？（知恵ぶくろにのっていたら、そこからも消えます）')) return;
+  try {
+    await api(`/news/wisdom/${encodeURIComponent(li.dataset.id)}`, { method: 'DELETE' });
+    toast('知恵を取り下げました');
+    await loadWisdom();
+    await loadMyWisdom();
+  } catch (x) {
+    toast(x.message, 5000);
+  }
+});
+$('#wisdom-admin-list').addEventListener('click', async (e) => {
+  const pick = e.target.closest('[data-wpick]');
+  const close = e.target.closest('[data-wclose]');
+  if (!pick && !close) return;
+  const li = e.target.closest('[data-id]');
+  if (close && !confirm('この知恵を片づけますか？（のっていたら、外れます）')) return;
+  try {
+    await api(`/news/wisdom/${encodeURIComponent(li.dataset.id)}/${pick ? 'pick' : 'close'}`, { method: 'POST' });
+    toast(pick ? '📚 知恵ぶくろにのせました' : '片づけました');
+    await loadWisdom();
+    await loadWisdomAdmin();
+  } catch (x) {
+    toast(x.message, 5000);
+  }
+});
+
 markNewsSeen();
 $('#header').innerHTML = headerHtml('news');
 await refreshMe().catch(() => null);
@@ -322,11 +419,13 @@ $('#header').innerHTML = headerHtml('news');
 await load();
 await loadMeyasu();
 await loadToushou();
+await loadWisdom();
 // 書いている途中で紙面が作りなおされないように、入力中は待つ
 onServerEvents({
   news: () => {
     if (!document.activeElement?.closest('.vote-form')) load();
     if (!document.activeElement?.closest('.meyasu-pick')) loadMeyasu();
     if (!document.activeElement?.closest('.letter-pick')) loadToushou();
+    if (!document.activeElement?.closest('#wisdom-form')) loadWisdom();
   },
 });

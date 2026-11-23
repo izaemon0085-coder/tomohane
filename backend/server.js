@@ -8,6 +8,7 @@ import { createStore, HttpError, ageGroup, SESSION_DAYS } from './store.js';
 import { createSimulation } from './simulation.js';
 import { KIDS_TABLE } from '../shared/family-rules.js';
 import { isRoomId } from '../shared/rooms.js';
+import { WISDOM_SHOW } from '../shared/wisdom.js';
 import { createChallenges, readAssertion, verifyAssertion, verifyRegistration, WebAuthnError, MAX_PASSKEYS } from './webauthn.js';
 import { publishedIssues, findPoll, pollTalk } from '../shared/news.js';
 import { lanAddresses } from './net.js';
@@ -602,6 +603,34 @@ export function createApp({
     ['POST', /^\/api\/news\/letters\/([\w-]+)\/close$/, ({ params, me }) => {
       needAdmin(me);
       return { id: store.closeReaderLetter(params[0]).id, status: 'done' };
+    }],
+
+    // ---- 📚 みんなの知恵ぶくろ（新聞の専用コーナー）：のせてもいい知恵を運営が確かめてからのせる。名前は運営にも出さない ----
+    ['GET', /^\/api\/news\/wisdom$/, ({ me }) => store.listWisdom()
+      .filter((x) => x.status === 'picked' && !store.isLeavingUser(x.userId))
+      .sort((a, b) => b.pickedAt.localeCompare(a.pickedAt)).slice(0, WISDOM_SHOW)
+      .map((x) => ({ id: x.id, topic: x.topic, text: x.text, penName: x.penName, mine: Boolean(me && x.userId === me.id) }))],
+    ['POST', /^\/api\/news\/wisdom$/, ({ body, me }) => {
+      const x = store.addWisdom(needLogin(me).id, { topic: body.topic, text: body.text, penName: body.penName, okToPrint: body.okToPrint });
+      return [201, { id: x.id, reply: reporterFor(clock()) }];
+    }],
+    ['GET', /^\/api\/news\/wisdom\/mine$/, ({ me }) => store.myWisdom(needLogin(me).id)
+      .map((x) => ({ id: x.id, topic: x.topic, text: x.text, penName: x.penName, status: x.status, at: x.createdAt }))],
+    ['GET', /^\/api\/news\/wisdom\/all$/, ({ me }) => {
+      needAdmin(me);
+      return store.listWisdom().map((x) => ({ id: x.id, age: x.age, topic: x.topic, text: x.text, penName: x.penName, status: x.status, at: x.createdAt }));
+    }],
+    ['DELETE', /^\/api\/news\/wisdom\/([\w-]+)$/, ({ params, me }) => {
+      store.withdrawWisdom(needLogin(me).id, params[0]);
+      return { ok: true };
+    }],
+    ['POST', /^\/api\/news\/wisdom\/([\w-]+)\/pick$/, ({ params, me }) => {
+      needAdmin(me);
+      return { id: store.pickWisdom(params[0]).id, status: 'picked' };
+    }],
+    ['POST', /^\/api\/news\/wisdom\/([\w-]+)\/close$/, ({ params, me }) => {
+      needAdmin(me);
+      return { id: store.closeWisdom(params[0]).id, status: 'done' };
     }],
 
     // ---- 📮 目安箱：記者が受け取る。だれが書いたかは運営にも見せない ----
