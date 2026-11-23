@@ -39,11 +39,11 @@ async function readBigJson(req) {
   }
 }
 
-async function savePage(req, { dir, bookId, maxBytes }) {
+export async function savePage(req, { dir, bookId, maxBytes, label = 'ページの画像' }) {
   const type = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
   const ext = PAGE_TYPES[type];
-  if (!ext) throw new HttpError(415, 'ページの画像は PNG・JPEG・WebP のどれかにしてください');
-  const tooBig = () => new HttpError(413, `ページの画像は1枚${Math.floor(maxBytes / 1024 / 1024)}MBまでにしてください`);
+  if (!ext) throw new HttpError(415, `${label}は PNG・JPEG・WebP のどれかにしてください`);
+  const tooBig = () => new HttpError(413, `${label}は1枚${maxBytes >= 1024 * 1024 ? `${Math.floor(maxBytes / 1024 / 1024)}MB` : `${Math.floor(maxBytes / 1024)}KB`}までにしてください`);
   if (Number(req.headers['content-length']) > maxBytes) throw tooBig();
   await mkdir(dir, { recursive: true });
   const file = `${bookId}-${randomUUID().slice(0, 8)}${ext}`;
@@ -63,7 +63,7 @@ async function savePage(req, { dir, bookId, maxBytes }) {
     if (!size || !MAGIC[type](head)) throw new HttpError(415, 'この画像は読めませんでした。PNG・JPEG・WebP の画像にしてください');
   } catch (err) {
     await rm(part, { force: true });
-    throw err instanceof HttpError ? err : new HttpError(400, 'ページを受け取れませんでした。もう一度ためしてください');
+    throw err instanceof HttpError ? err : new HttpError(400, `${label}を受け取れませんでした。もう一度ためしてください`);
   }
   await rename(part, join(dir, file));
   let name = '';

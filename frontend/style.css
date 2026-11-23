@@ -817,3 +817,12 @@ html[data-oshi-color] .oshi-hero { color: var(--accent-text); }
 .cafe-room-box > summary { cursor: pointer; }
 .cafe-room-form { display: grid; gap: 6px; }
 .cafe-room-form fieldset { border: 1px dashed var(--border); border-radius: 8px; padding: 6px 10px; margin: 0; }
+
+/* 🖼️ グッズの絵（写真をイラストにしたもの） */
+.goods-thumb { width: 48px; height: 48px; object-fit: cover; border-radius: 8px; flex: none; }
+.illust-canvas { display: block; width: 100%; max-width: 420px; height: auto; margin: 8px auto; border-radius: 10px; background: var(--surface-2); cursor: crosshair; touch-action: manipulation; }
+.illust-styles { border: 1px dashed var(--border); border-radius: 8px; padding: 6px 10px; margin: 6px 0; }
+.goods-review { border-radius: 8px; max-width: 160px; height: auto; }
+.profile-goods { list-style: none; padding: 0; margin: 6px 0 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+.profile-goods li { display: grid; gap: 2px; text-align: center; }
+.profile-goods img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 10px; }

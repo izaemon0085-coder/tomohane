@@ -21,6 +21,7 @@ import { createDonationStore } from './donations.js';
 import { MAX_PASSKEYS, MAX_PASSKEY_LABEL } from './webauthn.js';
 import { KIDS_TABLE, familyStop, normalizeRules, DEFAULT_FAMILY_RULES } from '../shared/family-rules.js';
 import { MAX_ROOM_NAME, MAX_ROOMS_PER_OWNER, MAX_ROOM_MEMBERS, isRoomId, cleanCode } from '../shared/rooms.js';
+import { ILLUST_STYLE_IDS } from '../shared/illust.js';
 
 export const MAX_POST_LENGTH = 280;
 export const MAX_NAME_LENGTH = 20;
@@ -297,6 +298,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
   function eraseUser(user, images = []) {
     const id = user.id;
     images.push(...library.eraseUserLibrary(id)); // 図書館の本・応募した絵（ファイルはサーバーが消す）
+    for (const g of user.oshi?.goods ?? []) if (g.image?.file) images.push({ file: g.image.file }); // グッズの絵（同じ置き場所）
     if (user.guardianIds?.length) writeFamilyDiary(user, FAMILY_DIARY.gone(callName(user)));
     state.familyDiary = state.familyDiary.filter((d) => d.guardianId !== id);
     const to = store.leaveRepliers(id).filter((x) => !isLeaving(userById(x)));
@@ -946,13 +948,65 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       emit('user', user);
       return user.oshi;
     },
+    // グッズを消す。絵があれば、そのファイルの名前も返す（呼ぶ側でファイルを消す）
     removeGoods(userId, goodsId) {
       const oshi = this.getOshi(userId);
-      if (!oshi.goods.some((g) => g.id === goodsId)) throw new HttpError(404, 'グッズが見つかりません');
+      const g = oshi.goods.find((x) => x.id === goodsId);
+      if (!g) throw new HttpError(404, 'グッズが見つかりません');
       const user = requireUser(userId);
-      user.oshi = { ...oshi, goods: oshi.goods.filter((g) => g.id !== goodsId) };
+      user.oshi = { ...oshi, goods: oshi.goods.filter((x) => x.id !== goodsId) };
       emit('user', user);
-      return user.oshi;
+      return { oshi: user.oshi, oldImage: g.image?.file ?? null };
+    },
+
+    // ---- 🖼️ グッズの絵（写真をブラウザの中でイラストにしたもの）。運営が見てから、プロフィールに出す ----
+    // image：{ file, type, style, status（pending/ok/rejected）, at, reviewedAt }
+    goodsOf(userId, goodsId) {
+      const g = this.getOshi(userId).goods.find((x) => x.id === goodsId);
+      if (!g) throw new HttpError(404, 'グッズが見つかりません');
+      return g;
+    },
+    canAddGoodsImage(userId) {
+      const user = requireUser(userId);
+      if (user.kind !== 'human') throw new HttpError(400, '人間のユーザーだけです');
+      if (ageGroup(user.birthdate, new Date(clockMs())) === 'child') throw new HttpError(403, '12歳までの人は、絵を出せないっす（見るのはできるっす）');
+      if (isLeaving(user)) throw new HttpError(409, '退会の手続き中です');
+    },
+    // 新しい絵をつける（前の絵のファイルの名前を返す）
+    setGoodsImage(userId, goodsId, { file, type, style }) {
+      this.canAddGoodsImage(userId);
+      const g = this.goodsOf(userId, goodsId);
+      const oldImage = g.image?.file ?? null;
+      g.image = { file, type, style: ILLUST_STYLE_IDS.includes(style) ? style : 'watercolor', status: 'pending', at: now(), reviewedAt: null };
+      emit('goodsImage', { userId, goodsId });
+      return { image: g.image, oldImage };
+    },
+    removeGoodsImage(userId, goodsId) {
+      const g = this.goodsOf(userId, goodsId);
+      const oldImage = g.image?.file ?? null;
+      if (!oldImage) throw new HttpError(404, '絵がありません');
+      delete g.image;
+      emit('goodsImage', { userId, goodsId });
+      return { oldImage };
+    },
+    // 運営が見る：まだ見ていない絵
+    pendingGoodsImages() {
+      const out = [];
+      for (const u of state.users) {
+        for (const g of u.oshi?.goods ?? []) if (g.image?.status === 'pending') out.push({ user: u, goods: g });
+      }
+      return out.sort((a, b) => a.goods.image.at.localeCompare(b.goods.image.at));
+    },
+    reviewGoodsImage(userId, goodsId, ok) {
+      const g = this.goodsOf(userId, goodsId);
+      if (!g.image) throw new HttpError(404, '絵がありません');
+      g.image.status = ok ? 'ok' : 'rejected';
+      g.image.reviewedAt = now();
+      notify(userId, ok
+        ? { kind: 'goods', text: `グッズ「${g.name}」の絵が、プロフィールに出たよ`, link: '/oshi.html' }
+        : { kind: 'goods', text: `グッズ「${g.name}」の絵は、今回は出せなかったよ（顔・名前・住所などが見えていないか、もう一度たしかめてね）`, link: '/oshi.html' });
+      emit('goodsImage', { userId, goodsId });
+      return g.image;
     },
     // 同じ推しの仲間（自分以外の人間）の最近の投稿
     oshiFriendsPosts(userId, limit = 5) {

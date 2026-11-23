@@ -74,6 +74,26 @@
       </div>
     </div>
 
+    <!-- 🖼️ グッズの絵：写真をこの中でイラストにする（元の写真は送らない）。顔や文字はタップでモザイク。運営が見てからプロフィールに出る -->
+    <dialog id="illust-dialog" class="card oshi-dialog illust-dialog" aria-labelledby="illust-title">
+      <form method="dialog" id="illust-form">
+        <h2 id="illust-title">🖼️ グッズの絵をつける</h2>
+        <p class="muted small" id="illust-for"></p>
+        <label class="field">写真をえらぶ<input class="input" type="file" accept="image/*" name="photo" id="illust-photo"></label>
+        <fieldset class="illust-styles"><legend>絵柄</legend><div id="illust-styles" class="row wrap"></div></fieldset>
+        <canvas id="illust-canvas" class="illust-canvas" width="320" height="240" aria-label="イラストにした絵（タップでモザイク）"></canvas>
+        <p class="note-line small">👆 人の顔・名前・学校・住所・車のナンバーなどが見えていたら、<strong>そこをタップしてモザイク</strong>にしてください。<br>
+          📷 元の写真は、ともはね に送りません（このスマホ・パソコンの中だけでイラストにします）。<br>
+          🦉 送った絵は、運営が見てから、あなたのプロフィールに出ます。</p>
+        <p class="error" id="illust-error" role="alert"></p>
+        <div class="row end wrap">
+          <button type="button" class="btn ghost" id="illust-reset">モザイクをやりなおす</button>
+          <button type="button" class="btn ghost" data-close>やめる</button>
+          <button type="submit" class="btn" id="illust-send" value="send" disabled>この絵を送る</button>
+        </div>
+      </form>
+    </dialog>
+
     <dialog id="edit-dialog" class="card oshi-dialog" aria-labelledby="edit-title">
       <form id="edit-form" method="dialog">
         <h2 id="edit-title">推しを登録・へんしゅう</h2>

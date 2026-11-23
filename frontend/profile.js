@@ -25,6 +25,11 @@ function render(p) {
   $('#oshi').innerHTML = p.oshi
     ? `<strong>${escapeHtml(p.oshi.name)}</strong>${g ? ` <span class="muted small">${g.emoji} ${escapeHtml(g.name)}</span>` : ''}`
     : '<span class="muted">まだ登録していません</span>';
+  // 🖼️ 運営が見てから出した、グッズの絵（写真をイラストにしたもの）
+  const goods = p.goods ?? [];
+  $('#goods-title').hidden = !goods.length;
+  $('#goods').hidden = !goods.length;
+  $('#goods').innerHTML = goods.map((x) => `<li><img src="${escapeHtml(x.image)}" alt="${escapeHtml(x.name)}の絵"><span class="small">${escapeHtml(x.name)}</span></li>`).join('');
   $('#books').innerHTML = p.books.map((b) => `<li><a class="lib-book" href="/library.html?book=${encodeURIComponent(b.id)}">
       <span class="book-cover" style="--cover:${escapeHtml(b.cover.color)}" aria-hidden="true"><span class="cover-emoji">${escapeHtml(b.cover.emoji)}</span></span>
       <span class="book-info"><strong>${escapeHtml(b.title)}</strong><span class="muted small">${b.kind === 'novel' ? '📖 小説' : '🖼️ 漫画'}</span></span></a></li>`).join('')
