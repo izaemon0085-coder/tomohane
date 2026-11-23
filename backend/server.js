@@ -1115,11 +1115,12 @@ export function createApp({
     yamitomo: { link: yamitomoLink, setId: () => {}, results: null, admin: true },
   };
   // アプリのアドレス。このパソコン（localhost）のアドレスのとき、スマホから開いても届くように、いま開いているアドレスに合わせる
+  // 本番で同じ場所の下に置いたアプリ（例：https://tomohane-sns.jp/gochitomo）は、/gochitomo の部分も残す
   function gameUrlFor(req, link) {
     const u = new URL(link.gameUrl);
     const host = String(req.headers.host || '').split(':')[0];
     if (['localhost', '127.0.0.1'].includes(u.hostname) && host && !['localhost', '127.0.0.1'].includes(host)) u.hostname = host;
-    return u.origin;
+    return `${u.origin}${u.pathname.replace(/\/+$/, '')}`;
   }
   async function handleGameLink(req, res, pathname, me) {
     const m = pathname.match(/^\/api\/link\/(game|ghost|misetomo|korotomo|soratomo|haatomo|tomoru|vtomo|metaverse|utatomo|koetomo|yamitomo|gochitomo)-(start|ticket|results)(?:\/([\w-]+))?$/);
