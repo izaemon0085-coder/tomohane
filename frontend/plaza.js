@@ -9,6 +9,7 @@ import { sendPost, getOutbox, flushOutbox } from '/shared/outbox.js';
 import { precheck } from '/shared/precheck.js';
 import { REPORT_REASONS, APOLOGY_CHOICES, MAX_APOLOGY } from '/shared/report.js';
 import { FAREWELL_CHOICES as FAREWELLS } from '/shared/leave.js';
+import { ROOM_ENTRIES, ROOM_AGES, isRoomId, roomAgeLabel } from '/shared/rooms.js';
 
 const $ = (sel) => document.querySelector(sel);
 const header = $('#header');
@@ -564,20 +565,144 @@ log.addEventListener('click', async (e) => {
 });
 
 // ---- カフェのテーブル ----
+let rooms = { mine: [], invited: [], open: [] };
 async function loadTables() {
   try { tables = await api('/cafe/tables'); } catch { return; }
-  if (!tables.some((t) => t.id === table)) table = tables[0]?.id ?? 'free';
-  const cur = tables.find((t) => t.id === table);
+  if (me && me.ageGroup !== 'child') {
+    try { rooms = await api('/cafe/rooms'); } catch { /* オフラインなど */ }
+  }
+  const room = isRoomId(table) ? rooms.mine.find((r) => r.id === table) : null;
+  if (!room && !tables.some((t) => t.id === table)) table = tables[0]?.id ?? 'free';
+  const cur = room ? { ...room, kind: 'room', note: `${roomAgeLabel(room)}・${room.memberCount}人の仲間内だけの個室` } : tables.find((t) => t.id === table);
   const btn = (t, pressed) => `<button type="button" class="cafe-table" data-table="${escapeHtml(t.id)}"
     aria-pressed="${pressed}">${escapeHtml(t.emoji)} ${escapeHtml(t.name)}<span class="cafe-count">${t.postCount}</span></button>`;
   // 上の段：フリーとジャンル。下の段：いま選んでいるジャンルの、推しのテーブル（タヌキが開いたもの）
-  const genre = cur?.kind === 'oshi' ? cur.parent : cur?.id;
+  const genre = cur?.kind === 'oshi' ? cur.parent : cur?.kind === 'room' ? cur.genre : cur?.id;
+  renderRooms(genre, room);
   $('#cafe-tables').innerHTML = tables.filter((t) => t.kind !== 'oshi').map((t) => btn(t, t.id === genre)).join('');
   const oshiTables = tables.filter((t) => t.kind === 'oshi' && t.parent === genre);
   $('#cafe-oshi-tables').hidden = !oshiTables.length;
   $('#cafe-oshi-tables').innerHTML = oshiTables.map((t) => btn(t, t.id === table)).join('');
   $('#cafe-close').hidden = !(me?.role === 'admin' && cur?.kind === 'oshi');
   if (cur) $('#cafe-guide-text').textContent = `いらっしゃいませ。こちら「${cur.name}」です。${cur.note ? `${cur.note}。` : ''}ごゆっくりどうぞ。`;
+}
+
+// ---- 🚪 仲間内だけの個室 ----
+const GENRE_NAMES = () => Object.fromEntries(tables.map((t) => [t.id, t.name]));
+function renderRooms(genre, room) {
+  const box = $('#rooms');
+  if (!box) return;
+  const can = Boolean(me && me.ageGroup !== 'child');
+  const isGenre = tables.some((t) => t.id === genre && t.kind === 'genre');
+  box.hidden = !can || !isGenre;
+  if (box.hidden) return;
+  const here = (r) => r.genre === genre;
+  const btn = (r) => `<button type="button" class="cafe-table cafe-room" data-table="${escapeHtml(r.id)}" aria-pressed="${r.id === table}">
+    🔒 ${escapeHtml(r.emoji)} ${escapeHtml(r.name)}<span class="cafe-count">${r.postCount}</span></button>`;
+  $('#cafe-room-list').innerHTML = rooms.mine.filter(here).map(btn).join('');
+  $('#cafe-room-invites').innerHTML = rooms.invited.filter(here).map((r) => `<p class="note-line small">✉️ ${escapeHtml(r.owner?.name ?? '？')}${r.owner?.code ? `（${escapeHtml(codeLabel(r.owner.code))}）` : ''}から「${escapeHtml(r.emoji)} ${escapeHtml(r.name)}」（${escapeHtml(roomAgeLabel(r))}）への招待
+    <button type="button" class="btn small" data-room-answer="${escapeHtml(r.id)}" data-accept="1">入る</button>
+    <button type="button" class="btn ghost small" data-room-answer="${escapeHtml(r.id)}" data-accept="0">ことわる</button></p>`).join('');
+  const open = rooms.open.filter(here);
+  $('#cafe-room-open').hidden = !open.length;
+  $('#cafe-room-open-list').innerHTML = open.map((r) => `<li class="row wrap"><span>${escapeHtml(r.emoji)} <strong>${escapeHtml(r.name)}</strong>
+    <span class="muted small">主：${escapeHtml(r.owner?.name ?? '？')}・${escapeHtml(roomAgeLabel(r))}・${r.memberCount}人</span></span>
+    ${r.requested ? '<span class="muted small">申しこみ中（主の返事を待っています）</span>' : `<button type="button" class="btn small" data-room-request="${escapeHtml(r.id)}">申しこむ</button>`}</li>`).join('');
+  // いま開いている個室
+  $('#cafe-room-me').hidden = !room || room.isOwner;
+  $('#cafe-room-owner').hidden = !room?.isOwner;
+  if (room?.isOwner) {
+    $('#cafe-room-requests').innerHTML = room.requests?.length ? room.requests.map((x) => `<li class="row wrap"><span><strong>${escapeHtml(x.user.name)}</strong> <span class="user-code">${escapeHtml(codeLabel(x.user.code))}</span></span>
+      <button type="button" class="btn small" data-room-req="${escapeHtml(x.user.id)}" data-accept="1">OK</button>
+      <button type="button" class="btn ghost small" data-room-req="${escapeHtml(x.user.id)}" data-accept="0">ことわる</button></li>`).join('') : '<li class="muted small">申しこみはありません</li>';
+    $('#cafe-room-members').innerHTML = room.members.map((m) => `<li class="row wrap"><span><strong>${escapeHtml(m.name)}</strong> <span class="user-code">${escapeHtml(codeLabel(m.code))}</span>${m.id === me.id ? '（主）' : ''}</span>
+      ${m.id === me.id ? '' : `<button type="button" class="btn ghost small" data-room-remove="${escapeHtml(m.id)}" data-name="${escapeHtml(callName(m))}">外す</button>`}</li>`).join('')
+      + (room.invites?.length ? `<li class="muted small">招待して、返事を待っている人：${room.invites.map((x) => escapeHtml(x.user.name)).join('、')}</li>` : '');
+  }
+  // 作るフォーム：中高生は「同じ年齢の区分だけ」だけ
+  $('#cafe-room-entries').innerHTML = ROOM_ENTRIES.map((x, i) => `<label class="row"><input type="radio" name="entry" value="${x.id}"${i === 0 ? ' checked' : ''}> <span><strong>${escapeHtml(x.label)}</strong> <span class="muted small">${escapeHtml(x.note)}</span></span></label>`).join('');
+  $('#cafe-room-ages').innerHTML = ROOM_AGES.filter((x) => x.id !== 'adult' || me.ageGroup === 'adult')
+    .map((x, i) => `<label class="row"><input type="radio" name="age" value="${x.id}"${i === 0 ? ' checked' : ''}> <span><strong>${escapeHtml(x.label)}</strong> <span class="muted small">${escapeHtml(x.note)}</span></span></label>`).join('');
+  $('#cafe-room-new').querySelector('summary').textContent = `＋ 「${GENRE_NAMES()[genre] ?? ''}」に仲間内だけの個室を作る`;
+  $('#cafe-room-form').dataset.genre = genre;
+}
+async function roomAction(fn, okText) {
+  try {
+    await fn();
+    if (okText) toast(okText, 5000);
+    render.done = false;
+    await loadTables();
+    await loadPosts();
+  } catch (err) {
+    toast(err.offline ? '📴 オフラインなので、つながってからお願いします' : err.message, 6000);
+  }
+}
+if (cafeMode) {
+  $('#cafe-room-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = e.target.elements;
+    const err = e.target.querySelector('.error');
+    err.textContent = '';
+    try {
+      const r = await api('/cafe/rooms', { method: 'POST', body: { genre: e.target.dataset.genre, name: f.name.value.trim(), emoji: f.emoji.value.trim(), entry: f.entry.value, age: f.age.value } });
+      e.target.reset();
+      $('#cafe-room-new').open = false;
+      table = r.id;
+      history.replaceState(null, '', `?table=${encodeURIComponent(table)}`);
+      toast(`🐧 個室「${r.name}」をご用意しました。下の「🔑 主のメニュー」から、仲間を招待できます`, 6000);
+      render.done = false;
+      await loadTables();
+      await loadPosts();
+    } catch (ex) {
+      err.textContent = ex.offline ? 'つながっていません。つながってから、もう一度どうぞ' : ex.message;
+    }
+  });
+  $('#rooms').addEventListener('click', (e) => {
+    const ans = e.target.closest('[data-room-answer]');
+    if (ans) {
+      const accept = ans.dataset.accept === '1';
+      return roomAction(async () => {
+        await api(`/cafe/rooms/${encodeURIComponent(ans.dataset.roomAnswer)}/answer`, { method: 'POST', body: { accept } });
+        if (accept) { table = ans.dataset.roomAnswer; history.replaceState(null, '', `?table=${encodeURIComponent(table)}`); }
+      }, accept ? '🐧 個室へご案内します' : '招待をことわりました（相手には「ことわった」とは伝えません）');
+    }
+    const req = e.target.closest('[data-room-request]');
+    if (req) return roomAction(() => api(`/cafe/rooms/${encodeURIComponent(req.dataset.roomRequest)}/request`, { method: 'POST' }), '🐧 申しこみました。主の返事を待ってね（🔔 でお知らせします）');
+    const rq = e.target.closest('[data-room-req]');
+    if (rq) {
+      const accept = rq.dataset.accept === '1';
+      return roomAction(() => api(`/cafe/rooms/${encodeURIComponent(table)}/requests/${encodeURIComponent(rq.dataset.roomReq)}`, { method: 'POST', body: { accept } }), accept ? '仲間に入れました' : 'ことわりました');
+    }
+    const rm = e.target.closest('[data-room-remove]');
+    if (rm) {
+      if (!confirm(`${rm.dataset.name}を、この個室から外しますか？`)) return null;
+      return roomAction(() => api(`/cafe/rooms/${encodeURIComponent(table)}/remove`, { method: 'POST', body: { userId: rm.dataset.roomRemove } }), '外しました');
+    }
+    return null;
+  });
+  $('#cafe-room-invite').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const code = e.target.elements.code.value.trim();
+    roomAction(async () => {
+      await api(`/cafe/rooms/${encodeURIComponent(table)}/invite`, { method: 'POST', body: { code } });
+      e.target.reset();
+    }, '✉️ 招待を送りました（🔔 で届きます）');
+  });
+  const backToGenre = () => {
+    const r = rooms.mine.find((x) => x.id === table);
+    table = r?.genre ?? 'free';
+    history.replaceState(null, '', `?table=${encodeURIComponent(table)}`);
+  };
+  $('#cafe-room-leave').addEventListener('click', () => {
+    if (!confirm('この個室から出ますか？（もう一度入るには、招待か申しこみが要ります）')) return;
+    const id = table;
+    roomAction(async () => { await api(`/cafe/rooms/${encodeURIComponent(id)}/leave`, { method: 'POST' }); backToGenre(); }, '個室から出ました');
+  });
+  $('#cafe-room-close').addEventListener('click', () => {
+    if (!confirm('この個室を閉じますか？ 中の投稿は、だれにも見えなくなります（もどせません）')) return;
+    const id = table;
+    roomAction(async () => { backToGenre(); await api(`/cafe/rooms/${encodeURIComponent(id)}`, { method: 'DELETE' }); }, '個室を閉じました');
+  });
 }
 if (cafeMode) {
   $('#cafe-request').hidden = !me;

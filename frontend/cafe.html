@@ -28,6 +28,42 @@
       <div class="say-line cafe-guide" id="cafe-guide"><img src="/shared/avatars/penguin.svg" alt="" width="36" height="36">
         <p id="cafe-guide-text">いらっしゃいませ。お席までご案内します。</p>
         <button type="button" class="link-btn" id="cafe-close" hidden>このテーブルを閉じる（運営）</button></div>
+      <!-- 🚪 仲間内だけの個室（ジャンルごと）。主が入り方（招待／申しこみ）と年齢（同じ区分／大人だけ）を選ぶ -->
+      <section class="cafe-rooms" id="rooms" hidden aria-label="仲間内だけの個室">
+        <nav class="cafe-tables cafe-room-tables" id="cafe-room-list" aria-label="わたしの個室"></nav>
+        <div id="cafe-room-invites"></div>
+        <div class="row wrap cafe-room-me" id="cafe-room-me" hidden>
+          <button type="button" class="link-btn" id="cafe-room-leave">この個室から出る</button>
+        </div>
+        <details class="cafe-room-box" id="cafe-room-owner" hidden>
+          <summary class="link-btn">🔑 この個室の主のメニュー</summary>
+          <form class="row wrap" id="cafe-room-invite">
+            <label class="field">招待する人の、名前の下のコード（例：#abc123）<input class="input" name="code" autocomplete="off" autocapitalize="none" required></label>
+            <button class="btn" type="submit">招待する</button>
+          </form>
+          <h3 class="small">🙋 申しこみ</h3>
+          <ul class="family-list" id="cafe-room-requests"></ul>
+          <h3 class="small">👥 仲間</h3>
+          <ul class="family-list" id="cafe-room-members"></ul>
+          <button type="button" class="btn ghost" id="cafe-room-close">この個室を閉じる</button>
+        </details>
+        <details class="cafe-room-box" id="cafe-room-open">
+          <summary class="link-btn">🙋 申しこめる個室</summary>
+          <ul class="family-list" id="cafe-room-open-list"></ul>
+        </details>
+        <details class="cafe-room-box" id="cafe-room-new">
+          <summary class="link-btn">＋ 仲間内だけの個室を作る</summary>
+          <form id="cafe-room-form" class="cafe-room-form">
+            <label class="field">個室の名前（12文字まで）<input class="input" name="name" maxlength="12" required></label>
+            <label class="field">絵文字（なくてもよい）<input class="input" name="emoji" maxlength="4" placeholder="🚪" style="width:5em"></label>
+            <fieldset><legend>入り方</legend><div id="cafe-room-entries"></div></fieldset>
+            <fieldset><legend>年齢</legend><div id="cafe-room-ages"></div></fieldset>
+            <p class="muted small">1人3つまで・30人まで。キャラは入りません（トゲのある言葉のときだけ声をかけます）。通報・ミュート・ブロックは個室でも使えます。</p>
+            <p class="error" role="alert"></p>
+            <button class="btn" type="submit">作る</button>
+          </form>
+        </details>
+      </section>
       <!-- ユーザーの声：ほしいジャンルのテーブル（ペンギンが受け取り、運営が見て足す） -->
       <details class="cafe-request" id="cafe-request" hidden>
         <summary class="link-btn">＋ ほしいジャンルをリクエスト</summary>

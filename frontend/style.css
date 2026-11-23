@@ -808,3 +808,12 @@ html[data-oshi-color] .oshi-hero { color: var(--accent-text); }
 @media print {
   .site-header, .family-guide .row, .playground, .customize-panel { display: none !important; }
 }
+
+/* 🚪 カフェの仲間内だけの個室 */
+.cafe-rooms { display: grid; gap: 6px; margin: 4px 0 8px; }
+.cafe-rooms[hidden] { display: none; }
+.cafe-room-tables:empty { display: none; }
+.cafe-room { border-style: dashed; }
+.cafe-room-box > summary { cursor: pointer; }
+.cafe-room-form { display: grid; gap: 6px; }
+.cafe-room-form fieldset { border: 1px dashed var(--border); border-radius: 8px; padding: 6px 10px; margin: 0; }

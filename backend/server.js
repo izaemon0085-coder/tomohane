@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { createStore, HttpError, ageGroup, SESSION_DAYS } from './store.js';
 import { createSimulation } from './simulation.js';
 import { KIDS_TABLE } from '../shared/family-rules.js';
+import { isRoomId } from '../shared/rooms.js';
 import { createChallenges, readAssertion, verifyAssertion, verifyRegistration, WebAuthnError, MAX_PASSKEYS } from './webauthn.js';
 import { publishedIssues, findPoll, pollTalk } from '../shared/news.js';
 import { lanAddresses } from './net.js';
@@ -629,7 +630,10 @@ export function createApp({
     ['GET', /^\/api\/posts$/, ({ me, query }) => {
       const users = store.usersById();
       const table = query.get('table');
-      if (table) store.getTable(table);
+      if (isRoomId(table)) {
+        store.getRoom(table);
+        if (!store.inRoom(table, me?.id ?? null)) throw new HttpError(403, 'この個室の仲間だけが読めます');
+      } else if (table) store.getTable(table);
       if (table === KIDS_TABLE.id && !store.canSeeKidsTable(me?.id ?? null)) throw new HttpError(403, 'こどもテーブルは、12歳までの人と、おうちの人（見守り）だけが見られます');
       const posts = store.listPosts()
         .filter((p) => (table ? p.table === table : !p.table) && store.canSee(p, me?.id ?? null));
@@ -695,6 +699,57 @@ export function createApp({
       needAdmin(me);
       const t = store.addGenreTable({ name: body.name, emoji: body.emoji });
       return [201, { id: t.id, kind: t.kind, name: t.name, emoji: t.emoji, note: t.note }];
+    }],
+
+    // ---- 🚪 カフェの個室（仲間内だけ）。主が入り方（招待／申しこみ）と年齢（同じ区分／大人だけ）を選ぶ ----
+    ['GET', /^\/api\/cafe\/rooms$/, ({ me }) => {
+      const u = me;
+      const users = store.usersById();
+      const view = (r, { full = false } = {}) => ({
+        id: r.id, genre: r.genre, name: r.name, emoji: r.emoji, entry: r.entry, age: r.age, ageGroup: r.ageGroup,
+        owner: publicUser(users[r.ownerId]), memberCount: r.members.length, isOwner: Boolean(u && r.ownerId === u.id),
+        postCount: store.listPosts().filter((p) => p.table === r.id && !p.hidden).length,
+        requested: Boolean(u && r.requests.some((x) => x.userId === u.id)),
+        ...(full ? { members: r.members.map((id) => publicUser(users[id])).filter(Boolean) } : {}),
+        ...(full && u && r.ownerId === u.id ? {
+          requests: r.requests.map((x) => ({ user: publicUser(users[x.userId]), at: x.at })).filter((x) => x.user),
+          invites: r.invites.map((x) => ({ user: publicUser(users[x.userId]), at: x.at })).filter((x) => x.user),
+        } : {}),
+      });
+      const rooms = store.roomsFor(u?.id ?? null);
+      return { mine: rooms.mine.map((r) => view(r, { full: true })), invited: rooms.invited.map((r) => view(r)), open: rooms.open.map((r) => view(r)) };
+    }],
+    ['POST', /^\/api\/cafe\/rooms$/, ({ body, me }) => {
+      const r = store.createRoom(needLogin(me).id, { genre: body.genre, name: body.name, emoji: body.emoji, entry: body.entry, age: body.age });
+      return [201, { id: r.id, name: r.name }];
+    }],
+    ['POST', /^\/api\/cafe\/rooms\/([\w-]+)\/invite$/, ({ params, body, me }) => {
+      const u = store.inviteToRoom(needLogin(me).id, params[0], body.code);
+      return { ok: true, user: publicUser(u) };
+    }],
+    ['POST', /^\/api\/cafe\/rooms\/([\w-]+)\/answer$/, ({ params, body, me }) => {
+      store.answerRoomInvite(needLogin(me).id, params[0], body.accept === true);
+      return { ok: true };
+    }],
+    ['POST', /^\/api\/cafe\/rooms\/([\w-]+)\/request$/, ({ params, me }) => {
+      store.requestRoom(needLogin(me).id, params[0]);
+      return [201, { ok: true }];
+    }],
+    ['POST', /^\/api\/cafe\/rooms\/([\w-]+)\/requests\/([\w-]+)$/, ({ params, body, me }) => {
+      store.answerRoomRequest(needLogin(me).id, params[0], params[1], body.accept === true);
+      return { ok: true };
+    }],
+    ['POST', /^\/api\/cafe\/rooms\/([\w-]+)\/leave$/, ({ params, me }) => {
+      store.leaveRoom(needLogin(me).id, params[0]);
+      return { ok: true };
+    }],
+    ['POST', /^\/api\/cafe\/rooms\/([\w-]+)\/remove$/, ({ params, body, me }) => {
+      store.removeFromRoom(needLogin(me).id, params[0], String(body.userId ?? ''));
+      return { ok: true };
+    }],
+    ['DELETE', /^\/api\/cafe\/rooms\/([\w-]+)$/, ({ params, me }) => {
+      store.closeRoom(needLogin(me).id, params[0]);
+      return { ok: true };
     }],
 
     // ---- 投稿を消す（自分の投稿だけ）。返信した人がいれば、ひとこと（farewell）が要る ----

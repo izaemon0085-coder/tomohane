@@ -20,6 +20,7 @@ import { createInviteStore } from './invites.js';
 import { createDonationStore } from './donations.js';
 import { MAX_PASSKEYS, MAX_PASSKEY_LABEL } from './webauthn.js';
 import { KIDS_TABLE, familyStop, normalizeRules, DEFAULT_FAMILY_RULES } from '../shared/family-rules.js';
+import { MAX_ROOM_NAME, MAX_ROOMS_PER_OWNER, MAX_ROOM_MEMBERS, isRoomId, cleanCode } from '../shared/rooms.js';
 
 export const MAX_POST_LENGTH = 280;
 export const MAX_NAME_LENGTH = 20;
@@ -196,6 +197,9 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
   // 📮 読者の声（投書）{ id, userId, age, text, penName, status（new/picked/done）, issueId（のせた号）, pickedAt, createdAt }
   // 書いた人の名前は運営にも出さない（ペンネームと年齢の区分だけ）。本人はいつでも取り下げられる（のった号からも消える）
   state.readerLetters ??= [];
+  // 🚪 カフェの個室 { id, genre, name, emoji, ownerId, entry（invite/apply）, age（same/adult）, ageGroup（作ったときの主の区分）,
+  //   members:[userId], invites:[{ userId, at }], requests:[{ userId, at }], createdAt, closedAt }
+  state.rooms ??= [];
   state.reportSeen ??= []; // 通報された本人が、お知らせを読んだしるし { postId, authorId, at }
   const listeners = new Set();
   const loginFails = new Map(); // ログインID → { count, until }（パスワードの総当たりを防ぐ）
@@ -235,6 +239,24 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
     if (!v) return false;
     return isChild(v) || state.users.some((u) => u.guardianIds?.includes(v.id));
   };
+  // 🚪 個室に入れる年齢か（12歳までは使えない）
+  const roomAgeOk = (room, u) => {
+    if (!u || u.kind !== 'human') return false;
+    const g = ageGroup(u.birthdate, new Date(clockMs()));
+    if (g === 'child') return false;
+    return room.age === 'adult' ? g === 'adult' : g === room.ageGroup;
+  };
+  // いまの仲間か（年齢が合わなくなった人・退会の手続き中の人は入れない）
+  const inRoom = (room, userId) => {
+    const u = userId ? userById(userId) : null;
+    return Boolean(u && room.members.includes(u.id) && roomAgeOk(room, u) && !isLeaving(u));
+  };
+  const requireRoom = (id) => {
+    const r = state.rooms.find((x) => x.id === id && !x.closedAt);
+    if (!r) throw new HttpError(404, '個室が見つかりません（閉じたのかもしれません）');
+    return r;
+  };
+  const blockedEither = (a, b) => state.blocks.some((x) => (x.userId === a && x.targetId === b) || (x.userId === b && x.targetId === a));
   const PRACTICE_MSG = 'おうちの人とつながったら、できるようになるっす！（アカウントのページの「おうちの人とつなぐ」から）';
   // 子ども（おうちの人とつながっている）は、7日で入れなくなる（データは14日まで残して、おうちの人が取り消せる）
   const isClosed = (u) => Boolean(u?.leaving?.guarded) && Date.parse(u.leaving.at) + LEAVE_MS <= clockMs();
@@ -316,6 +338,12 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
     state.newsVotes = state.newsVotes.filter((v) => v.userId !== id);
     state.tableRequests = state.tableRequests.filter((r) => r.userId !== id);
     state.readerLetters = state.readerLetters.filter((x) => x.userId !== id); // 投書は、のった号からも消す
+    for (const r of state.rooms) {
+      r.members = r.members.filter((m) => m !== id);
+      r.invites = r.invites.filter((x) => x.userId !== id);
+      r.requests = r.requests.filter((x) => x.userId !== id);
+      if (r.ownerId === id && !r.closedAt) r.closedAt = now();
+    }
     state.suggestions = state.suggestions.filter((x) => x.userId !== id || x.status === 'picked');
     for (const x of state.suggestions) if (x.userId === id) x.userId = null;
     state.extGames = state.extGames.filter((g) => g.ownerId !== id);
@@ -963,6 +991,126 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
     getPost: requirePost,
     // ---- カフェのテーブル ----
     listTables: () => state.tables.filter((t) => !t.closed),
+    // ---- 🚪 カフェの個室（仲間内だけ） ----
+    createRoom(ownerId, { genre, name, emoji, entry, age }) {
+      const owner = requireUser(ownerId);
+      const g = ageGroup(owner.birthdate, new Date(clockMs()));
+      if (owner.kind !== 'human') throw new HttpError(400, '個室を作れるのは人間のユーザーだけです');
+      if (g === 'child') throw new HttpError(403, '12歳までの人は、個室のかわりに 🧸こどもテーブルを使ってね');
+      if (isLeaving(owner)) throw new HttpError(409, '退会の手続き中です');
+      if (!GENRE_IDS.includes(genre)) throw new HttpError(400, 'ジャンルを選んでください');
+      if (!['invite', 'apply'].includes(entry)) throw new HttpError(400, '入り方を選んでください');
+      if (!['same', 'adult'].includes(age)) throw new HttpError(400, '年齢を選んでください');
+      if (age === 'adult' && g !== 'adult') throw new HttpError(403, '「大人だけ」の個室は、大人（18歳から）だけが作れます');
+      const clean = cleanText(name, MAX_ROOM_NAME, '個室の名前');
+      rejectBlocked(owner, clean);
+      if (state.rooms.filter((r) => r.ownerId === ownerId && !r.closedAt).length >= MAX_ROOMS_PER_OWNER) {
+        throw new HttpError(409, `個室は1人${MAX_ROOMS_PER_OWNER}つまでです。使わない個室を閉じてから作ってください`);
+      }
+      const icon = [...String(emoji ?? '').trim()].slice(0, 2).join('') || '🚪';
+      const room = { id: newId('room'), genre, name: clean, emoji: icon, ownerId, entry, age, ageGroup: g, members: [ownerId], invites: [], requests: [], createdAt: now(), closedAt: null };
+      state.rooms.push(room);
+      emit('table', { id: room.id });
+      return room;
+    },
+    getRoom: (id) => requireRoom(id),
+    // 見る人に関係のある個室：仲間の個室・招待されている個室・申しこめる個室（年齢が合うもの）
+    roomsFor(viewerId) {
+      const v = viewerId ? userById(viewerId) : null;
+      if (!v) return { mine: [], invited: [], open: [] };
+      const live = state.rooms.filter((r) => !r.closedAt);
+      return {
+        mine: live.filter((r) => inRoom(r, v.id)),
+        invited: live.filter((r) => r.invites.some((x) => x.userId === v.id) && !r.members.includes(v.id) && roomAgeOk(r, v)),
+        open: live.filter((r) => r.entry === 'apply' && !r.members.includes(v.id) && roomAgeOk(r, v) && !blockedEither(r.ownerId, v.id) && !isLeaving(userById(r.ownerId))),
+      };
+    },
+    inRoom: (roomId, userId) => {
+      const r = state.rooms.find((x) => x.id === roomId && !x.closedAt);
+      return Boolean(r && inRoom(r, userId));
+    },
+    inviteToRoom(ownerId, roomId, code) {
+      const room = requireRoom(roomId);
+      if (room.ownerId !== ownerId) throw new HttpError(403, '招待できるのは、個室の主だけです');
+      const c = cleanCode(code);
+      const u = c ? state.users.find((x) => x.kind === 'human' && String(x.code ?? '').toLowerCase() === c) : null;
+      // 年齢が合わない人・ブロックの関係がある人も「見つからない」と同じ答えにする（相手のことが分からないように）
+      if (!u || u.id === ownerId || !roomAgeOk(room, u) || blockedEither(ownerId, u.id) || isLeaving(u)) {
+        throw new HttpError(404, 'そのコードの人は、この個室に招待できません（コードをもう一度たしかめてください）');
+      }
+      if (room.members.includes(u.id)) throw new HttpError(409, 'もう仲間です');
+      if (room.members.length >= MAX_ROOM_MEMBERS) throw new HttpError(409, `個室は${MAX_ROOM_MEMBERS}人までです`);
+      if (!room.invites.some((x) => x.userId === u.id)) room.invites.push({ userId: u.id, at: now() });
+      room.requests = room.requests.filter((x) => x.userId !== u.id);
+      notify(u.id, { kind: 'room', text: `${callName(requireUser(ownerId))}から、カフェの個室「${room.emoji} ${room.name}」への招待が届いたよ`, link: `/cafe.html?table=${encodeURIComponent(room.genre)}#rooms` });
+      emit('table', { id: room.id });
+      return u;
+    },
+    answerRoomInvite(userId, roomId, accept) {
+      const room = requireRoom(roomId);
+      if (!room.invites.some((x) => x.userId === userId)) throw new HttpError(404, '招待が見つかりません');
+      room.invites = room.invites.filter((x) => x.userId !== userId);
+      const u = requireUser(userId);
+      if (accept) {
+        if (!roomAgeOk(room, u)) throw new HttpError(403, 'この個室の年齢に合いません');
+        if (room.members.length >= MAX_ROOM_MEMBERS) throw new HttpError(409, `個室は${MAX_ROOM_MEMBERS}人までです`);
+        room.members.push(userId);
+        notify(room.ownerId, { kind: 'room', text: `${callName(u)}が、個室「${room.emoji} ${room.name}」に入ったよ`, link: `/cafe.html?table=${encodeURIComponent(room.id)}` });
+      }
+      emit('table', { id: room.id });
+      return room;
+    },
+    requestRoom(userId, roomId) {
+      const room = requireRoom(roomId);
+      const u = requireUser(userId);
+      if (room.entry !== 'apply' || !roomAgeOk(room, u) || blockedEither(room.ownerId, userId)) throw new HttpError(404, '個室が見つかりません（閉じたのかもしれません）');
+      if (room.members.includes(userId)) throw new HttpError(409, 'もう仲間です');
+      if (room.requests.some((x) => x.userId === userId)) throw new HttpError(409, 'もう申しこんでいます。主の返事を待ってね');
+      room.requests.push({ userId, at: now() });
+      notify(room.ownerId, { kind: 'room', text: `${callName(u)}から、個室「${room.emoji} ${room.name}」に入りたいと申しこみが届いたよ`, link: `/cafe.html?table=${encodeURIComponent(room.id)}#rooms` });
+      emit('table', { id: room.id });
+      return room;
+    },
+    answerRoomRequest(ownerId, roomId, userId, accept) {
+      const room = requireRoom(roomId);
+      if (room.ownerId !== ownerId) throw new HttpError(403, '答えられるのは、個室の主だけです');
+      if (!room.requests.some((x) => x.userId === userId)) throw new HttpError(404, '申しこみが見つかりません');
+      room.requests = room.requests.filter((x) => x.userId !== userId);
+      const u = requireUser(userId);
+      if (accept) {
+        if (!roomAgeOk(room, u)) throw new HttpError(403, 'この個室の年齢に合いません');
+        if (room.members.length >= MAX_ROOM_MEMBERS) throw new HttpError(409, `個室は${MAX_ROOM_MEMBERS}人までです`);
+        room.members.push(userId);
+        notify(userId, { kind: 'room', text: `個室「${room.emoji} ${room.name}」に入れてもらえたよ`, link: `/cafe.html?table=${encodeURIComponent(room.id)}` });
+      }
+      emit('table', { id: room.id });
+      return room;
+    },
+    leaveRoom(userId, roomId) {
+      const room = requireRoom(roomId);
+      if (room.ownerId === userId) throw new HttpError(400, '主は出られません。使わないときは「個室を閉じる」にしてください');
+      if (!room.members.includes(userId)) throw new HttpError(404, '仲間ではありません');
+      room.members = room.members.filter((m) => m !== userId);
+      emit('table', { id: room.id });
+      return room;
+    },
+    removeFromRoom(ownerId, roomId, userId) {
+      const room = requireRoom(roomId);
+      if (room.ownerId !== ownerId) throw new HttpError(403, '外せるのは、個室の主だけです');
+      if (userId === ownerId || !room.members.includes(userId)) throw new HttpError(404, '仲間ではありません');
+      room.members = room.members.filter((m) => m !== userId);
+      emit('table', { id: room.id });
+      return room;
+    },
+    // 閉じる：主か運営。閉じた個室の投稿は、だれにも見えなくなる
+    closeRoom(userId, roomId) {
+      const room = requireRoom(roomId);
+      const u = requireUser(userId);
+      if (room.ownerId !== userId && u.role !== 'admin') throw new HttpError(403, '閉じられるのは、個室の主と運営だけです');
+      room.closedAt = now();
+      emit('table', { id: room.id });
+      return room;
+    },
     // ---- 推しのテーブル（マスターのタヌキが開く。運営は閉じられる） ----
     // 同じ推し（ペンギンが名前をそろえたもの）の人間の数と、いちばん多いジャンル・いちばん多い書き方
     oshiGroups() {
@@ -1045,10 +1193,14 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       const parent = replyTo ? requirePost(replyTo) : null;
       // 練習モードの投稿には、本人とキャラしか返事できない（ほかの人には見えていない）
       if (parent?.practiceOwner && author.kind === 'human' && parent.practiceOwner !== author.id) throw new HttpError(404, '投稿が見つかりません');
-      const where = parent ? parent.table ?? null : table ? this.getTable(table).id : null;
+      const where = parent ? parent.table ?? null : isRoomId(table) ? requireRoom(table).id : table ? this.getTable(table).id : null;
+      if (isRoomId(where)) {
+        const room = requireRoom(where);
+        if (author.kind === 'human' && !inRoom(room, author.id)) throw new HttpError(403, 'この個室の仲間だけが書けます');
+      }
       if (author.kind === 'human') {
         if (where === KIDS_TABLE.id && !isChild(author)) throw new HttpError(403, 'こどもテーブルに書けるのは、12歳までの人だけです（おうちの人は見守り）');
-        familyCheck(author, where === KIDS_TABLE.id ? 'kids' : where ? 'cafe' : 'plaza');
+        familyCheck(author, where === KIDS_TABLE.id ? 'kids' : where ? 'cafe' : 'plaza'); // （子どもは個室には入れない）
       }
       const post = { id: newId('p'), authorId, text: clean, replyTo: replyTo || null, likes: [], createdAt: now() };
       if (where) post.table = where;
@@ -1240,6 +1392,11 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
     canSee(post, viewerId) {
       // こどもテーブルは、子どもと、つながっているおうちの人だけ
       if (post.table === KIDS_TABLE.id && post.authorId !== viewerId && !canSeeKids(viewerId)) return false;
+      // 個室は、いまの仲間（年齢も合う人）だけ。閉じた個室は、だれにも見せない
+      if (isRoomId(post.table)) {
+        const room = state.rooms.find((r) => r.id === post.table);
+        if (!room || room.closedAt || !inRoom(room, viewerId)) return false;
+      }
       // 練習モードの投稿は、その子にだけ見える
       if (post.practiceOwner && post.practiceOwner !== viewerId) return false;
       // 通報で止まっている投稿は、書いた本人にだけ見える。通報した人には、その投稿はもう出さない
