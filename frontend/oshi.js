@@ -75,6 +75,7 @@ function renderOshi() {
     ? oshi.goods.map((g) => `<li>${g.image ? `<img class="goods-thumb" src="${escapeHtml(g.image.url)}" alt="${escapeHtml(g.name)}の絵" width="48" height="48">` : ''}<span>${escapeHtml(g.name)}</span>
         <span class="muted small">${timeAgo(g.addedAt)}${g.image ? `・${IMAGE_STATUS[g.image.status] ?? ''}` : ''}</span>
         ${canDraw() ? `<button type="button" class="link-btn" data-illust="${g.id}">${g.image ? '絵をかえる' : '🖼️ 絵をつける'}</button>` : ''}
+        ${g.image ? `<a class="link-btn" href="${escapeHtml(g.image.url)}" download="${escapeHtml(saveName(g.name))}" aria-label="${escapeHtml(g.name)}の絵を保存する">⬇️ 保存</a>` : ''}
         ${g.image ? `<button type="button" class="link-btn" data-unimage="${g.id}" aria-label="${escapeHtml(g.name)}の絵を消す">絵を消す</button>` : ''}
         <button type="button" class="link-btn" data-remove="${g.id}" aria-label="${escapeHtml(g.name)}を記録から消す">消す</button></li>`).join('')
     : '<li class="muted small">まだ記録がありません</li>';
@@ -231,6 +232,22 @@ $('#goods-list').addEventListener('click', async (e) => {
 // ---- 🖼️ グッズの絵：写真をこの中でイラストにする（元の写真は送らない） ----
 const IMAGE_STATUS = { pending: '🦉 運営が見ています', ok: '✅ プロフィールに出ています', rejected: '🙅 今回は出せませんでした' };
 function canDraw() { return Boolean(me && me.ageGroup !== 'child'); }
+// 保存するときのファイルの名前（使えない記号は消す）
+function saveName(name) { return `ともはね_${String(name).replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 30)}.jpg`; }
+// 送る前の絵を、自分のスマホ・パソコンに保存する（ともはね には送らない）
+$('#illust-save').addEventListener('click', async () => {
+  if (!ill.out) return;
+  const blob = await new Promise((resolve) => { canvas.toBlob(resolve, 'image/jpeg', 0.9); });
+  if (!blob) return;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = saveName(ill.goods?.name ?? 'グッズ');
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  toast('⬇️ 絵を保存したっす（ともはね には、まだ送っていないっす）', 4000);
+});
 const ill = { goods: null, base: null, style: ILLUST_STYLES[0].id, out: null, taps: [] };
 const illDialog = $('#illust-dialog');
 const canvas = $('#illust-canvas');
@@ -242,6 +259,7 @@ function openIllust(g) {
   $('#illust-photo').value = '';
   $('#illust-error').textContent = '';
   $('#illust-send').disabled = true;
+  $('#illust-save').disabled = true;
   canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
   illDialog.showModal();
 }
@@ -269,6 +287,7 @@ function drawIllust() {
   canvas.height = out.height;
   canvas.getContext('2d').putImageData(new ImageData(out.data, out.width, out.height), 0, 0);
   $('#illust-send').disabled = false;
+  $('#illust-save').disabled = false;
 }
 $('#illust-photo').addEventListener('change', async (e) => {
   const file = e.target.files?.[0];
