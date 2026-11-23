@@ -826,3 +826,12 @@ html[data-oshi-color] .oshi-hero { color: var(--accent-text); }
 .profile-goods { list-style: none; padding: 0; margin: 6px 0 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
 .profile-goods li { display: grid; gap: 2px; text-align: center; }
 .profile-goods img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 10px; }
+
+/* 🍽️ レストラン：ごちとも（仮）。別のアプリが開く。アリーナの下 */
+.restaurant-spot {
+  position: absolute; z-index: 2; left: 2%; top: 93%; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; text-decoration: none;
+  font-weight: 800; font-size: clamp(.68rem, 1.7vw, .9rem); padding: 4px 12px; border-radius: 6px;
+  background: #fff4e6; color: #8a3b12; border: 2px solid #c2521f; box-shadow: 0 2px 0 #f0a020;
+}
+.restaurant-spot:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+@media (max-width: 600px) { .restaurant-spot { top: 79%; } .restaurant-spot .soon-badge { display: none; } } /* スマホではフクロウの家とアリーナのあいだ */
