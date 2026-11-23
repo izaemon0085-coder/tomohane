@@ -1,4 +1,5 @@
 // エージェントの生活シミュレーション：家での暮らし（サイドフロント）と会議の進行（サブフロント）を動かす。
+import { isRoomId } from '../shared/rooms.js';
 import { callName } from '../shared/honor.js';
 import * as brain from './agents.js';
 import { HttpError, ageGroup } from './store.js';
@@ -164,6 +165,12 @@ export function createSimulation(store, {
 
   function respondToHumanPost(post) {
     if (!store.listPosts().some((p) => p.id === post.id)) return null; // 返事をする前に消された投稿には返さない
+    // 🚪 個室は仲間内だけ。キャラは入らない（トゲのある言葉のときだけ、声をかける）
+    if (isRoomId(post.table)) {
+      if (!brain.isHarsh(post.text)) return null;
+      const agent = chooseResponder(post);
+      return agent && !store.hasReplied(post.id, agent.id) ? replyAsAgent(agent, post) : null;
+    }
     if (post.table) return respondInCafe(post);
     if (isGameQuestion(post.text) && !brain.isHarsh(post.text)) return answerGameQuestion(post);
     const agent = chooseResponder(post);
