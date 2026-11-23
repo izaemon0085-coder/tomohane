@@ -281,7 +281,7 @@ async function syncAgents() {
 // タイムラインに投稿したら、吹き出しでしゃべる
 async function onNewPost() {
   try {
-    const [latest] = await api('/posts');
+    const [latest] = await api('/posts?limit=1');
     const c = latest && chars.get(latest.authorId);
     if (c && !c.el.hidden && Date.now() - new Date(latest.createdAt) < 10000 && c.lastPostId !== latest.id) {
       c.lastPostId = latest.id;

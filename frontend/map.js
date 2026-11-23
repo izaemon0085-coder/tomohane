@@ -56,7 +56,7 @@ async function loadHouses() {
 
 async function loadLatest() {
   try {
-    const [latest] = await api('/posts');
+    const [latest] = await api('/posts?plaza=1&limit=1');
     if (latest) {
       const t = [...latest.text];
       document.querySelector('#plaza-latest').textContent =
