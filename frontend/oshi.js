@@ -1,6 +1,7 @@
 // わたしの推しページ（推しダッシュボード）：推しの名前・ライブまで・誕生日まで・グッズの記録・同じ推しの仲間
 import { api, refreshMe, escapeHtml, timeAgo, headerHtml, toast } from '/shared/api.js';
 import { GENRE_TABLES } from '/shared/cafe.js';
+import { ILLUST_STYLES, ILLUST_MAX_SIDE, GOODS_IMAGE_MAX_BYTES, illustrate, pixelate } from '/shared/illust.js';
 
 const $ = (sel) => document.querySelector(sel);
 const dialog = $('#edit-dialog');
@@ -71,8 +72,10 @@ function renderOshi() {
 
   $('#goods-count').textContent = `${oshi.goods.length}個`;
   $('#goods-list').innerHTML = oshi.goods.length
-    ? oshi.goods.map((g) => `<li><span>${escapeHtml(g.name)}</span>
-        <span class="muted small">${timeAgo(g.addedAt)}</span>
+    ? oshi.goods.map((g) => `<li>${g.image ? `<img class="goods-thumb" src="${escapeHtml(g.image.url)}" alt="${escapeHtml(g.name)}の絵" width="48" height="48">` : ''}<span>${escapeHtml(g.name)}</span>
+        <span class="muted small">${timeAgo(g.addedAt)}${g.image ? `・${IMAGE_STATUS[g.image.status] ?? ''}` : ''}</span>
+        ${canDraw() ? `<button type="button" class="link-btn" data-illust="${g.id}">${g.image ? '絵をかえる' : '🖼️ 絵をつける'}</button>` : ''}
+        ${g.image ? `<button type="button" class="link-btn" data-unimage="${g.id}" aria-label="${escapeHtml(g.name)}の絵を消す">絵を消す</button>` : ''}
         <button type="button" class="link-btn" data-remove="${g.id}" aria-label="${escapeHtml(g.name)}を記録から消す">消す</button></li>`).join('')
     : '<li class="muted small">まだ記録がありません</li>';
 
@@ -203,6 +206,18 @@ $('#goods-form').addEventListener('submit', async (e) => {
   }
 });
 $('#goods-list').addEventListener('click', async (e) => {
+  const il = e.target.closest('[data-illust]');
+  if (il) return openIllust(oshi.goods.find((g) => g.id === il.dataset.illust));
+  const un = e.target.closest('[data-unimage]');
+  if (un) {
+    if (!confirm('この絵を消しますか？')) return;
+    try {
+      await api(`/users/${me.id}/oshi/goods/${un.dataset.unimage}/image`, { method: 'DELETE' });
+      oshi = await api(`/users/${me.id}/oshi`);
+      renderOshi();
+    } catch (err) { toast(err.message); }
+    return;
+  }
   const btn = e.target.closest('[data-remove]');
   if (!btn) return;
   try {
@@ -210,6 +225,100 @@ $('#goods-list').addEventListener('click', async (e) => {
     renderOshi();
   } catch (err) {
     toast(err.message);
+  }
+});
+
+// ---- 🖼️ グッズの絵：写真をこの中でイラストにする（元の写真は送らない） ----
+const IMAGE_STATUS = { pending: '🦉 運営が見ています', ok: '✅ プロフィールに出ています', rejected: '🙅 今回は出せませんでした' };
+function canDraw() { return Boolean(me && me.ageGroup !== 'child'); }
+const ill = { goods: null, base: null, style: ILLUST_STYLES[0].id, out: null, taps: [] };
+const illDialog = $('#illust-dialog');
+const canvas = $('#illust-canvas');
+$('#illust-styles').innerHTML = ILLUST_STYLES.map((s, i) => `<label class="row"><input type="radio" name="style" value="${s.id}"${i === 0 ? ' checked' : ''}> ${escapeHtml(s.label)}</label>`).join('');
+function openIllust(g) {
+  if (!g) return;
+  Object.assign(ill, { goods: g, base: null, out: null, taps: [] });
+  $('#illust-for').textContent = `「${g.name}」の写真をえらぶと、絵柄をえらんでイラストにできます。`;
+  $('#illust-photo').value = '';
+  $('#illust-error').textContent = '';
+  $('#illust-send').disabled = true;
+  canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+  illDialog.showModal();
+}
+// 写真を読む → 小さくする → 色のデータ（ImageData）。場所などの情報は、色のデータには入らない
+async function readPhoto(file) {
+  const bmp = await createImageBitmap(file);
+  const scale = Math.min(1, ILLUST_MAX_SIDE / Math.max(bmp.width, bmp.height));
+  const w = Math.max(1, Math.round(bmp.width * scale));
+  const h = Math.max(1, Math.round(bmp.height * scale));
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  const ctx = c.getContext('2d');
+  ctx.drawImage(bmp, 0, 0, w, h);
+  bmp.close?.();
+  return ctx.getImageData(0, 0, w, h);
+}
+function drawIllust() {
+  if (!ill.base) return;
+  const out = illustrate({ width: ill.base.width, height: ill.base.height, data: new Uint8ClampedArray(ill.base.data) }, ill.style);
+  const r = Math.round(Math.max(out.width, out.height) * 0.08);
+  for (const t of ill.taps) pixelate(out, t.x, t.y, r, Math.max(8, Math.round(r / 2.5)));
+  ill.out = out;
+  canvas.width = out.width;
+  canvas.height = out.height;
+  canvas.getContext('2d').putImageData(new ImageData(out.data, out.width, out.height), 0, 0);
+  $('#illust-send').disabled = false;
+}
+$('#illust-photo').addEventListener('change', async (e) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  $('#illust-error').textContent = '';
+  try {
+    ill.base = await readPhoto(file);
+    ill.taps = [];
+    drawIllust();
+  } catch {
+    $('#illust-error').textContent = 'この写真は読めませんでした。べつの写真でためしてください';
+  }
+});
+$('#illust-styles').addEventListener('change', (e) => {
+  if (e.target.name !== 'style') return;
+  ill.style = e.target.value;
+  drawIllust();
+});
+// タップした所をモザイクに（見えている大きさから、絵の大きさに直す）
+canvas.addEventListener('click', (e) => {
+  if (!ill.out) return;
+  const rect = canvas.getBoundingClientRect();
+  ill.taps.push({ x: (e.clientX - rect.left) * (canvas.width / rect.width), y: (e.clientY - rect.top) * (canvas.height / rect.height) });
+  drawIllust();
+});
+$('#illust-reset').addEventListener('click', () => { ill.taps = []; drawIllust(); });
+illDialog.addEventListener('click', (e) => { if (e.target === illDialog || e.target.closest('[data-close]')) illDialog.close(); });
+const toBlob = (quality) => new Promise((resolve) => { canvas.toBlob(resolve, 'image/jpeg', quality); });
+$('#illust-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (!ill.out || !ill.goods) return;
+  const btn = $('#illust-send');
+  btn.disabled = true;
+  try {
+    let blob = await toBlob(0.85);
+    if (blob && blob.size > GOODS_IMAGE_MAX_BYTES) blob = await toBlob(0.6);
+    if (!blob || blob.size > GOODS_IMAGE_MAX_BYTES) throw new Error('絵が大きすぎました。べつの写真でためしてください');
+    const res = await fetch(`/api/users/${me.id}/oshi/goods/${ill.goods.id}/image`, {
+      method: 'PUT', headers: { 'Content-Type': 'image/jpeg', 'X-Style': ill.style }, body: blob, credentials: 'same-origin',
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || '送れませんでした');
+    illDialog.close();
+    oshi = await api(`/users/${me.id}/oshi`);
+    renderOshi();
+    toast('🦉 絵を送ったっす！ 運営が見てから、プロフィールに出るっす', 5000);
+  } catch (err) {
+    $('#illust-error').textContent = err.offline ? 'つながっていません' : err.message;
+  } finally {
+    btn.disabled = false;
   }
 });
 

@@ -15,7 +15,11 @@ import { REPORT_REASONS, STAGES, findReason, stageOf } from '../shared/report.js
 import { ARCADE_APPS, arcadeStatus } from '../shared/arcade.js';
 import { LEAVE_MS, GUARDIAN_LEAVE_MS } from '../shared/leave.js';
 import { reporterFor, suggestionTalk, TALK_SHOW } from '../shared/suggest.js';
-import { createLibraryApi, MAX_PAGE_BYTES, removeLibraryFiles } from './library.js';
+import { createLibraryApi, MAX_PAGE_BYTES, removeLibraryFiles, savePage } from './library.js';
+import { GOODS_IMAGE_MAX_BYTES } from '../shared/illust.js';
+import { createReadStream as readStream } from 'node:fs';
+import { stat as statFile } from 'node:fs/promises';
+import { pipeline as pipe } from 'node:stream/promises';
 import { shelfAllows, SAMPLE_BOOKS } from '../shared/library.js';
 import { MAX_QUERY, LIMITS, normalizeText, tagsOf } from '../shared/search.js';
 import { MAX_VIDEO_BYTES, removeVideo, saveVideo, serveVideo } from './letters.js';
@@ -244,6 +248,15 @@ function extGameView(g) {
   const { secretHash: _s, ownerId: _o, ...rest } = g;
   return rest;
 }
+// 推しの情報（本人に返す形）。グッズの絵は、ファイルの名前のかわりに見るための場所と状態
+function oshiView(userId, oshi) {
+  return {
+    ...oshi,
+    goods: (oshi.goods ?? []).map(({ image, ...g }) => ({
+      ...g, image: image ? { status: image.status, style: image.style, url: `/api/goods-images/${userId}/${g.id}?v=${encodeURIComponent(image.at)}` } : null,
+    })),
+  };
+}
 function self(me, userId) {
   if (needLogin(me).id !== userId) throw new HttpError(403, '自分のページだけ見られます');
   return userId;
@@ -303,14 +316,18 @@ export function createApp({
     ['POST', /^\/api\/users$/, () => { throw new HttpError(410, 'ログインしてください（/login.html）'); }],
 
     // ---- 推しの情報（わたしの推しページ）：本人だけが見られる・変えられる ----
-    ['GET', /^\/api\/users\/([\w-]+)\/oshi$/, ({ params, me }) => store.getOshi(self(me, params[0]))],
+    ['GET', /^\/api\/users\/([\w-]+)\/oshi$/, ({ params, me }) => oshiView(params[0], store.getOshi(self(me, params[0])))],
     ['PUT', /^\/api\/users\/([\w-]+)\/oshi$/, ({ params, body, me }) => {
       const oshi = store.updateOshi(self(me, params[0]), body);
       sim.openOshiTables?.(); // 同じ推しの人がそろったら、マスターのタヌキがカフェにテーブルを開く
-      return oshi;
+      return oshiView(params[0], oshi);
     }],
-    ['POST', /^\/api\/users\/([\w-]+)\/oshi\/goods$/, ({ params, body, me }) => [201, store.addGoods(self(me, params[0]), body.name)]],
-    ['DELETE', /^\/api\/users\/([\w-]+)\/oshi\/goods\/([\w-]+)$/, ({ params, me }) => store.removeGoods(self(me, params[0]), params[1])],
+    ['POST', /^\/api\/users\/([\w-]+)\/oshi\/goods$/, ({ params, body, me }) => [201, oshiView(params[0], store.addGoods(self(me, params[0]), body.name))]],
+    ['DELETE', /^\/api\/users\/([\w-]+)\/oshi\/goods\/([\w-]+)$/, async ({ params, me }) => {
+      const r = store.removeGoods(self(me, params[0]), params[1]);
+      if (r.oldImage) await removeLibraryFiles(libraryDir, [{ file: r.oldImage }]);
+      return oshiView(params[0], r.oshi);
+    }],
     ['GET', /^\/api\/users\/([\w-]+)\/oshi\/friends$/, ({ params, me }) => {
       const blocked = new Set(store.blocksOf(self(me, params[0])).map((b) => b.targetId));
       const users = store.usersById();
@@ -409,7 +426,10 @@ export function createApp({
         .map((p) => ({ id: p.id, text: p.text, createdAt: p.createdAt, table: p.table ?? null, thread: store.threadRootOf(p)?.id ?? null, likeCount: p.likes.length }));
       const books = store.listPublishedBooks().filter((b) => b.authorId === u.id && shelfAllows(b.minAge, group))
         .map((b) => ({ id: b.id, title: b.title, kind: b.kind, genre: b.genre, cover: b.cover }));
-      return { ...base, limited: false, bio: u.bio ?? '', oshi, posts, books };
+      // 🖼️ 運営が OK したグッズの絵（イラストにしたもの）
+      const goods = (u.oshi?.goods ?? []).filter((g) => g.image?.status === 'ok').slice(0, 12)
+        .map((g) => ({ id: g.id, name: g.name, image: `/api/goods-images/${u.id}/${g.id}?v=${encodeURIComponent(g.image.at)}` }));
+      return { ...base, limited: false, bio: u.bio ?? '', oshi, posts, books, goods };
     }],
     ['POST', /^\/api\/profile\/bio$/, ({ me, body }) => ({ bio: store.setBio(needLogin(me).id, body.bio).bio })],
     // 表示名・呼び方を変える（名前の下のコードは変えられない）
@@ -906,6 +926,59 @@ export function createApp({
     }
   }
 
+  // ---- 🖼️ グッズの絵：写真はブラウザの中でイラストにして、絵だけ受け取る。運営が見てから出す ----
+  // 置き場所は図書館の絵と同じ（退会で消すとき、いっしょに消える）
+  async function handleGoodsImage(req, res, pathname, me) {
+    const up = pathname.match(/^\/api\/users\/([\w-]+)\/oshi\/goods\/([\w-]+)\/image$/);
+    if (up && (req.method === 'PUT' || req.method === 'DELETE')) {
+      const uid = self(me, up[1]);
+      store.goodsOf(uid, up[2]);
+      if (req.method === 'DELETE') {
+        const { oldImage } = store.removeGoodsImage(uid, up[2]);
+        await removeLibraryFiles(libraryDir, [{ file: oldImage }]);
+        sendJson(res, 200, { ok: true });
+        return true;
+      }
+      store.canAddGoodsImage(uid);
+      const saved = await savePage(req, { dir: libraryDir, bookId: `goods_${up[2]}`, maxBytes: GOODS_IMAGE_MAX_BYTES, label: 'グッズの絵' });
+      const { image, oldImage } = store.setGoodsImage(uid, up[2], { file: saved.file, type: saved.type, style: String(req.headers['x-style'] ?? '') });
+      if (oldImage) await removeLibraryFiles(libraryDir, [{ file: oldImage }]);
+      sendJson(res, 201, { status: image.status, url: `/api/goods-images/${uid}/${up[2]}?v=${encodeURIComponent(image.at)}` });
+      return true;
+    }
+    if (pathname === '/api/goods-images/pending' && req.method === 'GET') {
+      needAdmin(me);
+      sendJson(res, 200, store.pendingGoodsImages().map(({ user, goods }) => ({
+        userId: user.id, owner: publicUser(user), goodsId: goods.id, name: goods.name, style: goods.image.style, at: goods.image.at,
+        url: `/api/goods-images/${user.id}/${goods.id}?v=${encodeURIComponent(goods.image.at)}`,
+      })));
+      return true;
+    }
+    const review = pathname.match(/^\/api\/goods-images\/([\w-]+)\/([\w-]+)\/review$/);
+    if (review && req.method === 'POST') {
+      needAdmin(me);
+      const body = await readJson(req);
+      sendJson(res, 200, { status: store.reviewGoodsImage(review[1], review[2], body.ok === true).status });
+      return true;
+    }
+    const down = pathname.match(/^\/api\/goods-images\/([\w-]+)\/([\w-]+)$/);
+    if (down && req.method === 'GET') {
+      const notFound = () => new HttpError(404, '絵が見つかりません');
+      let owner;
+      try { owner = store.getUser(down[1]); } catch { throw notFound(); }
+      const g = (owner.oshi?.goods ?? []).find((x) => x.id === down[2]);
+      if (!g?.image) throw notFound();
+      const insider = Boolean(me && (me.id === owner.id || me.role === 'admin'));
+      if (!insider && (g.image.status !== 'ok' || store.isLeavingUser(owner.id) || store.isBlockedBy(me?.id, owner.id))) throw notFound();
+      const path = join(libraryDir, g.image.file);
+      try { await statFile(path); } catch { throw notFound(); }
+      res.writeHead(200, { 'Content-Type': g.image.type, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' });
+      await pipe(readStream(path), res).catch(() => {});
+      return true;
+    }
+    return false;
+  }
+
   async function handleAuth(req, res, pathname, me) {
     if (!pathname.startsWith('/api/auth/')) return false;
     const action = pathname.slice('/api/auth/'.length);
@@ -1185,6 +1258,7 @@ export function createApp({
         if (await handleExtLink(req, res, pathname, me)) return;
         if (await handleVideo(req, res, pathname)) return;
         if (await handleLibrary(req, res, pathname, me)) return;
+        if (await handleGoodsImage(req, res, pathname, me)) return;
         for (const [method, pattern, fn] of routes) {
           const m = pathname.match(pattern);
           if (!m || method !== req.method) continue;

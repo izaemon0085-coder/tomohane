@@ -87,6 +87,7 @@ function render(me) {
   renderBlocks();
   renderReportAdmin(me);
   renderCafeAdmin(me);
+  renderGoodsAdmin(me);
   renderInvites(me);
   renderNameBox(me);
   renderPasskeys(me);
@@ -250,6 +251,33 @@ $('#leave-cancel').addEventListener('click', async () => {
     toast(`🐕 ${WELCOME_BACK.text}`, 5000);
   } catch (ex) {
     toast(ex.message, 5000);
+  }
+});
+
+// ---- 運営だけ：グッズの絵を見てから出す ----
+async function renderGoodsAdmin(me) {
+  $('#goods-admin').hidden = me.role !== 'admin';
+  if (me.role !== 'admin') return;
+  let list;
+  try { list = await api('/goods-images/pending'); } catch { return; }
+  $('#goods-admin-list').innerHTML = list.length ? list.map((x) => `<li class="row wrap">
+    <img src="${escapeHtml(x.url)}" alt="${escapeHtml(x.name)}の絵" class="goods-review" width="160">
+    <div><strong>${escapeHtml(x.owner?.name ?? '？')}</strong> <span class="user-code">${escapeHtml(codeLabel(x.owner?.code))}</span>
+      <p class="small">「${escapeHtml(x.name)}」・${escapeHtml(timeAgo(x.at))}</p>
+      <div class="row wrap">
+        <button type="button" class="btn" data-goods-review="1" data-user="${escapeHtml(x.userId)}" data-goods="${escapeHtml(x.goodsId)}">出す</button>
+        <button type="button" class="btn ghost" data-goods-review="0" data-user="${escapeHtml(x.userId)}" data-goods="${escapeHtml(x.goodsId)}">出さない</button>
+      </div></div></li>`).join('') : '<li class="muted small">見るものはありません</li>';
+}
+$('#goods-admin-list').addEventListener('click', async (e) => {
+  const btn = e.target.closest('[data-goods-review]');
+  if (!btn) return;
+  try {
+    await api(`/goods-images/${encodeURIComponent(btn.dataset.user)}/${encodeURIComponent(btn.dataset.goods)}/review`, { method: 'POST', body: { ok: btn.dataset.goodsReview === '1' } });
+    toast(btn.dataset.goodsReview === '1' ? '🖼️ プロフィールに出しました' : '出さないことにしました（本人に 🔔 で伝えました）');
+    renderGoodsAdmin(await refreshMe());
+  } catch (err) {
+    toast(err.message, 5000);
   }
 });
 
