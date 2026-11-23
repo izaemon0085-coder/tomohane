@@ -28,10 +28,11 @@ const cafeMode = document.body.hasAttribute('data-cafe');
 let table = cafeMode ? (new URLSearchParams(location.search).get('table') || 'free') : null;
 let tables = [];
 let posts = [];
-// 古い投稿を読む：はじめは新しい PAGE 件。「もっと前を読む」で PAGE 件ずつ前へ
+// 古い投稿を読む：はじめは新しい PAGE 件だけサーバーから読む。「もっと前を読む」で PAGE 件ずつふやして読みなおす
 const PAGE = 100;
 let allPosts = [];
 let shown = PAGE;
+let hasOlder = false; // サーバーに、もっと前の投稿があるか（1件多く読んで確かめる）
 let agentsById = {};
 let checkedText = null; // キャラたちが声をかけたあと「このまま送る」を選んだ文面
 
@@ -101,26 +102,35 @@ function render() {
   const nearBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
   // 会話なので、古い順に上から並べる
   const ordered = [...posts].reverse();
-  const older = allPosts.length - posts.length;
-  log.innerHTML = (older > 0 ? `<li class="older-row"><button type="button" class="btn ghost small" data-older>⬆ もっと前を読む（あと${older}件）</button></li>` : '')
+  log.innerHTML = (hasOlder ? '<li class="older-row"><button type="button" class="btn ghost small" data-older>⬆ もっと前を読む</button></li>' : '')
     + (ordered.length ? ordered.map(bubbleHtml).join('') : '<li class="empty">まだだれも話していません</li>')
     + pendingHtml();
   if (nearBottom || !render.done) log.scrollTop = log.scrollHeight;
   render.done = true;
 }
 
+let loadSeq = 0; // 読みこみの番号（あとから届いた古い返事は捨てる）
 async function loadPosts() {
+  const seq = ++loadSeq;
+  const stale = () => seq !== loadSeq;
   try {
     if (cafeMode) {
-      allPosts = await api(`/posts?table=${encodeURIComponent(table)}`);
+      const got = await api(`/posts?table=${encodeURIComponent(table)}&limit=${shown + 1}`);
+      if (stale()) return;
+      allPosts = got;
+      hasOlder = allPosts.length > shown;
       posts = allPosts.slice(0, shown);
     } else if (threadId) {
       const t = await api(`/threads/${encodeURIComponent(threadId)}`);
       allPosts = [...t.posts].reverse(); // 画面は新しい順の配列を古い順に並べなおして出す
       posts = allPosts; // スレッドは、ぜんぶ出す
+      hasOlder = false;
     } else {
       // オフラインなら、この端末に保存しておいた投稿が返る
-      allPosts = (await api('/posts')).filter((p) => !p.threadId || p.thread);
+      const got = (await api(`/posts?plaza=1&limit=${shown + 1}`)).filter((p) => !p.threadId || p.thread);
+      if (stale()) return;
+      allPosts = got;
+      hasOlder = allPosts.length > shown;
       posts = allPosts.slice(0, shown);
     }
   } catch (err) {
@@ -518,8 +528,7 @@ log.addEventListener('click', async (e) => {
   if (e.target.closest('[data-older]')) {
     const fromBottom = log.scrollHeight - log.scrollTop;
     shown += PAGE;
-    posts = allPosts.slice(0, shown);
-    render();
+    await loadPosts(); // ふやした件数で、サーバーから読みなおす
     log.scrollTop = log.scrollHeight - fromBottom;
     return;
   }
@@ -739,6 +748,7 @@ if (cafeMode) {
     const btn = e.target.closest('[data-table]');
     if (!btn || btn.dataset.table === table) return;
     table = btn.dataset.table;
+    shown = PAGE; // テーブルをかえたら、また新しい PAGE 件から
     history.replaceState(null, '', `?table=${encodeURIComponent(table)}`);
     setReply(null);
     render.done = false;
