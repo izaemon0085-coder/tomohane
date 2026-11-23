@@ -740,6 +740,22 @@ test('こえとも：ともはねでログインだけ。年齢の区分を渡�
   assert.equal((await call('/api/link/koetomo-results', { method: 'POST', headers: S, body: { gameId: info.gameId } })).status, 404);
 });
 
+test('ごちとも：ともはねでログインだけ（名前を出す）・写真も絵も ともはね に来ない・結果は受けとらない', async () => {
+  const me = await signup('ごはんを撮る人');
+  const S = { 'X-Link-Secret': 'tomohane-dev-link-secret' };
+  const r = await fetch(`${base}/api/link/gochitomo-start`, { redirect: 'manual', headers: { Cookie: me.cookie } });
+  const loc = new URL(r.headers.get('location'));
+  assert.equal(loc.origin, 'http://localhost:4500');
+  assert.equal(loc.pathname, '/auth/callback');
+  const info = (await call(`/api/link/gochitomo-ticket/${loc.searchParams.get('ticket')}`, { headers: S })).data;
+  assert.equal(info.name, 'ごはんを撮る人');
+  assert.match(info.gameId, /^g_/);
+  assert.equal('admin' in info, false);
+  assert.equal((await call(`/api/link/gochitomo-ticket/${loc.searchParams.get('ticket')}`, { headers: S })).status, 404, '通行証は1回だけ');
+  assert.equal((await call('/api/link/gochitomo-results', { method: 'POST', headers: S, body: { gameId: info.gameId } })).status, 404);
+  assert.equal((await call(`/api/link/gochitomo-ticket/abcdefghijklmnopqrst`, { headers: { 'X-Link-Secret': 'wrong-secret' } })).status, 403, '合言葉がちがうと渡さない');
+});
+
 test('やみとも：ともはねでログインだけ（セーブは やみとも の中）・ゲームセンターの台・閉店中は入れない', async () => {
   const me = await signup('転生する人', { birthdate: '2016-04-01' });
   const S = { 'X-Link-Secret': 'tomohane-dev-link-secret' };

@@ -25,7 +25,7 @@ import { MAX_QUERY, LIMITS, normalizeText, tagsOf } from '../shared/search.js';
 import { MAX_VIDEO_BYTES, removeVideo, saveVideo, serveVideo } from './letters.js';
 import { createKokotomoClient } from './kokotomo.js';
 import { fromCode as fromKoboCode, checkPlayable as checkKoboPlayable } from '../shared/kobo/game.js';
-import { createGameLink, GHOST_URL, MISETOMO_URL, KOROTOMO_URL, SORATOMO_URL, HAATOMO_URL, TOMORU_URL, VTOMO_URL, METAVERSE_URL, UTATOMO_URL, KOETOMO_URL, YAMITOMO_URL } from './gamelink.js';
+import { createGameLink, GHOST_URL, MISETOMO_URL, KOROTOMO_URL, SORATOMO_URL, HAATOMO_URL, TOMORU_URL, VTOMO_URL, METAVERSE_URL, UTATOMO_URL, KOETOMO_URL, YAMITOMO_URL, GOCHITOMO_URL } from './gamelink.js';
 import {
   BUILTIN_GAMES, SLUG, visibleFor, recommendFor, gamesFor, hashSecret, newGameSecret, secretMatches,
   koboEntry,
@@ -278,6 +278,7 @@ export function createApp({
   metaverseLink = createGameLink({ app: 'metaverse', gameUrl: METAVERSE_URL }),
   utatomoLink = createGameLink({ app: 'utatomo', gameUrl: UTATOMO_URL }),
   koetomoLink = createGameLink({ app: 'koetomo', gameUrl: KOETOMO_URL }),
+  gochitomoLink = createGameLink({ app: 'gochitomo', gameUrl: GOCHITOMO_URL }),
   yamitomoLink = createGameLink({ app: 'yamitomo', gameUrl: YAMITOMO_URL }),
   clock = () => new Date(), // ゲームセンターの営業時間に使う（テストでは時刻を決められる）
   // このサーバーでは動いていないアプリ（例：AWS には ともはね だけ）。環境変数 SOON_APPS="tomojan,ghost,metaverse"。
@@ -1108,6 +1109,8 @@ export function createApp({
     // うたとも（タップで曲作り）：ログインと「運営かどうか」（公認の音を運営が聞いて決める）。作った曲は うたとも の中にあって、ともはねには来ない（広場に知らせるのは本人が下書きから送る）
     utatomo: { link: utatomoLink, setId: () => {}, results: null, admin: true },
     koetomo: { link: koetomoLink, setId: () => {}, results: null }, // こえとも：年齢の区分で保存できるかを決める（声は ともはね に来ない）
+    // ごちとも（仮）：ログインだけ（名前を出す）。写真も絵も ごちとも の中（スマホ・パソコンの中）にあって、ともはね には来ない
+    gochitomo: { link: gochitomoLink, setId: () => {}, results: null },
     // やみとも（仮）：ログインと「運営かどうか」（ネタの鍋＝ユーザーのアイデアを運営だけが見て採用する）。セーブは やみとも の中にあって、ともはね には来ない
     yamitomo: { link: yamitomoLink, setId: () => {}, results: null, admin: true },
   };
@@ -1119,7 +1122,7 @@ export function createApp({
     return u.origin;
   }
   async function handleGameLink(req, res, pathname, me) {
-    const m = pathname.match(/^\/api\/link\/(game|ghost|misetomo|korotomo|soratomo|haatomo|tomoru|vtomo|metaverse|utatomo|koetomo|yamitomo)-(start|ticket|results)(?:\/([\w-]+))?$/);
+    const m = pathname.match(/^\/api\/link\/(game|ghost|misetomo|korotomo|soratomo|haatomo|tomoru|vtomo|metaverse|utatomo|koetomo|yamitomo|gochitomo)-(start|ticket|results)(?:\/([\w-]+))?$/);
     if (!m) return false;
     const [, name, action, ticketId] = m;
     const { link, setId, results, admin } = LINKS[name];
