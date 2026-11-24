@@ -324,6 +324,14 @@ $('#cafe-add-form').addEventListener('submit', async (e) => {
 // ---- 運営だけ：通報の一覧 ----
 const STAGE_NAME = { gentle: 'やさしく声かけ', police: '👮 お巡りさん', lawyer: '⚖ 弁護士', enma: '👹 エンマ大王もどき' };
 const REASON_NAME = Object.fromEntries(REPORT_REASONS.map((r) => [r.id, r.label]));
+// ⏰ まだ見ていない通報の期限（重い通報は12時間・ほかは24時間）
+function dueBadge(due) {
+  if (!due) return '';
+  const left = Math.round((Date.parse(due.dueAt) - Date.now()) / 3600000);
+  return left < 0
+    ? `<span class="due-badge is-over">⚠️ 期限すぎ（${-left}時間）</span>`
+    : `<span class="due-badge${due.heavy ? ' is-heavy' : ''}">⏰ あと${left}時間${due.heavy ? '・重い' : ''}</span>`;
+}
 async function renderReportAdmin(me) {
   $('#report-admin').hidden = me.role !== 'admin';
   if (me.role !== 'admin') return;
@@ -332,7 +340,7 @@ async function renderReportAdmin(me) {
   $('#report-admin-list').innerHTML = list.length ? list.map((r) => {
     const reasons = Object.entries(r.reasons).map(([k, n]) => `${REASON_NAME[k] ?? k} ${n}`).join('・');
     const state = r.hidden === 'admin' ? '止めた' : r.hidden === 'report' ? '運営が見るまで見えない' : r.status === 'kept' ? '出したまま' : '出ている';
-    return `<li><strong>${escapeHtml(r.author)}</strong>「${escapeHtml(r.text)}」
+    return `<li>${dueBadge(r.due)}<strong>${escapeHtml(r.author)}</strong>「${escapeHtml(r.text)}」
       <span class="muted small">${escapeHtml(reasons)}（${r.reporters}人）・${STAGE_NAME[r.stage] ?? ''}・いま：${state}</span>
       <div class="row wrap">
         <button type="button" class="btn ghost" data-decide="hide" data-post="${escapeHtml(r.postId)}">止める</button>

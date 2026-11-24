@@ -11,7 +11,7 @@ import { isRoomId } from '../shared/rooms.js';
 import { createChallenges, readAssertion, verifyAssertion, verifyRegistration, WebAuthnError, MAX_PASSKEYS } from './webauthn.js';
 import { publishedIssues, findPoll, pollTalk } from '../shared/news.js';
 import { lanAddresses } from './net.js';
-import { REPORT_REASONS, STAGES, findReason, stageOf } from '../shared/report.js';
+import { REPORT_REASONS, STAGES, findReason, stageOf, reviewDue } from '../shared/report.js';
 import { ARCADE_APPS, arcadeStatus } from '../shared/arcade.js';
 import { LEAVE_MS, GUARDIAN_LEAVE_MS } from '../shared/leave.js';
 import { reporterFor, suggestionTalk, TALK_SHOW } from '../shared/suggest.js';
@@ -835,8 +835,10 @@ export function createApp({
           stage: stageOf(rs.map((r) => r.reason), new Set(rs.map((r) => r.reporterId)).size),
           hidden: post?.hidden ?? null, status: rs.some((r) => r.status === 'open') ? 'open' : rs[0].status,
           latest: rs.reduce((m, r) => (r.createdAt > m ? r.createdAt : m), ''),
+          due: reviewDue(rs), // まだ見ていない通報の期限（重い通報は12時間・ほかは24時間）
         };
-      }).sort((a, b) => (b.status === 'open') - (a.status === 'open') || b.latest.localeCompare(a.latest));
+      // まだ見ていないものを、期限の近い順に上へ
+      }).sort((a, b) => (b.status === 'open') - (a.status === 'open') || (a.due?.dueAt ?? '').localeCompare(b.due?.dueAt ?? '') || b.latest.localeCompare(a.latest));
     }],
     ['POST', /^\/api\/reports\/([\w-]+)\/decision$/, ({ params, body, me }) => {
       needAdmin(me);

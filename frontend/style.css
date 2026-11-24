@@ -835,3 +835,8 @@ html[data-oshi-color] .oshi-hero { color: var(--accent-text); }
 }
 .restaurant-spot:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
 @media (max-width: 600px) { .restaurant-spot { top: 79%; } .restaurant-spot .soon-badge { display: none; } } /* スマホではフクロウの家とアリーナのあいだ */
+
+/* 🚩 通報の期限 */
+.due-badge { display: inline-block; margin-right: 6px; font-size: .8rem; font-weight: 700; border-radius: 999px; padding: 1px 8px; background: var(--surface-2); }
+.due-badge.is-heavy { background: #fff1d6; color: #8a4b00; }
+.due-badge.is-over { background: #fde2e1; color: #b3262d; }
