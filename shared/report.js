@@ -14,6 +14,19 @@ export const REPORT_REASONS = [
 ];
 export const findReason = (id) => REPORT_REASONS.find((r) => r.id === id) ?? null;
 
+// 🚩 通報への対応の決まり（2026-11-24・おすすめで決定。声で変える）
+// ・運営が見る期限：重い通報（さらし・犯罪・くり返し）は12時間以内、ほかは24時間以内
+// ・通報が来たら、運営に 🔔 で知らせる（通報した人の名前は出さない）
+export const REVIEW_HOURS = { heavy: 12, light: 24 };
+// その投稿への通報（まだ見ていないもの）から、いつまでに見るか
+export function reviewDue(reports) {
+  const open = reports.filter((r) => r.status === 'open');
+  if (!open.length) return null;
+  const heavy = open.some((r) => findReason(r.reason)?.level === 'heavy');
+  const first = open.reduce((m, r) => (r.createdAt < m ? r.createdAt : m), open[0].createdAt);
+  return { heavy, since: first, dueAt: new Date(Date.parse(first) + (heavy ? REVIEW_HOURS.heavy : REVIEW_HOURS.light) * 3600000).toISOString() };
+}
+
 // 軽い通報でも、ちがう人からこの数だけ来たら「くり返し」（お巡りさん）にする
 export const REPEAT_REPORTERS = 3;
 

@@ -7,7 +7,7 @@ import { SEED_AGENTS, MOODS } from './agents.js';
 import { DEFAULT_TYPEFACE, TYPEFACE_KEYS } from '../shared/typefaces.js';
 import { precheck } from '../shared/precheck.js';
 import { MAX_VOTE_COMMENT, OFFICIAL_ACCOUNTS, MAX_READER_LETTER, MAX_PEN_NAME, READER_DEFAULT_NAME, READER_LETTERS_PER_DAY, publishedIssues } from '../shared/news.js';
-import { findReason, stageOf, MAX_APOLOGY } from '../shared/report.js';
+import { findReason, stageOf, MAX_APOLOGY, REVIEW_HOURS } from '../shared/report.js';
 import { LEAVE_MS, GUARDIAN_LEAVE_MS, FAMILY_DIARY } from '../shared/leave.js';
 import { MAX_SUGGESTION, MAX_PER_DAY, MAX_SUMMARY, MAX_ANSWER, SUGGEST_TOPICS } from '../shared/suggest.js';
 import { TERMS_VERSION } from '../shared/terms.js';
@@ -1387,6 +1387,11 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       };
       state.reports.push(report);
       if (reason.hold && !post.hidden) post.hidden = 'report';
+      // 🚩 運営に知らせる（通報した人の名前は出さない）
+      const hours = reason.level === 'heavy' ? REVIEW_HOURS.heavy : REVIEW_HOURS.light;
+      for (const a of state.users.filter((u) => u.role === 'admin')) {
+        notify(a.id, { kind: 'report', text: `🚩 通報がありました（${reason.label}）。${hours}時間以内に見てください`, link: '/login.html#report-admin' });
+      }
       save();
       return report;
     },
