@@ -30,6 +30,30 @@ export function findHarsh(text) {
 }
 export const isHarsh = (text) => findHarsh(text) !== null;
 
+// ゲーム・ネットで人を責めたり見下したりする言い方（2026-11-24 足した）
+// 推し活・生活でふつうに使う言い方は外す：雑魚寝・地雷系（ファッション）・「わたしの地雷」（苦手なもの）・介護のお仕事 など
+const GAME_TOXIC = [
+  /雑魚(?!寝)|ざこ(?!ね)|ザコ(?!ネ)/,
+  /戦犯/,
+  /(味方|あいつ|こいつ|お前|おまえ|そいつ)(が|は|って|、)?地雷/,
+  /利敵/,
+  /g\s*g\s*e\s*z|\beZ\b|イージーすぎ/i,
+  /アンインストールしろ|アンスト(しろ|しな)|ゲーム(やめろ|辞めろ|やめれば)|引退しろ/,
+  /介護(して(やった|る)|プレイ|させられ|乙|おつ)|(味方|あいつ|こいつ|お前|おまえ)の介護/,
+  /キャリーしてやった/,
+  /捨てゲー/,
+  /姫プ/,
+  /出会い厨/,
+  /^[?？]{3,}$/,
+];
+export function findGameToxic(text) {
+  for (const re of GAME_TOXIC) {
+    const m = text.match(re);
+    if (m) return m[0];
+  }
+  return null;
+}
+
 // 個人情報らしきもの（手紙キットの宛名チェックでも使う）
 export const PERSONAL_INFO_PATTERNS = [
   /0\d{1,4}[-ー－−\s]?\d{1,4}[-ー－−\s]?\d{3,4}/, // 電話番号
@@ -82,6 +106,13 @@ const NOTICE_RULES = [
     lines: (word) => [
       line(F, 'warning', `ほう、「${word}」は少しトゲがありますな。ここは「好き」を語る場所ですぞ。`),
       line(U, 'opinion', 'どこがいやだったかを書くと、気持ちがちゃんと伝わるよ ♪'),
+    ],
+  },
+  {
+    test: (t) => findGameToxic(t),
+    lines: (word) => [
+      line(F, 'warning', `ほう、「${word}」は、ゲームでいっしょに遊ぶ人を責めたり、見下したりする言い方ですな。`),
+      line(U, 'opinion', 'くやしい時は「次いこう！」「どんまい！」のほうが、みんなで楽しめるよ ♪'),
     ],
   },
   {
