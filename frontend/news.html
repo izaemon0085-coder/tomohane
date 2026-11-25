@@ -14,6 +14,38 @@
   <header class="site-header" id="header"></header>
   <main class="page news-page">
     <article class="paper" id="paper" aria-live="polite"></article>
+    <!-- 📚 みんなの知恵ぶくろ：面接・社会のしくみ・学校で学ばないことの知恵をつのる。運営が確かめてからのせる。名前は出さない -->
+    <section class="card wisdom" id="wisdom" aria-labelledby="wisdom-title">
+      <h2 id="wisdom-title">📚 みんなの知恵ぶくろ</h2>
+      <p class="muted small">面接で聞かれたこと・社会に出て知ったこと・学校で教えてほしかったこと・助かった相談先を、みんなで持ちよるコーナーです。運営が確かめてから、ここと「エージェントと学ぶ」の教室にのせます（ペンネームで）。</p>
+      <div class="wisdom-filter row wrap" id="wisdom-filter" role="group" aria-label="テーマでしぼる"></div>
+      <ul class="wisdom-list" id="wisdom-list"></ul>
+      <details class="admin-box" id="wisdom-send-box">
+        <summary>📚 知恵を送る</summary>
+        <form id="wisdom-form" hidden>
+          <label class="field">テーマ<select class="input" name="topic" id="wisdom-topic" required></select></label>
+          <p class="muted small" id="wisdom-hint"></p>
+          <label class="field">知恵（200文字まで・1日3つまで）<textarea class="input" name="text" maxlength="200" rows="3" required></textarea></label>
+          <label class="field">ペンネーム（12文字まで。なしなら「町の読者」）<input class="input" name="penName" maxlength="12" autocomplete="off"></label>
+          <label class="row"><input type="checkbox" name="okToPrint" required> <span>新聞と教室にのせてもいい（ペンネームで）</span></label>
+          <p class="muted small">⚠ 会社・学校・人の名前、自分の住所や電話番号は書かないでください。まちがった知恵やうわさは、運営が確かめてのせません。</p>
+          <p class="error" role="alert"></p>
+          <button class="btn" type="submit">送る</button>
+        </form>
+        <p id="wisdom-login" hidden><a href="/login.html?next=/news.html%23wisdom">ログイン</a>すると、知恵を送れます。</p>
+        <p class="note-line small" id="wisdom-practice" hidden>🐕 新聞はみんなが読むので、おうちの人とつながったら送れるっす！</p>
+        <div class="say-line" id="wisdom-reply" hidden aria-live="polite"></div>
+      </details>
+      <details class="admin-box" id="wisdom-mine-box" hidden>
+        <summary>わたしの知恵</summary>
+        <ul class="meyasu-admin-list" id="wisdom-mine"></ul>
+      </details>
+      <details class="admin-box" id="wisdom-admin" hidden>
+        <summary>運営だけ：届いた知恵</summary>
+        <p class="small muted">書いた人の名前は出していません。正しいか・会社や人の名前・個人の情報が入っていないかを確かめてから「のせる」。相談先の番号は、運営が確かめたものだけ。</p>
+        <ul class="meyasu-admin-list" id="wisdom-admin-list"></ul>
+      </details>
+    </section>
     <!-- 📝 読者の声（投書欄）：「のせてもいい」投書から運営が選んで号にのせる。名前は出さずペンネームだけ -->
     <section class="card toushou" id="toushou" aria-labelledby="toushou-title">
       <h2 id="toushou-title">📝 投書する（読者の声）</h2>

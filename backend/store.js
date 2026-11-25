@@ -22,6 +22,7 @@ import { MAX_PASSKEYS, MAX_PASSKEY_LABEL } from './webauthn.js';
 import { KIDS_TABLE, familyStop, normalizeRules, DEFAULT_FAMILY_RULES } from '../shared/family-rules.js';
 import { MAX_ROOM_NAME, MAX_ROOMS_PER_OWNER, MAX_ROOM_MEMBERS, isRoomId, cleanCode } from '../shared/rooms.js';
 import { ILLUST_STYLE_IDS } from '../shared/illust.js';
+import { MAX_WISDOM, WISDOM_PER_DAY, WISDOM_TOPIC_IDS, wisdomTopicLabel } from '../shared/wisdom.js';
 
 export const MAX_POST_LENGTH = 280;
 export const MAX_NAME_LENGTH = 20;
@@ -198,6 +199,8 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
   // 📮 読者の声（投書）{ id, userId, age, text, penName, status（new/picked/done）, issueId（のせた号）, pickedAt, createdAt }
   // 書いた人の名前は運営にも出さない（ペンネームと年齢の区分だけ）。本人はいつでも取り下げられる（のった号からも消える）
   state.readerLetters ??= [];
+  // 📚 みんなの知恵ぶくろ { id, userId, age, topic, text, penName, status（new/picked/done）, pickedAt, createdAt }（読者の声と同じ守り方）
+  state.wisdom ??= [];
   // 🚪 カフェの個室 { id, genre, name, emoji, ownerId, entry（invite/apply）, age（same/adult）, ageGroup（作ったときの主の区分）,
   //   members:[userId], invites:[{ userId, at }], requests:[{ userId, at }], createdAt, closedAt }
   state.rooms ??= [];
@@ -356,6 +359,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
     state.newsVotes = state.newsVotes.filter((v) => v.userId !== id);
     state.tableRequests = state.tableRequests.filter((r) => r.userId !== id);
     state.readerLetters = state.readerLetters.filter((x) => x.userId !== id); // 投書は、のった号からも消す
+    state.wisdom = state.wisdom.filter((x) => x.userId !== id); // 知恵ぶくろも、のったものから消す
     for (const r of state.rooms) {
       r.members = r.members.filter((m) => m !== id);
       r.invites = r.invites.filter((x) => x.userId !== id);
@@ -1684,6 +1688,55 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       if (!item) throw new HttpError(404, '投書が見つかりません');
       const wasPicked = item.status === 'picked';
       Object.assign(item, { status: 'done', issueId: null, pickedAt: null });
+      emit(wasPicked ? 'news' : 'suggestion', { id });
+      return item;
+    },
+
+    // ---- 📚 みんなの知恵ぶくろ（新聞の専用コーナー） ----
+    addWisdom(userId, { topic, text, penName, okToPrint }) {
+      const user = requireUser(userId);
+      if (user.kind !== 'human') throw new HttpError(400, '送れるのは、人間のユーザーだけです');
+      if (isPractice(user)) throw new HttpError(403, `新聞はみんなが読むので、${PRACTICE_MSG}`);
+      if (!WISDOM_TOPIC_IDS.includes(topic)) throw new HttpError(400, 'テーマをえらんでください');
+      if (okToPrint !== true) throw new HttpError(400, '「新聞と教室にのせてもいい」にチェックしてください');
+      familyCheck(user, 'plaza');
+      const clean = cleanText(text, MAX_WISDOM, '知恵');
+      const pen = String(penName ?? '').trim();
+      if ([...pen].length > MAX_PEN_NAME) throw new HttpError(400, `ペンネームは${MAX_PEN_NAME}文字以内にしてください`);
+      rejectBlocked(user, clean);
+      if (pen) rejectBlocked(user, pen);
+      const since = new Date(clockMs() - 86400000).toISOString();
+      if (state.wisdom.filter((x) => x.userId === userId && x.createdAt > since).length >= WISDOM_PER_DAY) {
+        throw new HttpError(429, `知恵は1日${WISDOM_PER_DAY}つまでです。また明日どうぞ`);
+      }
+      const item = { id: newId('wz'), userId, age: ageGroup(user.birthdate, new Date(clockMs())), topic, text: clean, penName: pen || READER_DEFAULT_NAME, status: 'new', pickedAt: null, createdAt: now() };
+      state.wisdom.push(item);
+      emit('suggestion', { id: item.id });
+      return item;
+    },
+    listWisdom: () => [...state.wisdom].reverse(),
+    myWisdom: (userId) => state.wisdom.filter((x) => x.userId === userId).reverse(),
+    withdrawWisdom(userId, id) {
+      const item = state.wisdom.find((x) => x.id === id && x.userId === userId);
+      if (!item) throw new HttpError(404, '知恵が見つかりません');
+      state.wisdom = state.wisdom.filter((x) => x !== item);
+      emit(item.status === 'picked' ? 'news' : 'suggestion', { id });
+      save();
+    },
+    // 運営：正しいか・名前などが入っていないかを確かめてから、のせる
+    pickWisdom(id) {
+      const item = state.wisdom.find((x) => x.id === id);
+      if (!item) throw new HttpError(404, '知恵が見つかりません');
+      Object.assign(item, { status: 'picked', pickedAt: now() });
+      if (item.userId) notify(item.userId, { kind: 'suggest', text: `あなたの知恵（${wisdomTopicLabel(item.topic)}・${item.penName}）が、新聞の「みんなの知恵ぶくろ」にのったよ`, link: '/news.html#wisdom' });
+      emit('news', { id });
+      return item;
+    },
+    closeWisdom(id) {
+      const item = state.wisdom.find((x) => x.id === id);
+      if (!item) throw new HttpError(404, '知恵が見つかりません');
+      const wasPicked = item.status === 'picked';
+      Object.assign(item, { status: 'done', pickedAt: null });
       emit(wasPicked ? 'news' : 'suggestion', { id });
       return item;
     },
