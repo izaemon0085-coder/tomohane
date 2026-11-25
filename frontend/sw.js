@@ -3,7 +3,7 @@
 // ・つながっているときは、いつも最新をサーバーから取る（ネットワーク優先）
 // ・つながらないときは、保存しておいたものを見せる（前に見た投稿が見られる）
 // ※ Service Worker は「安全な接続」（localhost か https）のときだけ動く
-const CACHE = 'tomohane-v30';
+const CACHE = 'tomohane-v31';
 
 const SHELL = [
   '/', '/style.css', '/map.js', '/plaza.html', '/plaza.js', '/cafe.html', '/oshi.html', '/oshi.js',
@@ -51,7 +51,9 @@ self.addEventListener('fetch', (event) => {
       }
       return res;
     } catch {
-      const cached = await caches.match(request, { ignoreSearch: !isApi });
+      // 投稿の一覧は ?limit= などがつくので、オフラインでは ? のうしろを気にせず、保存したものを出す
+      const cached = await caches.match(request, { ignoreSearch: !isApi })
+        ?? (url.pathname === '/api/posts' && !url.searchParams.get('table') ? await caches.match(new Request(`${url.origin}/api/posts?plaza=1&limit=101`)) ?? await caches.match(request, { ignoreSearch: true }) : null);
       if (cached) return cached;
       if (isApi) {
         return new Response(JSON.stringify({ error: 'オフラインです', offline: true }), {

@@ -477,6 +477,17 @@ test('送る前のチェック：推し活の言い方はトゲあつかいし�
   assert.ok(isHarsh('しね') && isHarsh('バカじゃないの'));
 });
 
+test('送る前のチェック：ゲームで人を責める・見下す言い方には、フクロウとウサギが声をかける（推し活・生活の言葉はそのまま）', () => {
+  for (const text of ['雑魚すぎ', 'ザコ乙', '味方が地雷', '今のは戦犯', '利敵すんな', 'gg ez', 'GGEZ', 'アンインストールしろ', '介護してやった', 'キャリーしてやったわ', '捨てゲーします', '姫プじゃん', '出会い厨きた', '？？？']) {
+    const r = precheck(text);
+    assert.equal(r.level, 'notice', text);
+    assert.ok(r.lines.some((l) => l.agentId === 'agent-fukurou'), text);
+  }
+  for (const text of ['雑魚寝したよ', 'ざこね楽しい', '地雷系メイクかわいい', 'わたしの地雷カプ', '介護のお仕事おつかれさま', 'おばあちゃんの介護', '？', 'え？', 'easy モードで遊んだ']) {
+    assert.equal(precheck(text).level, 'ok', text);
+  }
+});
+
 test('送る前のチェック：はっきりした犯罪は、画面を通さなくてもサーバーが止める', async () => {
   for (const [text, reason] of [
     ['闇バイト募集してます、DMください', '闇バイトの募集'],

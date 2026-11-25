@@ -7,7 +7,7 @@ import { SEED_AGENTS, MOODS } from './agents.js';
 import { DEFAULT_TYPEFACE, TYPEFACE_KEYS } from '../shared/typefaces.js';
 import { precheck } from '../shared/precheck.js';
 import { MAX_VOTE_COMMENT, OFFICIAL_ACCOUNTS, MAX_READER_LETTER, MAX_PEN_NAME, READER_DEFAULT_NAME, READER_LETTERS_PER_DAY, publishedIssues } from '../shared/news.js';
-import { findReason, stageOf, MAX_APOLOGY } from '../shared/report.js';
+import { findReason, stageOf, MAX_APOLOGY, REVIEW_HOURS } from '../shared/report.js';
 import { LEAVE_MS, GUARDIAN_LEAVE_MS, FAMILY_DIARY } from '../shared/leave.js';
 import { MAX_SUGGESTION, MAX_PER_DAY, MAX_SUMMARY, MAX_ANSWER, SUGGEST_TOPICS } from '../shared/suggest.js';
 import { TERMS_VERSION } from '../shared/terms.js';
@@ -220,7 +220,23 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
     }, 200);
   }
 
+  // 📇 投稿の索引（id → 投稿）と、新しい順の並び。投稿がふえる・消えるたびに作りなおす（毎回ぜんぶを探さない）
+  let postEpoch = 0;
+  let postIdx = { key: '', arr: null, map: new Map(), sorted: null };
+  const postIndex = () => {
+    const key = `${state.posts.length}:${postEpoch}`;
+    if (postIdx.key !== key || postIdx.arr !== state.posts) postIdx = { key, arr: state.posts, map: new Map(state.posts.map((p) => [p.id, p])), sorted: null };
+    return postIdx;
+  };
+  const postById = (id) => (id ? postIndex().map.get(id) : undefined);
+  const sortedPosts = () => {
+    const idx = postIndex();
+    idx.sorted ??= [...state.posts].sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0)); // ISO の日時なので < でくらべる
+    return idx.sorted;
+  };
+
   function emit(type, payload) {
+    if (type === 'post') postEpoch += 1;
     save();
     for (const fn of listeners) fn({ type, payload });
   }
@@ -280,7 +296,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
     return user;
   };
   const requirePost = (id) => {
-    const post = state.posts.find((p) => p.id === id);
+    const post = postById(id);
     if (!post) throw new HttpError(404, '投稿が見つかりません');
     return post;
   };
@@ -1045,7 +1061,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
     },
 
     // ---- posts (フロントエンド：SNS) ----
-    listPosts: () => [...state.posts].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    listPosts: () => [...sortedPosts()], // 新しい順（並べた写しは使い回す。返すのは毎回新しい配列）
     getPost: requirePost,
     // ---- カフェのテーブル ----
     listTables: () => state.tables.filter((t) => !t.closed),
@@ -1285,7 +1301,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       let p = post;
       for (let i = 0; p && i < 1000; i++) {
         if (p.thread) return p;
-        p = p.replyTo ? state.posts.find((x) => x.id === p.replyTo) : null;
+        p = p.replyTo ? postById(p.replyTo) : null;
       }
       return null;
     },
@@ -1375,6 +1391,11 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       };
       state.reports.push(report);
       if (reason.hold && !post.hidden) post.hidden = 'report';
+      // 🚩 運営に知らせる（通報した人の名前は出さない）
+      const hours = reason.level === 'heavy' ? REVIEW_HOURS.heavy : REVIEW_HOURS.light;
+      for (const a of state.users.filter((u) => u.role === 'admin')) {
+        notify(a.id, { kind: 'report', text: `🚩 通報がありました（${reason.label}）。${hours}時間以内に見てください`, link: '/login.html#report-admin' });
+      }
       save();
       return report;
     },
@@ -1446,6 +1467,32 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       return post;
     },
 
+    // canSee と同じ決まりを、たくさんの投稿に速く使う形（1回の読みこみの中だけで使う。通報・ブロック・退会中の人を先にまとめる）
+    seer(viewerId) {
+      const kidsOk = canSeeKids(viewerId);
+      const rooms = new Map(state.rooms.map((r) => [r.id, r]));
+      const roomOk = new Map();
+      const leaving = new Set(state.users.filter(isLeaving).map((u) => u.id));
+      const reported = new Set(viewerId ? state.reports.filter((r) => r.reporterId === viewerId).map((r) => r.postId) : []);
+      const blocked = new Set(viewerId ? state.blocks.filter((b) => b.userId === viewerId).map((b) => b.targetId) : []);
+      const hard = new Set(state.blocks.filter((b) => (b.kind ?? 'block') === 'block').map((b) => `${b.userId}\n${b.targetId}`));
+      return (post) => {
+        if (post.table === KIDS_TABLE.id && post.authorId !== viewerId && !kidsOk) return false;
+        if (isRoomId(post.table)) {
+          if (!roomOk.has(post.table)) { const room = rooms.get(post.table); roomOk.set(post.table, Boolean(room && !room.closedAt && inRoom(room, viewerId))); }
+          if (!roomOk.get(post.table)) return false;
+        }
+        if (post.practiceOwner && post.practiceOwner !== viewerId) return false;
+        if (post.hidden && post.authorId !== viewerId) return false;
+        if (post.orphaned && post.authorId !== viewerId) return false;
+        if (post.authorId !== viewerId && leaving.has(post.authorId)) return false;
+        if (viewerId && reported.has(post.id)) return false;
+        if (viewerId && post.authorId !== viewerId && blocked.has(post.authorId)) return false;
+        const parent = post.replyTo && postById(post.replyTo);
+        if (parent && post.authorId !== viewerId && hard.has(`${parent.authorId}\n${post.authorId}`)) return false;
+        return true;
+      };
+    },
     // viewerId の人に見せてよい投稿か（ログインしていなければ viewerId は null）
     canSee(post, viewerId) {
       // こどもテーブルは、子どもと、つながっているおうちの人だけ
@@ -1467,7 +1514,7 @@ export function createStore({ file = null, now = () => new Date().toISOString() 
       if (viewerId && post.authorId !== viewerId) {
         if (state.blocks.some((b) => b.userId === viewerId && b.targetId === post.authorId)) return false;
       }
-      const parent = post.replyTo && state.posts.find((p) => p.id === post.replyTo);
+      const parent = post.replyTo && postById(post.replyTo);
       if (parent && post.authorId !== viewerId
         && state.blocks.some((b) => b.userId === parent.authorId && b.targetId === post.authorId && (b.kind ?? 'block') === 'block')) return false;
       return true;

@@ -12,7 +12,7 @@ import { WISDOM_SHOW } from '../shared/wisdom.js';
 import { createChallenges, readAssertion, verifyAssertion, verifyRegistration, WebAuthnError, MAX_PASSKEYS } from './webauthn.js';
 import { publishedIssues, findPoll, pollTalk } from '../shared/news.js';
 import { lanAddresses } from './net.js';
-import { REPORT_REASONS, STAGES, findReason, stageOf } from '../shared/report.js';
+import { REPORT_REASONS, STAGES, findReason, stageOf, reviewDue } from '../shared/report.js';
 import { ARCADE_APPS, arcadeStatus } from '../shared/arcade.js';
 import { LEAVE_MS, GUARDIAN_LEAVE_MS } from '../shared/leave.js';
 import { reporterFor, suggestionTalk, TALK_SHOW } from '../shared/suggest.js';
@@ -212,6 +212,8 @@ function passkeySite(req) {
   try { url = new URL(`${isHttps(req) ? 'https' : 'http'}://${req.headers.host}`); } catch { throw new HttpError(400, 'ページの場所が読めません'); }
   return { rpId: process.env.TOMOHANE_RP_ID || url.hostname, origin: url.origin };
 }
+
+const MAX_POSTS_PAGE = 2000; // 1回に送る投稿の上限（?limit= のとき）
 
 async function readJson(req) {
   let size = 0;
@@ -685,15 +687,26 @@ export function createApp({
         if (!store.inRoom(table, me?.id ?? null)) throw new HttpError(403, 'この個室の仲間だけが読めます');
       } else if (table) store.getTable(table);
       if (table === KIDS_TABLE.id && !store.canSeeKidsTable(me?.id ?? null)) throw new HttpError(403, 'こどもテーブルは、12歳までの人と、おうちの人（見守り）だけが見られます');
-      const posts = store.listPosts()
-        .filter((p) => (table ? p.table === table : !p.table) && store.canSee(p, me?.id ?? null));
+      const see = store.seer(me?.id ?? null); // canSee と同じ決まりを、速く
+      const visible = store.listPosts()
+        .filter((p) => (table ? p.table === table : !p.table) && see(p));
+      // スレッドの返信の数は、ページに入らない返信もふくめて数える
       const replyCount = {};
-      const views = posts.map((p) => {
+      const rootOf = new Map();
+      for (const p of visible) {
         const root = store.threadRootOf(p);
+        rootOf.set(p.id, root?.id ?? null);
         if (root && root.id !== p.id) replyCount[root.id] = (replyCount[root.id] ?? 0) + 1;
-        return { ...postView(p, users), threadId: root?.id ?? null };
+      }
+      // ?plaza=1：広場の画面用。新聞のスレッドの中の返信は出さない（はじまりの投稿だけ）
+      let list = query.get('plaza') === '1' ? visible.filter((p) => !rootOf.get(p.id) || rootOf.get(p.id) === p.id) : visible;
+      // ?limit=N：新しいほうから N 件（ページ分け。つけなければ、前と同じく全部）
+      const limit = Math.floor(Number(query.get('limit')));
+      if (limit > 0) list = list.slice(0, Math.min(limit, MAX_POSTS_PAGE));
+      return list.map((p) => {
+        const v = { ...postView(p, users), threadId: rootOf.get(p.id) };
+        return v.thread ? { ...v, replyCount: replyCount[v.id] ?? 0 } : v;
       });
-      return views.map((v) => (v.thread ? { ...v, replyCount: replyCount[v.id] ?? 0 } : v));
     }],
     // 新聞のスレッドをまるごと（はじまり＋返信、古い順）
     ['GET', /^\/api\/threads\/([\w-]+)$/, ({ params, me }) => {
@@ -851,8 +864,10 @@ export function createApp({
           stage: stageOf(rs.map((r) => r.reason), new Set(rs.map((r) => r.reporterId)).size),
           hidden: post?.hidden ?? null, status: rs.some((r) => r.status === 'open') ? 'open' : rs[0].status,
           latest: rs.reduce((m, r) => (r.createdAt > m ? r.createdAt : m), ''),
+          due: reviewDue(rs), // まだ見ていない通報の期限（重い通報は12時間・ほかは24時間）
         };
-      }).sort((a, b) => (b.status === 'open') - (a.status === 'open') || b.latest.localeCompare(a.latest));
+      // まだ見ていないものを、期限の近い順に上へ
+      }).sort((a, b) => (b.status === 'open') - (a.status === 'open') || (a.due?.dueAt ?? '').localeCompare(b.due?.dueAt ?? '') || b.latest.localeCompare(a.latest));
     }],
     ['POST', /^\/api\/reports\/([\w-]+)\/decision$/, ({ params, body, me }) => {
       needAdmin(me);
